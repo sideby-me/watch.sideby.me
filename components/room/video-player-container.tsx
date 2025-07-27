@@ -57,6 +57,28 @@ export function VideoPlayerContainer({
   const [isLoading, setIsLoading] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [pendingUrl, setPendingUrl] = useState('');
+  const [videoRefReady, setVideoRefReady] = useState(false);
+
+  // Check if video ref is ready
+  useEffect(() => {
+    const checkVideoRef = () => {
+      if (videoType === 'mp4' && videoPlayerRef.current) {
+        setVideoRefReady(true);
+      } else if (videoType === 'm3u8' && hlsPlayerRef.current) {
+        setVideoRefReady(true);
+      } else {
+        setVideoRefReady(false);
+      }
+    };
+
+    // Check immediately
+    checkVideoRef();
+
+    // Set up interval to check periodically
+    const interval = setInterval(checkVideoRef, 100);
+
+    return () => clearInterval(interval);
+  }, [videoType, videoPlayerRef.current, hlsPlayerRef.current]);
 
   // Get video element ref for guest controls
   const getVideoElementRef = () => {
@@ -70,6 +92,7 @@ export function VideoPlayerContainer({
     }
     return null;
   };
+
   const getVideoTypeName = () => {
     switch (videoType) {
       case 'youtube':
@@ -226,7 +249,7 @@ export function VideoPlayerContainer({
           {renderPlayer()}
 
           {/* Unified video controls for non-YouTube videos */}
-          {videoType !== 'youtube' && (
+          {videoType !== 'youtube' && videoRefReady && (
             <VideoControls
               videoRef={getVideoElementRef()}
               isHost={isHost}

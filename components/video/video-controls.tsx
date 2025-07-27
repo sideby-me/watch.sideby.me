@@ -25,7 +25,7 @@ export function VideoControls({
 }: VideoControlsProps) {
   const [isMuted, setIsMuted] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [showControls, setShowControls] = useState(false);
+  const [showControls, setShowControls] = useState(true); // Start with controls visible
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -34,13 +34,18 @@ export function VideoControls({
   const programmaticActionRef = useRef(false);
   const hideControlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Handle client-side hydration
+  // Handle client-side hydration and initial control visibility
   useEffect(() => {
     setIsClient(true);
-    setShowControls(true); // Show controls after hydration
-  }, []);
+    setShowControls(true); // Ensure controls are visible after hydration
 
-  // Update video state
+    // Start the auto-hide timer on mount
+    const timeout = setTimeout(() => {
+      setShowControls(false);
+    }, 4000); // Give a bit more time initially
+
+    hideControlsTimeoutRef.current = timeout;
+  }, []); // Update video state
   useEffect(() => {
     const video = videoRef?.current;
     if (!video) return;
@@ -97,8 +102,8 @@ export function VideoControls({
     };
   }, []);
 
-  // Don't render if no video ref (after all hooks are called)
-  if (!videoRef || !isClient) {
+  // Don't render if no video ref
+  if (!videoRef) {
     return null;
   }
 
@@ -193,8 +198,6 @@ export function VideoControls({
   };
 
   const showControlsWithAutoHide = () => {
-    if (!isClient) return; // Don't show controls until client-side
-
     setShowControls(true);
 
     // Clear existing timeout
@@ -209,12 +212,10 @@ export function VideoControls({
   };
 
   const handleMouseMove = () => {
-    if (!isClient) return;
     showControlsWithAutoHide();
   };
 
   const handleMouseLeave = () => {
-    if (!isClient) return;
     // Clear timeout and hide controls when mouse leaves
     if (hideControlsTimeoutRef.current) {
       clearTimeout(hideControlsTimeoutRef.current);
