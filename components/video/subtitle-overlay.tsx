@@ -31,20 +31,20 @@ export function SubtitleOverlay({
   const parseWebVTT = (content: string): SubtitleCue[] => {
     const lines = content.split('\n');
     const cues: SubtitleCue[] = [];
-    
+
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
-      
+
       // Look for timestamp lines (format: 00:00:00.000 --> 00:00:00.000)
       if (line.includes(' --> ')) {
         const [startStr, endStr] = line.split(' --> ');
         const startTime = parseTimestamp(startStr);
         const endTime = parseTimestamp(endStr);
-        
+
         // Get the text lines that follow
         const textLines: string[] = [];
         i++; // Move to next line after timestamp
-        
+
         while (i < lines.length && lines[i].trim() !== '' && !lines[i].includes(' --> ')) {
           if (lines[i].trim()) {
             textLines.push(lines[i].trim());
@@ -52,7 +52,7 @@ export function SubtitleOverlay({
           i++;
         }
         i--; // Back up one line since the outer loop will increment
-        
+
         if (textLines.length > 0) {
           cues.push({
             text: textLines.join('\n'),
@@ -62,7 +62,7 @@ export function SubtitleOverlay({
         }
       }
     }
-    
+
     return cues;
   };
 
@@ -75,7 +75,7 @@ export function SubtitleOverlay({
       const secondsParts = parts[2].split('.');
       const seconds = parseInt(secondsParts[0]);
       const milliseconds = secondsParts[1] ? parseInt(secondsParts[1].padEnd(3, '0')) : 0;
-      
+
       return hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
     }
     return 0;
@@ -120,9 +120,7 @@ export function SubtitleOverlay({
 
     const updateCurrentCue = () => {
       const currentTime = video.currentTime;
-      const activeCue = parsedCues.find(
-        cue => currentTime >= cue.startTime && currentTime <= cue.endTime
-      );
+      const activeCue = parsedCues.find(cue => currentTime >= cue.startTime && currentTime <= cue.endTime);
       setCurrentCue(activeCue || null);
     };
 
@@ -158,18 +156,9 @@ export function SubtitleOverlay({
   };
 
   return (
-    <div
-      className="absolute inset-x-0 pointer-events-none z-30 flex justify-center"
-      style={getPositionStyles()}
-    >
+    <div className="pointer-events-none absolute inset-x-0 z-30 flex justify-center" style={getPositionStyles()}>
       <div
-        className={`
-          max-w-[85%] text-center px-4 py-2 rounded-lg
-          ${isFullscreen ? 'text-xl max-w-[70%]' : 'text-base'}
-          bg-black/90 text-white
-          shadow-2xl border border-white/10
-          backdrop-blur-sm
-        `}
+        className={`max-w-[85%] rounded-lg px-4 py-2 text-center ${isFullscreen ? 'max-w-[70%] text-xl' : 'text-sm sm:text-base'} border border-white/10 bg-black/75 text-white shadow-2xl backdrop-blur-sm`}
         style={{
           fontFamily: 'var(--font-space-grotesk), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
           fontWeight: '500',

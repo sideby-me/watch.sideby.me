@@ -266,12 +266,10 @@ export function VideoPlayerContainer({
   return (
     <Card>
       <CardContent className="p-6">
-        <div 
+        <div
           className={`relative aspect-video overflow-hidden rounded-lg bg-black ${
             controlsVisible ? 'video-container-with-controls' : ''
-          } ${
-            isFullscreen ? 'video-container-fullscreen' : ''
-          }`} 
+          } ${isFullscreen ? 'video-container-fullscreen' : ''}`}
           data-video-container
         >
           {renderPlayer()}

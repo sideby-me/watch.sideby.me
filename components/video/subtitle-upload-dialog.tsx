@@ -198,14 +198,21 @@ export function SubtitleUploadDialog({ open, onOpenChange, onSubtitleSelected }:
                       key={index}
                       className="flex items-center justify-between rounded-lg bg-gray-50 p-3 dark:bg-gray-800"
                     >
-                      <div className="flex items-center gap-3">
+                      <div className="flex min-w-0 flex-1 items-center gap-3">
                         <span className="text-2xl">{getFileIcon(file.name)}</span>
-                        <div>
-                          <p className="font-medium">{file.name}</p>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-medium" title={file.name}>
+                            {file.name}
+                          </p>
                           <p className="text-sm text-gray-500">{(file.size / 1024).toFixed(1)} KB</p>
                         </div>
                       </div>
-                      <Button variant="ghost" size="sm" onClick={() => removeFile(index)} className="h-8 w-8 p-0">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeFile(index)}
+                        className="ml-2 h-8 w-8 flex-shrink-0 p-0"
+                      >
                         <X className="h-4 w-4" />
                       </Button>
                     </div>
@@ -247,11 +254,13 @@ export function SubtitleUploadDialog({ open, onOpenChange, onSubtitleSelected }:
                       key={track.id}
                       className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-800 dark:bg-green-900/20"
                     >
-                      <div className="flex items-center gap-3">
-                        <CheckCircle className="h-5 w-5 text-green-500" />
-                        <div>
-                          <p className="font-medium">{track.label}</p>
-                          <div className="flex items-center gap-2">
+                      <div className="flex min-w-0 flex-1 items-center gap-3">
+                        <CheckCircle className="h-5 w-5 flex-shrink-0 text-green-500" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-medium" title={track.label}>
+                            {track.label}
+                          </p>
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
                             <Badge variant="outline" className="text-xs">
                               {getLanguageLabel(track.language)}
                             </Badge>

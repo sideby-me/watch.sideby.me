@@ -78,7 +78,7 @@ export function VideoControls({
         (document as Document & { msFullscreenElement?: Element }).msFullscreenElement
       );
       setIsFullscreen(isCurrentlyFullscreen);
-      
+
       // Notify parent component about fullscreen change
       onFullscreenChange?.(isCurrentlyFullscreen);
 
@@ -509,6 +509,7 @@ export function VideoControls({
                 onActiveTrackChange={onActiveSubtitleTrackChange}
                 currentVideoTitle={currentVideoTitle}
                 isHost={isHost}
+                isFullscreen={isFullscreen}
               />
             )}
 
