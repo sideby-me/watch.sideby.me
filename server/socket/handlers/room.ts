@@ -272,6 +272,8 @@ export async function handleLeaveRoom(
     const leavingUser = room.users.find(u => u.id === socket.data.userId);
     if (!leavingUser) return;
 
+    const wasVoiceEnabled = !!leavingUser.voiceEnabled;
+
     // Remove the leaving user from the room
     const updatedUsers = room.users.filter(u => u.id !== socket.data.userId);
 
@@ -300,11 +302,31 @@ export async function handleLeaveRoom(
         await redisService.rooms.deleteRoom(roomId);
       } else {
         // Update room with remaining users
-        const updatedRoom = { ...room, users: updatedUsers };
+        const updatedRoom = {
+          ...room,
+          users: updatedUsers,
+          voiceChatEnabled: updatedUsers.some(u => u.voiceEnabled),
+        };
         await redisService.rooms.updateRoom(roomId, updatedRoom);
 
         // Notify remaining users that this user left
         socket.to(roomId).emit('user-left', { userId: socket.data.userId });
+
+        // If the leaving user had voice enabled, broadcast a voice update so peers can disconnect
+        if (wasVoiceEnabled) {
+          socket.to(roomId).emit('voice-user-update', {
+            userId: leavingUser.id,
+            userName: leavingUser.name,
+            voiceEnabled: false,
+            isMuted: false,
+            isDeafened: false,
+          });
+
+          socket.to(roomId).emit('voice-chat-enabled', {
+            roomId,
+            enabled: updatedRoom.voiceChatEnabled,
+          });
+        }
       }
     }
 

@@ -15,6 +15,7 @@ interface UseVoiceChatOptions {
   roomId: string;
   userId: string;
   isHost: boolean;
+  initialVoiceUsers?: VoiceUserUpdate[];
 }
 
 interface UseVoiceChatReturn {
@@ -45,7 +46,12 @@ const ICE_SERVERS: RTCConfiguration = {
   ],
 };
 
-export function useVoiceChat({ roomId, userId, isHost }: UseVoiceChatOptions): UseVoiceChatReturn {
+export function useVoiceChat({
+  roomId,
+  userId,
+  isHost,
+  initialVoiceUsers = [],
+}: UseVoiceChatOptions): UseVoiceChatReturn {
   const { socket } = useSocket();
 
   // State
@@ -60,6 +66,27 @@ export function useVoiceChat({ roomId, userId, isHost }: UseVoiceChatOptions): U
   const localStreamRef = useRef<MediaStream | null>(null);
   const peerConnectionsRef = useRef<Map<string, PeerConnection>>(new Map());
   const voiceLevelsRef = useRef<Map<string, number>>(new Map());
+  const hasSeededInitialVoiceUsersRef = useRef<boolean>(false);
+
+  // Reset seed flag when room changes
+  useEffect(() => {
+    hasSeededInitialVoiceUsersRef.current = false;
+  }, [roomId]);
+
+  // Seed initial voice users from room state (for fresh joiners), only once per room
+  useEffect(() => {
+    if (hasSeededInitialVoiceUsersRef.current) return;
+    if (!initialVoiceUsers || initialVoiceUsers.length === 0) return;
+
+    setVoiceUsers(prev => {
+      const userIdToUpdate: Map<string, VoiceUserUpdate> = new Map();
+      prev.forEach(u => userIdToUpdate.set(u.userId, u));
+      initialVoiceUsers.forEach(u => userIdToUpdate.set(u.userId, u));
+      return Array.from(userIdToUpdate.values());
+    });
+
+    hasSeededInitialVoiceUsersRef.current = true;
+  }, [initialVoiceUsers, roomId]);
 
   // Get user's microphone stream
   const getUserMedia = useCallback(async (): Promise<MediaStream | null> => {
@@ -440,12 +467,22 @@ export function useVoiceChat({ roomId, userId, isHost }: UseVoiceChatOptions): U
       }
     };
 
+    const handleUserLeft = ({ userId: leftUserId }: { userId: string }) => {
+      // Remove from voice list and close connection
+      setVoiceUsers(prev => prev.filter(u => u.userId !== leftUserId));
+      if (leftUserId !== userId) {
+        closePeerConnection(leftUserId);
+      }
+    };
+
     socket.on('webrtc-signaling', handleWebRTCSignaling);
     socket.on('voice-user-update', handleVoiceUserUpdate);
+    socket.on('user-left', handleUserLeft);
 
     return () => {
       socket.off('webrtc-signaling', handleWebRTCSignaling);
       socket.off('voice-user-update', handleVoiceUserUpdate);
+      socket.off('user-left', handleUserLeft);
     };
   }, [socket, userId, isVoiceEnabled, handleOffer, handleAnswer, handleIceCandidate, createOffer, closePeerConnection]);
 

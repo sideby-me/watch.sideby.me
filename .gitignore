@@ -42,6 +42,8 @@ next-env.d.ts
 
 # ide
 .vscode/
+.cursor/
 
 # etc
 .github/
+notepad/

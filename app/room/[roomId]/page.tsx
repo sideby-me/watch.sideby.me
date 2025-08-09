@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useSocket } from '@/hooks/use-socket';
 import { useRoom } from '@/hooks/use-room';
@@ -115,6 +115,18 @@ export default function RoomPage() {
   });
 
   // Use voice chat hook for voice communication
+  const initialVoiceUsers = useMemo(
+    () =>
+      room?.users.map(u => ({
+        userId: u.id,
+        userName: u.name,
+        voiceEnabled: u.voiceEnabled,
+        isMuted: u.isMuted,
+        isDeafened: u.isDeafened,
+      })) || [],
+    [room?.users]
+  );
+
   const {
     isVoiceEnabled,
     isMuted,
@@ -130,6 +142,7 @@ export default function RoomPage() {
     roomId,
     userId: currentUser?.id || '',
     isHost: currentUser?.isHost || false,
+    initialVoiceUsers,
   });
 
   // Handle video control attempts by guests
