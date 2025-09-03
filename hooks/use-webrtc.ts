@@ -54,6 +54,8 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
   const fallbackCooldownRef = useRef<Map<string, number>>(new Map());
   // Persist attempt counts across peer recreation so we can escalate to TURN-only (attempt 3)
   const attemptCountsRef = useRef<Map<string, number>>(new Map());
+  // Track negotiation timeouts to auto-escalate if remoteDescription never arrives
+  const negotiationTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   // Keep latest callbacks without re-binding existing peer listeners
   useEffect(() => {
@@ -124,6 +126,11 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
       const pc = new RTCPeerConnection(cfg);
       const entry: PeerMapEntry = { pc, isUsingTurn: usingTurn, connectionAttempt: nextAttempt };
       peersRef.current.set(id, entry);
+      // Clear any stale queued candidates from prior attempts
+      remoteCandidateQueueRef.current.delete(id);
+      // Clear any prior negotiation timeout
+      const prevT = negotiationTimeoutsRef.current.get(id);
+      if (prevT) clearTimeout(prevT);
       if (process.env.NODE_ENV !== 'production') {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (window as any).__peers = (window as any).__peers || {};
@@ -153,6 +160,8 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
       (pc as any)._applyQueuedCandidates = async () => {
         const queued = remoteCandidateQueueRef.current.get(id);
         if (!queued || !queued.length) return;
+        if (debugEnabled.current)
+          console.log('[WEBRTC] applying queued candidates', { peerId: id, count: queued.length });
         for (const c of queued) {
           try {
             await pc.addIceCandidate(new RTCIceCandidate(c));
@@ -161,7 +170,28 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
           }
         }
         remoteCandidateQueueRef.current.delete(id);
+        // If we successfully applied candidates, cancel any negotiation timeout
+        const t = negotiationTimeoutsRef.current.get(id);
+        if (t) {
+          clearTimeout(t);
+          negotiationTimeoutsRef.current.delete(id);
+        }
       };
+
+      // If we are initiator (best-effort heuristic: initiator param) and attempt >=2, set a timeout to escalate if no remoteDescription arrives
+      if (initiator && nextAttempt < 3) {
+        const timeout = setTimeout(
+          () => {
+            if (!pc.remoteDescription) {
+              if (debugEnabled.current)
+                console.warn('[WEBRTC] negotiation timeout - escalating', { peerId: id, attempt: nextAttempt });
+              forceTurnReconnect(id, initiator).catch(() => {});
+            }
+          },
+          nextAttempt === 1 ? 7000 : 5000
+        ); // shorter on higher attempts
+        negotiationTimeoutsRef.current.set(id, timeout);
+      }
 
       pc.onconnectionstatechange = () => {
         if (debugEnabled.current) {
