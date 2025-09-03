@@ -26,6 +26,7 @@ export async function fetchTurnCredentials(): Promise<RTCIceServer[] | null> {
       headers: {
         'Content-Type': 'application/json',
       },
+      signal: AbortSignal.timeout(10000), // 10 second timeout
     });
 
     if (!response.ok) {
@@ -52,7 +53,15 @@ export async function fetchTurnCredentials(): Promise<RTCIceServer[] | null> {
     }
     return candidate as RTCIceServer[];
   } catch (error) {
-    console.warn('[TURN] Error fetching TURN credentials:', error);
+    if (error instanceof Error) {
+      if (error.name === 'TimeoutError') {
+        console.warn('[TURN] Request timeout when fetching TURN credentials');
+      } else {
+        console.warn('[TURN] Error fetching TURN credentials:', error.message);
+      }
+    } else {
+      console.warn('[TURN] Unknown error fetching TURN credentials:', error);
+    }
     return null;
   }
 }
@@ -92,6 +101,8 @@ export async function createRTCConfiguration(): Promise<RTCConfiguration> {
     iceServers,
     iceTransportPolicy: 'all', // Allow both STUN and TURN
     iceCandidatePoolSize: 10, // Pre-gather candidates for faster connection
+    bundlePolicy: 'max-bundle', // Bundle all media on a single connection
+    rtcpMuxPolicy: 'require', // Multiplex RTP and RTCP on single port
   };
 }
 
@@ -105,6 +116,8 @@ export async function createTurnOnlyRTCConfiguration(): Promise<RTCConfiguration
     iceServers: turnServers,
     iceTransportPolicy: 'relay', // Force relay only for reliability
     iceCandidatePoolSize: 0,
+    bundlePolicy: 'max-bundle',
+    rtcpMuxPolicy: 'require',
   };
 }
 
@@ -114,5 +127,7 @@ export function createStunOnlyRTCConfiguration(): RTCConfiguration {
     iceServers: getStunOnlyConfig(),
     iceTransportPolicy: 'all',
     iceCandidatePoolSize: 10,
+    bundlePolicy: 'max-bundle',
+    rtcpMuxPolicy: 'require',
   };
 }

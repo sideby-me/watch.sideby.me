@@ -70,7 +70,8 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
   useEffect(() => {
     try {
       const urlDebug = typeof window !== 'undefined' && new URL(window.location.href).searchParams.get('webrtcDebug');
-      debugEnabled.current = Boolean(urlDebug) || process.env.NEXT_PUBLIC_WEBRTC_DEBUG === '1';
+      debugEnabled.current =
+        Boolean(urlDebug) || process.env.NEXT_PUBLIC_WEBRTC_DEBUG === '1' || process.env.NODE_ENV === 'development';
     } catch {}
   }, []);
 
@@ -162,14 +163,23 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
         if (!queued || !queued.length) return;
         if (debugEnabled.current)
           console.log('[WEBRTC] applying queued candidates', { peerId: id, count: queued.length });
+
+        let applied = 0;
         for (const c of queued) {
           try {
             await pc.addIceCandidate(new RTCIceCandidate(c));
+            applied++;
           } catch (e) {
             if (debugEnabled.current) console.warn('[WEBRTC] queued candidate failed', e);
           }
         }
+
+        if (debugEnabled.current && applied > 0) {
+          console.log('[WEBRTC] successfully applied candidates', { peerId: id, applied, total: queued.length });
+        }
+
         remoteCandidateQueueRef.current.delete(id);
+
         // If we successfully applied candidates, cancel any negotiation timeout
         const t = negotiationTimeoutsRef.current.get(id);
         if (t) {
@@ -178,18 +188,18 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
         }
       };
 
-      // If we are initiator (best-effort heuristic: initiator param) and attempt >=2, set a timeout to escalate if no remoteDescription arrives
-      if (initiator && nextAttempt < 3) {
+      // Set negotiation timeout for all attempts to ensure connections don't hang
+      if (nextAttempt < 3) {
         const timeout = setTimeout(
           () => {
-            if (!pc.remoteDescription) {
+            if (!pc.remoteDescription || pc.connectionState === 'failed') {
               if (debugEnabled.current)
                 console.warn('[WEBRTC] negotiation timeout - escalating', { peerId: id, attempt: nextAttempt });
               forceTurnReconnect(id, initiator).catch(() => {});
             }
           },
-          nextAttempt === 1 ? 7000 : 5000
-        ); // shorter on higher attempts
+          nextAttempt === 1 ? 10000 : nextAttempt === 2 ? 8000 : 6000
+        ); // Progressive timeout reduction
         negotiationTimeoutsRef.current.set(id, timeout);
       }
 
@@ -210,10 +220,20 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
             });
           } catch {}
         }
+        if (pc.connectionState === 'connected') {
+          // Clear any pending negotiation timeout on successful connection
+          const t = negotiationTimeoutsRef.current.get(id);
+          if (t) {
+            clearTimeout(t);
+            negotiationTimeoutsRef.current.delete(id);
+          }
+          // Reset restart tracking on successful connection
+          restartedRef.current.delete(id);
+        }
         if (pc.connectionState === 'failed') {
           const now = Date.now();
           const last = fallbackCooldownRef.current.get(id) || 0;
-          if (now - last < 1500) return; // debounce
+          if (now - last < 2000) return; // Increased debounce
           fallbackCooldownRef.current.set(id, now);
           // Single restartIce try only on first attempt
           if (!restartedRef.current.has(id) && entry.connectionAttempt === 1) {
@@ -225,12 +245,12 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
                 if (pc.connectionState === 'failed' || pc.iceConnectionState === 'failed') {
                   forceTurnReconnect(id, true).catch(() => {});
                 }
-              }, 1200);
+              }, 2000); // Increased restart wait time
               return;
             } catch {}
           }
           if (entry.connectionAttempt < 3) {
-            setTimeout(() => forceTurnReconnect(id, true).catch(() => {}), entry.connectionAttempt === 1 ? 200 : 250);
+            setTimeout(() => forceTurnReconnect(id, true).catch(() => {}), entry.connectionAttempt === 1 ? 500 : 750);
           }
         }
       };

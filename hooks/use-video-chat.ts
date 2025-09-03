@@ -39,15 +39,33 @@ export function useVideoChat({ roomId, currentUser, maxParticipants = 5 }: UseVi
   const cleanupPeerRef = useRef<(id: string) => void>(() => {});
   // Track peers currently in fallback renegotiation to avoid duplicate attempts
   const fallbackInProgressRef = useRef<Set<string>>(new Set());
+  // Track overall connection timeouts per peer
+  const connectionTimeoutsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const { getOrCreatePeer, removePeer, closeAll, forceTurnReconnect, safeAddRemoteCandidate } = useWebRTC({
     onIceCandidate: (peerId, candidate) => {
       if (!socket) return;
       socket.emit('videochat-ice-candidate', { roomId, targetUserId: peerId, candidate });
     },
     onConnectionStateChange: (peerId, state, _pc, meta) => {
+      if (state === 'connected') {
+        // Clear any fallback attempts on successful connection
+        fallbackInProgressRef.current.delete(peerId);
+        // Clear connection timeout on successful connection
+        const timeout = connectionTimeoutsRef.current.get(peerId);
+        if (timeout) {
+          clearTimeout(timeout);
+          connectionTimeoutsRef.current.delete(peerId);
+        }
+        console.log('[WEBRTC] peer connected successfully', {
+          peerId,
+          attempt: meta.attempt,
+          usingTurn: meta.usingTurn,
+        });
+      }
       if (state === 'failed') {
         // Attempt TURN escalation instead of immediate cleanup (up to 3 attempts total)
         if (meta.attempt < 3 && !fallbackInProgressRef.current.has(peerId)) {
+          console.log('[WEBRTC] connection failed, attempting fallback', { peerId, attempt: meta.attempt });
           fallbackInProgressRef.current.add(peerId);
           (async () => {
             try {
@@ -71,7 +89,8 @@ export function useVideoChat({ roomId, currentUser, maxParticipants = 5 }: UseVi
                 await newPc.setLocalDescription(offer);
                 socket?.emit('videochat-offer', { roomId, targetUserId: peerId, sdp: offer });
               }
-            } catch {
+            } catch (error) {
+              console.error('[WEBRTC] fallback failed', { peerId, error });
               // If fallback negotiation fails, cleanup
               cleanupPeerRef.current(peerId);
             } finally {
@@ -81,6 +100,7 @@ export function useVideoChat({ roomId, currentUser, maxParticipants = 5 }: UseVi
           return; // Defer cleanup until fallback completes
         }
         // After exhausting fallback attempts, cleanup
+        console.log('[WEBRTC] exhausted fallback attempts, cleaning up', { peerId, attempt: meta.attempt });
         cleanupPeerRef.current(peerId);
         return;
       }
@@ -143,10 +163,18 @@ export function useVideoChat({ roomId, currentUser, maxParticipants = 5 }: UseVi
   // Remove a single peer: drop connection, stream, signaling markers
   const cleanupPeer = useCallback(
     (peerId: string) => {
+      // Clear any pending connection timeout
+      const timeout = connectionTimeoutsRef.current.get(peerId);
+      if (timeout) {
+        clearTimeout(timeout);
+        connectionTimeoutsRef.current.delete(peerId);
+      }
+
       removePeer(peerId);
       setActivePeerIds(prev => prev.filter(id => id !== peerId));
       setRemoteStreams(prev => prev.filter(v => v.userId !== peerId));
       appliedRemoteAnswerRef.current.delete(peerId);
+      fallbackInProgressRef.current.delete(peerId);
     },
     [removePeer]
   );
@@ -155,6 +183,13 @@ export function useVideoChat({ roomId, currentUser, maxParticipants = 5 }: UseVi
   // Full teardown used by explicit leave, auto-disconnect, and unmount
   const cleanupAll = useCallback(() => {
     clearSoloTimeout();
+
+    // Clear all connection timeouts
+    for (const timeout of connectionTimeoutsRef.current.values()) {
+      clearTimeout(timeout);
+    }
+    connectionTimeoutsRef.current.clear();
+
     closeAll();
     setActivePeerIds([]);
     setRemoteStreams([]);
@@ -168,6 +203,7 @@ export function useVideoChat({ roomId, currentUser, maxParticipants = 5 }: UseVi
     setError('');
     setPublicParticipantCount(0);
     appliedRemoteAnswerRef.current.clear();
+    fallbackInProgressRef.current.clear();
   }, [closeAll]);
 
   // Start video chat
@@ -241,21 +277,34 @@ export function useVideoChat({ roomId, currentUser, maxParticipants = 5 }: UseVi
       else clearSoloTimeout();
       others.sort().forEach(async id => {
         if (!activePeerIds.includes(id)) {
-          const pc = await getOrCreatePeer(id, true);
-          const local = await ensureLocalCamera();
-          const track = local.getVideoTracks()[0];
-          if (track) {
-            const existingSenders = pc.getSenders().filter(s => s.track && s.track.kind === 'video');
-            if (existingSenders.length === 0) {
-              try {
-                pc.addTrack(track, local);
-              } catch {}
+          try {
+            // Set overall connection timeout for this peer
+            const connectionTimeout = setTimeout(() => {
+              console.warn('[WEBRTC] overall connection timeout for peer', { peerId: id });
+              cleanupPeer(id);
+            }, 30000); // 30 second total timeout
+            connectionTimeoutsRef.current.set(id, connectionTimeout);
+
+            const pc = await getOrCreatePeer(id, true);
+            const local = await ensureLocalCamera();
+            const track = local.getVideoTracks()[0];
+            if (track) {
+              const existingSenders = pc.getSenders().filter(s => s.track && s.track.kind === 'video');
+              if (existingSenders.length === 0) {
+                try {
+                  pc.addTrack(track, local);
+                } catch {}
+              }
             }
+            const offer = await pc.createOffer({ offerToReceiveVideo: true });
+            await pc.setLocalDescription(offer);
+            socket.emit('videochat-offer', { roomId, targetUserId: id, sdp: offer });
+            console.log('[WEBRTC] sent initial offer', { targetUserId: id });
+            setActivePeerIds(prev => (prev.includes(id) ? prev : [...prev, id]));
+          } catch (error) {
+            console.error('[WEBRTC] error creating initial offer', { targetUserId: id, error });
+            cleanupPeer(id);
           }
-          const offer = await pc.createOffer({ offerToReceiveVideo: true });
-          await pc.setLocalDescription(offer);
-          socket.emit('videochat-offer', { roomId, targetUserId: id, sdp: offer });
-          setActivePeerIds(prev => (prev.includes(id) ? prev : [...prev, id]));
         }
       });
     };
@@ -263,39 +312,71 @@ export function useVideoChat({ roomId, currentUser, maxParticipants = 5 }: UseVi
     // Incoming offer -> attach local track & respond with answer
     const handleOffer = async ({ fromUserId, sdp }: { fromUserId: string; sdp: RTCSessionDescriptionInit }) => {
       if (fromUserId === currentUser.id) return;
-      const pc = await getOrCreatePeer(fromUserId, false);
-      if (pc.signalingState !== 'stable') return;
-      await pc.setRemoteDescription(new RTCSessionDescription(sdp));
-      // Apply any queued remote ICE now that remoteDescription is set
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (pc as any)._applyQueuedCandidates?.();
-      const local = await ensureLocalCamera();
-      const track = local.getVideoTracks()[0];
-      if (track) {
-        const existingSenders = pc.getSenders().filter(s => s.track && s.track.kind === 'video');
-        if (existingSenders.length === 0) {
-          try {
-            pc.addTrack(track, local);
-          } catch {}
+      try {
+        const pc = await getOrCreatePeer(fromUserId, false);
+        if (pc.signalingState !== 'stable') {
+          console.warn('[WEBRTC] received offer in invalid signaling state', {
+            fromUserId,
+            state: pc.signalingState,
+          });
+          return;
         }
+
+        await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+        console.log('[WEBRTC] applied remote offer', { fromUserId });
+
+        // Apply any queued remote ICE now that remoteDescription is set
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (pc as any)._applyQueuedCandidates?.();
+
+        const local = await ensureLocalCamera();
+        const track = local.getVideoTracks()[0];
+        if (track) {
+          const existingSenders = pc.getSenders().filter(s => s.track && s.track.kind === 'video');
+          if (existingSenders.length === 0) {
+            try {
+              pc.addTrack(track, local);
+            } catch {}
+          }
+        }
+
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        socket.emit('videochat-answer', { roomId, targetUserId: fromUserId, sdp: answer });
+        console.log('[WEBRTC] sent answer', { fromUserId });
+
+        setActivePeerIds(prev => (prev.includes(fromUserId) ? prev : [...prev, fromUserId]));
+      } catch (error) {
+        console.error('[WEBRTC] error handling offer', { fromUserId, error });
       }
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      socket.emit('videochat-answer', { roomId, targetUserId: fromUserId, sdp: answer });
-      setActivePeerIds(prev => (prev.includes(fromUserId) ? prev : [...prev, fromUserId]));
     };
 
     // Incoming answer -> apply once (guard via appliedRemoteAnswerRef)
     const handleAnswer = async ({ fromUserId, sdp }: { fromUserId: string; sdp: RTCSessionDescriptionInit }) => {
       if (appliedRemoteAnswerRef.current.has(fromUserId)) return;
       if (!activePeerIds.includes(fromUserId)) return;
-      const pc = await getOrCreatePeer(fromUserId, true);
-      if (pc.signalingState !== 'have-local-offer') return;
-      await pc.setRemoteDescription(new RTCSessionDescription(sdp));
-      // Flush queued ICE
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (pc as any)._applyQueuedCandidates?.();
-      appliedRemoteAnswerRef.current.add(fromUserId);
+
+      try {
+        const pc = await getOrCreatePeer(fromUserId, true);
+        if (pc.signalingState !== 'have-local-offer') {
+          console.warn('[WEBRTC] received answer in invalid signaling state', {
+            fromUserId,
+            state: pc.signalingState,
+          });
+          return;
+        }
+
+        await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+        console.log('[WEBRTC] applied remote answer', { fromUserId });
+
+        // Flush queued ICE
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (pc as any)._applyQueuedCandidates?.();
+
+        appliedRemoteAnswerRef.current.add(fromUserId);
+      } catch (error) {
+        console.error('[WEBRTC] error handling answer', { fromUserId, error });
+      }
     };
 
     // Remote ICE candidate -> add to peer (errors ignored silently)
