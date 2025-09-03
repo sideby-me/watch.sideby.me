@@ -9,7 +9,7 @@ export default function HomePage() {
   return (
     <>
       {/* Hero Section */}
-      <section className="mt-16 space-y-6 py-24 text-center">
+      <section className="mt-12 space-y-6 py-24 text-center md:mt-16">
         <h1 className="mx-auto max-w-5xl text-6xl font-bold tracking-tighter md:text-8xl">{`NO WAIT, PAUSE IT. SOMEONE'S HERE?`}</h1>
         <p className="mx-auto max-w-xl text-3xl font-semibold tracking-tighter text-neutral">
           {`Screw screen-sharing. Spin up rooms, drag in friends, and enjoy synced videos with chat that doesn’t suck.`}
