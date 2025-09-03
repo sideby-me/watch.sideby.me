@@ -1,6 +1,18 @@
 const turnApiKey = process.env.NEXT_PUBLIC_METERED_API_KEY;
 const TURN_API_URL = `https://whonoahexe.metered.live/api/v1/turn/credentials?apiKey=${turnApiKey}`;
 
+// Cache TURN credentials for 5 minutes to avoid repeated API calls
+let turnCredentialsCache: { servers: RTCIceServer[]; timestamp: number } | null = null;
+const TURN_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+// Pre-fetch TURN credentials in parallel to avoid blocking
+let turnCredentialsFetch: Promise<RTCIceServer[] | null> | null = null;
+
+// Pre-warm TURN credentials on module load for faster connections
+if (typeof window !== 'undefined' && turnApiKey) {
+  turnCredentialsFetch = fetchTurnCredentials();
+}
+
 const STUN_SERVERS: RTCIceServer[] = [
   {
     urls: [
@@ -13,11 +25,31 @@ const STUN_SERVERS: RTCIceServer[] = [
   },
 ];
 
-// Fetches TURN credentials from the Metered API
+// Fetches TURN credentials from the Metered API with caching
 export async function fetchTurnCredentials(): Promise<RTCIceServer[] | null> {
   if (!turnApiKey) {
     console.warn('[TURN] NEXT_PUBLIC_METERED_API_KEY not found in environment variables');
     return null;
+  }
+
+  // Check cache first
+  const now = Date.now();
+  if (turnCredentialsCache && now - turnCredentialsCache.timestamp < TURN_CACHE_DURATION) {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[TURN] Using cached credentials');
+    }
+    return turnCredentialsCache.servers;
+  }
+
+  // If there's already a fetch in progress, wait for it
+  if (turnCredentialsFetch) {
+    try {
+      const result = await turnCredentialsFetch;
+      turnCredentialsFetch = null;
+      return result;
+    } catch {
+      turnCredentialsFetch = null;
+    }
   }
 
   try {
@@ -26,7 +58,7 @@ export async function fetchTurnCredentials(): Promise<RTCIceServer[] | null> {
       headers: {
         'Content-Type': 'application/json',
       },
-      signal: AbortSignal.timeout(10000), // 10 second timeout
+      signal: AbortSignal.timeout(5000),
     });
 
     if (!response.ok) {
@@ -51,7 +83,11 @@ export async function fetchTurnCredentials(): Promise<RTCIceServer[] | null> {
     if (!hasTurn) {
       console.warn('[TURN] No TURN relay URLs found in response. Will still return servers for STUN usage.');
     }
-    return candidate as RTCIceServer[];
+
+    const servers = candidate as RTCIceServer[];
+    turnCredentialsCache = { servers, timestamp: now };
+
+    return servers;
   } catch (error) {
     if (error instanceof Error) {
       if (error.name === 'TimeoutError') {
@@ -93,16 +129,16 @@ export function getStunOnlyConfig(): RTCIceServer[] {
   return [...STUN_SERVERS];
 }
 
-// Creates RTCConfiguration with ICE servers and optimal settings
+// Creates RTCConfiguration with ICE servers and optimal settings for production
 export async function createRTCConfiguration(): Promise<RTCConfiguration> {
   const iceServers = await createIceServerConfig();
 
   return {
     iceServers,
     iceTransportPolicy: 'all', // Allow both STUN and TURN
-    iceCandidatePoolSize: 10, // Pre-gather candidates for faster connection
+    iceCandidatePoolSize: 4,
     bundlePolicy: 'max-bundle', // Bundle all media on a single connection
-    rtcpMuxPolicy: 'require', // Multiplex RTP and RTCP on single port
+    rtcpMuxPolicy: 'require',
   };
 }
 
@@ -126,7 +162,7 @@ export function createStunOnlyRTCConfiguration(): RTCConfiguration {
   return {
     iceServers: getStunOnlyConfig(),
     iceTransportPolicy: 'all',
-    iceCandidatePoolSize: 10,
+    iceCandidatePoolSize: 2,
     bundlePolicy: 'max-bundle',
     rtcpMuxPolicy: 'require',
   };

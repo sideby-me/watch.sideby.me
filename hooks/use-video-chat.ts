@@ -1,4 +1,5 @@
 'use client';
+
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSocket } from '@/hooks/use-socket';
 import { useMediaPermissions } from '@/hooks/use-media-permissions';
@@ -63,7 +64,7 @@ export function useVideoChat({ roomId, currentUser, maxParticipants = 5 }: UseVi
         });
       }
       if (state === 'failed') {
-        // Attempt TURN escalation instead of immediate cleanup (up to 3 attempts total)
+        // Attempt TURN escalation instead of immediate cleanup
         if (meta.attempt < 3 && !fallbackInProgressRef.current.has(peerId)) {
           console.log('[WEBRTC] connection failed, attempting fallback', { peerId, attempt: meta.attempt });
           fallbackInProgressRef.current.add(peerId);
@@ -97,9 +98,8 @@ export function useVideoChat({ roomId, currentUser, maxParticipants = 5 }: UseVi
               fallbackInProgressRef.current.delete(peerId);
             }
           })();
-          return; // Defer cleanup until fallback completes
+          return;
         }
-        // After exhausting fallback attempts, cleanup
         console.log('[WEBRTC] exhausted fallback attempts, cleaning up', { peerId, attempt: meta.attempt });
         cleanupPeerRef.current(peerId);
         return;
@@ -278,11 +278,10 @@ export function useVideoChat({ roomId, currentUser, maxParticipants = 5 }: UseVi
       others.sort().forEach(async id => {
         if (!activePeerIds.includes(id)) {
           try {
-            // Set overall connection timeout for this peer
             const connectionTimeout = setTimeout(() => {
               console.warn('[WEBRTC] overall connection timeout for peer', { peerId: id });
               cleanupPeer(id);
-            }, 30000); // 30 second total timeout
+            }, 15000);
             connectionTimeoutsRef.current.set(id, connectionTimeout);
 
             const pc = await getOrCreatePeer(id, true);
@@ -351,7 +350,7 @@ export function useVideoChat({ roomId, currentUser, maxParticipants = 5 }: UseVi
       }
     };
 
-    // Incoming answer -> apply once (guard via appliedRemoteAnswerRef)
+    // Incoming answer -> apply once
     const handleAnswer = async ({ fromUserId, sdp }: { fromUserId: string; sdp: RTCSessionDescriptionInit }) => {
       if (appliedRemoteAnswerRef.current.has(fromUserId)) return;
       if (!activePeerIds.includes(fromUserId)) return;
@@ -379,7 +378,7 @@ export function useVideoChat({ roomId, currentUser, maxParticipants = 5 }: UseVi
       }
     };
 
-    // Remote ICE candidate -> add to peer (errors ignored silently)
+    // Remote ICE candidate -> add to peer
     const handleIce = async ({ fromUserId, candidate }: { fromUserId: string; candidate: RTCIceCandidateInit }) => {
       await safeAddRemoteCandidate(fromUserId, candidate);
     };

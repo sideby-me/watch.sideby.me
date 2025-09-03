@@ -11,6 +11,7 @@ export interface PeerMapEntry {
   pc: RTCPeerConnection;
   isUsingTurn: boolean;
   connectionAttempt: number;
+  useOptimizedStrategy?: boolean;
 }
 
 export interface UseWebRTCOptions {
@@ -49,7 +50,7 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
   const trackHandlerRef = useRef<UseWebRTCOptions['onTrack']>(undefined);
   const debugEnabled = useRef<boolean>(false);
   const remoteCandidateQueueRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
-  // Track per-peer restart + fallback debounce
+  // Track per-peer restart and fallback debounce
   const restartedRef = useRef<Set<string>>(new Set());
   const fallbackCooldownRef = useRef<Map<string, number>>(new Map());
   // Persist attempt counts across peer recreation so we can escalate to TURN-only (attempt 3)
@@ -97,35 +98,40 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
       const existing = peersRef.current.get(id);
       if (existing && !forceTurn) return existing.pc;
 
-      // Determine next attempt number
       const prevAttempt = attemptCountsRef.current.get(id) || 0;
       let nextAttempt = prevAttempt || 0;
+      let useOptimizedStrategy = false;
+
       if (!prevAttempt) {
-        // brand new
-        nextAttempt = forceTurn ? 2 : 1;
+        nextAttempt = 1;
+        useOptimizedStrategy = true;
       } else if (forceTurn) {
-        // escalate (cap at 3)
+        // Escalate after failure
         nextAttempt = Math.min(prevAttempt + 1, 3);
       } else {
-        // reuse path shouldn't reach here because existing would have returned
         nextAttempt = prevAttempt;
       }
       attemptCountsRef.current.set(id, nextAttempt);
 
       if (existing) removePeer(id);
 
-      // Build configuration based on attempt
       let cfg: RTCConfiguration;
-      if (nextAttempt === 1) {
-        cfg = createStunOnlyRTCConfiguration();
-      } else if (nextAttempt === 2) {
-        cfg = await createRTCConfiguration(); // STUN + TURN
+      if (useOptimizedStrategy || nextAttempt >= 2) {
+        cfg = await createRTCConfiguration(); // STUN + TURN hybrid approach
+      } else if (nextAttempt === 1) {
+        cfg = createStunOnlyRTCConfiguration(); // Fallback to STUN-only for retries
       } else {
-        cfg = await createTurnOnlyRTCConfiguration(); // Relay-only hard fallback
+        cfg = await createTurnOnlyRTCConfiguration(); // Force TURN-only as last resort
       }
-      const usingTurn = nextAttempt >= 2;
+
+      const usingTurn = useOptimizedStrategy || nextAttempt >= 2;
       const pc = new RTCPeerConnection(cfg);
-      const entry: PeerMapEntry = { pc, isUsingTurn: usingTurn, connectionAttempt: nextAttempt };
+      const entry: PeerMapEntry = {
+        pc,
+        isUsingTurn: usingTurn,
+        connectionAttempt: nextAttempt,
+        useOptimizedStrategy,
+      };
       peersRef.current.set(id, entry);
       // Clear any stale queued candidates from prior attempts
       remoteCandidateQueueRef.current.delete(id);
@@ -188,7 +194,7 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
         }
       };
 
-      // Set negotiation timeout for all attempts to ensure connections don't hang
+      // Set negotiation timeout for faster escalation in production
       if (nextAttempt < 3) {
         const timeout = setTimeout(
           () => {
@@ -198,8 +204,8 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
               forceTurnReconnect(id, initiator).catch(() => {});
             }
           },
-          nextAttempt === 1 ? 10000 : nextAttempt === 2 ? 8000 : 6000
-        ); // Progressive timeout reduction
+          useOptimizedStrategy ? 5000 : nextAttempt === 1 ? 4000 : nextAttempt === 2 ? 3000 : 2000
+        );
         negotiationTimeoutsRef.current.set(id, timeout);
       }
 
@@ -233,10 +239,11 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
         if (pc.connectionState === 'failed') {
           const now = Date.now();
           const last = fallbackCooldownRef.current.get(id) || 0;
-          if (now - last < 2000) return; // Increased debounce
+          if (now - last < 1000) return;
           fallbackCooldownRef.current.set(id, now);
-          // Single restartIce try only on first attempt
-          if (!restartedRef.current.has(id) && entry.connectionAttempt === 1) {
+
+          // Skip restartIce for optimized strategy - go straight to TURN
+          if (!entry.useOptimizedStrategy && !restartedRef.current.has(id) && entry.connectionAttempt === 1) {
             try {
               if (debugEnabled.current) console.log('[WEBRTC] restartIce()', { peerId: id });
               restartedRef.current.add(id);
@@ -245,12 +252,14 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
                 if (pc.connectionState === 'failed' || pc.iceConnectionState === 'failed') {
                   forceTurnReconnect(id, true).catch(() => {});
                 }
-              }, 2000); // Increased restart wait time
+              }, 1000);
               return;
             } catch {}
           }
           if (entry.connectionAttempt < 3) {
-            setTimeout(() => forceTurnReconnect(id, true).catch(() => {}), entry.connectionAttempt === 1 ? 500 : 750);
+            // Immediate escalation for optimized strategy
+            const delay = entry.useOptimizedStrategy ? 100 : entry.connectionAttempt === 1 ? 200 : 300;
+            setTimeout(() => forceTurnReconnect(id, true).catch(() => {}), delay);
           }
         }
       };
@@ -286,10 +295,6 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
     [getOrCreatePeer]
   );
 
-  // Helper for higher layers to safely add a remote ICE candidate
-  // (Wrap existing onIceCandidate logic; they call addIceCandidate directly now.)
-  // We expose as side effect: if remoteDescription not yet set, queue.
-  // Consumers (hooks) simply keep current flow; we intercept by monkey patching their pc via queue.
   const safeAddRemoteCandidate = useCallback(async (peerId: string, candidate: RTCIceCandidateInit) => {
     const entry = peersRef.current.get(peerId);
     if (!entry) return;
@@ -307,10 +312,6 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
       if (debugEnabled.current) console.warn('[WEBRTC] addIceCandidate error', { peerId, e });
     }
   }, []);
-
-  // Monkey patch: consumer hooks call getOrCreatePeer then set remoteDescription; after that they can invoke _applyQueuedCandidates
-  // We can't modify hooks easily here; but we can encourage adding:
-  // (pc as any)._applyQueuedCandidates && (pc as any)._applyQueuedCandidates(); after setRemoteDescription in upper layers later.
 
   return {
     getOrCreatePeer,

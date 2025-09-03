@@ -1,5 +1,4 @@
 'use client';
-// Hook for voice chat that composes generic WebRTC + permissions hooks
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSocket } from '@/hooks/use-socket';
@@ -26,7 +25,7 @@ interface UseVoiceChatReturn {
   toggleMute: () => void;
 }
 
-const SOLO_USER_TIMEOUT = 120000; // 2 min bandwidth patrol auto-disconnect when user is alone
+const SOLO_USER_TIMEOUT = 120000; // 2 minutes
 
 export function useVoiceChat({ roomId, currentUser, maxParticipants = 5 }: UseVoiceChatOptions): UseVoiceChatReturn {
   const { socket } = useSocket();
