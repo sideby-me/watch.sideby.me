@@ -2,7 +2,7 @@ import { Socket, Server as IOServer } from 'socket.io';
 import { redisService } from '@/server/redis';
 import { SetVideoDataSchema, VideoControlDataSchema, SyncCheckDataSchema } from '@/types';
 import { SocketEvents, SocketData } from '../types';
-import { validateData } from '../utils';
+import { validateData, emitSystemMessage } from '../utils';
 import { resolveSource } from '@/server/video/resolve-source';
 
 export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents, object, SocketData>, io: IOServer) {
@@ -38,6 +38,9 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
       await redisService.rooms.setVideoUrl(roomId, meta.playbackUrl, legacyVideoType, meta);
 
       io.to(roomId).emit('video-set', { videoUrl: meta.playbackUrl, videoType: legacyVideoType, videoMeta: meta });
+      emitSystemMessage(io, roomId, `Video source changed`, 'video-change', {
+        videoUrl: meta.playbackUrl,
+      });
       console.log(`Video set in room ${roomId}: ${videoUrl} -> playback: ${meta.playbackUrl} (${meta.deliveryType})`);
     } catch (error) {
       console.error('Error setting video:', error);
@@ -237,6 +240,7 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
         else if (meta.videoType === 'm3u8') legacyVideoType = 'm3u8';
         await redisService.rooms.setVideoUrl(roomId, meta.playbackUrl, legacyVideoType, meta);
         io.to(roomId).emit('video-set', { videoUrl: meta.playbackUrl, videoType: legacyVideoType, videoMeta: meta });
+        emitSystemMessage(io, roomId, `Video source changed`, 'video-change', { videoUrl: meta.playbackUrl });
         console.log(`Re-resolved video source for room ${roomId} -> ${meta.deliveryType}`);
       }
     } catch (err) {

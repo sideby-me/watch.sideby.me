@@ -11,7 +11,7 @@ import {
   KickUserDataSchema,
 } from '@/types';
 import { SocketEvents, SocketData } from '../types';
-import { validateData } from '../utils';
+import { validateData, emitSystemMessage } from '../utils';
 
 export function registerRoomHandlers(socket: Socket<SocketEvents, SocketEvents, object, SocketData>, io: IOServer) {
   // Voice participant count helpers (so late joiners immediately see current voice occupancy)
@@ -230,8 +230,9 @@ export function registerRoomHandlers(socket: Socket<SocketEvents, SocketEvents, 
       socket.emit('room-joined', { room: updatedRoom!, user });
       socket.to(roomId).emit('user-joined', { user });
       emitVoiceParticipantCountToSocket(roomId);
+      emitSystemMessage(io, roomId, `${user.name} joined the room`, 'join', { userId, userName: user.name });
 
-      console.log(`${userName} joined room ${roomId} as ${isRoomHost ? 'host' : 'guest'}`);
+      console.log(`${user.name} joined room ${roomId} as ${isRoomHost ? 'host' : 'guest'}`);
     } catch (error) {
       console.error('Error joining room:', error);
       socket.emit('room-error', { error: 'Failed to join room' });
@@ -244,7 +245,7 @@ export function registerRoomHandlers(socket: Socket<SocketEvents, SocketEvents, 
     if (!validatedData) return;
 
     const { roomId } = validatedData;
-    await handleLeaveRoom(socket, roomId, true);
+    await handleLeaveRoom(socket, roomId, true, io);
   });
 
   // Promote user to host
@@ -284,6 +285,10 @@ export function registerRoomHandlers(socket: Socket<SocketEvents, SocketEvents, 
       await redisService.rooms.updateRoom(roomId, updatedRoom);
 
       io.to(roomId).emit('user-promoted', { userId, userName: targetUser.name });
+      emitSystemMessage(io, roomId, `${targetUser.name} was promoted to host`, 'promote', {
+        userId,
+        userName: targetUser.name,
+      });
 
       console.log(`${targetUser.name} promoted to host in room ${roomId} by ${currentUser.name}`);
     } catch (error) {
@@ -357,7 +362,7 @@ export function registerRoomHandlers(socket: Socket<SocketEvents, SocketEvents, 
 
           // Then notify them they were kicked
           targetSocket.emit('room-error', {
-            error: `You have been kicked from the room by ${currentUser.name}`,
+            error: `Awkward... ${currentUser.name} just kicked you out.`,
           });
         }
 
@@ -367,6 +372,11 @@ export function registerRoomHandlers(socket: Socket<SocketEvents, SocketEvents, 
 
       // Send to all users in the room (including the host who initiated the kick)
       io.to(roomId).emit('user-kicked', {
+        userId,
+        userName: targetUser.name,
+        kickedBy: currentUser.id,
+      });
+      emitSystemMessage(io, roomId, `${targetUser.name} was kicked from the room`, 'kick', {
         userId,
         userName: targetUser.name,
         kickedBy: currentUser.id,
@@ -383,7 +393,8 @@ export function registerRoomHandlers(socket: Socket<SocketEvents, SocketEvents, 
 export async function handleLeaveRoom(
   socket: Socket<SocketEvents, SocketEvents, object, SocketData>,
   roomId: string,
-  isManualLeave: boolean = false
+  isManualLeave: boolean = false,
+  io: IOServer
 ) {
   try {
     if (!socket.data.userId) return;
@@ -427,6 +438,14 @@ export async function handleLeaveRoom(
 
         // Notify remaining users that this user left
         socket.to(roomId).emit('user-left', { userId: socket.data.userId });
+        if (leavingUser && isManualLeave) {
+          if (isManualLeave) {
+            emitSystemMessage(io, roomId, `${leavingUser.name} left the room`, 'leave', {
+              userId: socket.data.userId,
+              userName: leavingUser.name,
+            });
+          }
+        }
       }
     }
 

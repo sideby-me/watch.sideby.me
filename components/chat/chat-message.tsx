@@ -6,7 +6,7 @@ import { ChatMessage } from '@/types';
 import { MarkdownMessage } from './markdown-message';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { EmojiPicker, EmojiPickerSearch, EmojiPickerContent, EmojiPickerFooter } from '@/components/ui/emoji-picker';
-import { SmilePlus, Reply } from 'lucide-react';
+import { SmilePlus, Reply, MessageCircle, UserPlus, UserMinus, UserX, Shield, Film } from 'lucide-react';
 import { useFullscreenPortalContainer } from '@/hooks/use-fullscreen-portal-container';
 
 interface ChatMessageItemProps {
@@ -57,6 +57,48 @@ export function ChatMessageItem({
   const avatarSize = mode === 'overlay' ? 'h-6 w-6' : 'h-8 w-8';
   const textSize = mode === 'overlay' ? 'text-sm' : 'text-sm';
   const userHasReacted = (emoji: string) => message.reactions?.[emoji]?.includes(currentUserId);
+
+  // System message rendering
+  if (message.type === 'system') {
+    let Icon = MessageCircle;
+    let Text = message.message;
+    const sysUserName = message.eventData?.userName || message.userName;
+    switch (message.systemType) {
+      case 'join':
+        Icon = UserPlus;
+        Text = `A wild ${sysUserName} appeared!`;
+        break;
+      case 'leave':
+        Icon = UserMinus;
+        Text = `${sysUserName} just dipped.`;
+        break;
+      case 'kick':
+        Icon = UserX;
+        Text = `Awkward... ${sysUserName} got kicked.`;
+        break;
+      case 'promote':
+        Icon = Shield;
+        Text = `Power move! ${sysUserName} is now a host.`;
+        break;
+      case 'video-change':
+        Icon = Film;
+        Text = `Grab the popcorn, new video loaded!`;
+        break;
+      default:
+        Icon = MessageCircle;
+    }
+
+    return (
+      <div className="flex w-full py-2">
+        <div
+          className={`flex items-center gap-2 rounded-md border border-border px-4 py-1 text-xs text-muted-foreground shadow-sm backdrop-blur-sm`}
+        >
+          <Icon className="h-3 w-3" />
+          <span>{Text}</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`flex min-w-0 flex-col space-y-1 ${isOwnMessage ? 'items-end' : ''}`}>

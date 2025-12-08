@@ -39,7 +39,7 @@ export function initSocketIO(httpServer: HTTPServer): IOServer {
     registerVideoChatHandlers(socket, io!);
 
     // Handle disconnect
-    socket.on('disconnect', () => handleDisconnect(socket));
+    socket.on('disconnect', () => handleDisconnect(socket, io!));
   });
 
   return io;
