@@ -173,13 +173,6 @@ export function useRoom({ roomId }: UseRoomOptions): UseRoomReturn {
           users: [...updatedUsers],
         };
       });
-
-      // Only show toast if the current user didn't initiate the kick
-      setCurrentUser(currentUser => {
-        if (currentUser && kickedBy && currentUser.id !== kickedBy) {
-        }
-        return currentUser;
-      });
     };
 
     const handleVideoSet = ({
