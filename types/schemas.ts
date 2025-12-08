@@ -44,7 +44,7 @@ export const ChatMessageSchema = z.object({
   isRead: z.boolean().default(false),
   // System message extensions
   type: z.enum(['user', 'system']).default('user'),
-  systemType: z.enum(['join', 'leave', 'kick', 'video-change', 'promote']).optional(),
+  systemType: z.enum(['join', 'leave', 'kick', 'video-change', 'promote', 'play', 'pause']).optional(),
   eventData: z.record(z.string(), z.any()).optional(),
   // Reactions: emoji
   reactions: z.record(z.string(), z.array(z.string().uuid())).optional().default({}),

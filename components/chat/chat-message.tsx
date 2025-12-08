@@ -6,7 +6,7 @@ import { ChatMessage } from '@/types';
 import { MarkdownMessage } from './markdown-message';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { EmojiPicker, EmojiPickerSearch, EmojiPickerContent, EmojiPickerFooter } from '@/components/ui/emoji-picker';
-import { SmilePlus, Reply, MessageCircle, UserPlus, UserMinus, UserX, Shield, Film } from 'lucide-react';
+import { SmilePlus, Reply, MessageCircle, UserPlus, UserMinus, UserX, Shield, Film, Play, Pause } from 'lucide-react';
 import { useFullscreenPortalContainer } from '@/hooks/use-fullscreen-portal-container';
 
 interface ChatMessageItemProps {
@@ -83,6 +83,14 @@ export function ChatMessageItem({
       case 'video-change':
         Icon = Film;
         Text = `Grab the popcorn, new video loaded!`;
+        break;
+      case 'play':
+        Icon = Play;
+        Text = `aaaand we're back! ${sysUserName} resumed the video.`;
+        break;
+      case 'pause':
+        Icon = Pause;
+        Text = `Hold up, ${sysUserName} paused the video.`;
         break;
       default:
         Icon = MessageCircle;

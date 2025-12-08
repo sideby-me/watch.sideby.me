@@ -5,9 +5,12 @@ import { SocketEvents, SocketData } from '../types';
 import { validateData, emitSystemMessage } from '../utils';
 import { resolveSource } from '@/server/video/resolve-source';
 
+// Map to store pause timeouts per room
+const lastErrorReport: Record<string, number> = {};
+const lastPlayEmitTime: Record<string, number> = {};
+const lastPauseEmitTime: Record<string, number> = {};
+
 export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents, object, SocketData>, io: IOServer) {
-  // Debounce map per room to avoid spam re-resolution
-  const lastErrorReport: Record<string, number> = {};
   // Set video URL
   socket.on('set-video', async data => {
     try {
@@ -67,6 +70,15 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
         return;
       }
 
+      // Only announce resume if we were actually paused
+      // AND debounce duplicate play events (client sometimes sends double)
+      const now = Date.now();
+      const lastEmit = lastPlayEmitTime[roomId] || 0;
+      if (!room.videoState.isPlaying && now - lastEmit > 1000) {
+        emitSystemMessage(io, roomId, 'Video resumed', 'play', { userName: currentUser.name });
+        lastPlayEmitTime[roomId] = now;
+      }
+
       const videoState = {
         isPlaying: true,
         currentTime,
@@ -120,6 +132,14 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
         currentTime,
         timestamp: videoState.lastUpdateTime,
       });
+
+      // Announce pause immediately (no throttle), but debounce duplicates
+      const now = Date.now();
+      const lastEmit = lastPauseEmitTime[roomId] || 0;
+      if (now - lastEmit > 1000) {
+        emitSystemMessage(io, roomId, 'Video paused', 'pause', { userName: currentUser.name });
+        lastPauseEmitTime[roomId] = now;
+      }
 
       console.log(`Video paused in room ${roomId} at ${currentTime}s`);
     } catch (error) {
