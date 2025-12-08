@@ -47,6 +47,7 @@ export interface ChatProps {
   className?: string;
   voice?: VoiceConfig;
   video?: VideoConfig;
+  onTimestampClick?: (seconds: number) => void;
   // Mode props
   mode?: 'sidebar' | 'overlay';
   unreadCount?: number;
@@ -66,6 +67,7 @@ export function Chat({
   className,
   voice,
   video,
+  onTimestampClick,
   mode = 'sidebar',
   unreadCount = 0,
   onToggleMinimize,
@@ -297,6 +299,7 @@ export function Chat({
                       onReply={handleReply}
                       onQuoteClick={handleQuoteClick}
                       users={users}
+                      onTimestampClick={onTimestampClick}
                     />
                   </div>
                 ))
@@ -376,6 +379,7 @@ export function Chat({
                 onReply={handleReply}
                 onQuoteClick={handleQuoteClick}
                 users={users}
+                onTimestampClick={onTimestampClick}
               />
             </div>
           ))

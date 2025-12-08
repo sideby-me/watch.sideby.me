@@ -10,6 +10,7 @@ import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { YouTubePlayerRef } from '@/components/video/youtube-player';
 import { VideoPlayerRef } from '@/components/video/video-player';
 import { HLSPlayerRef } from '@/components/video/hls-player';
+import { formatTimestamp } from '@/lib/chat-timestamps';
 import { VideoSetup } from '@/components/video/video-setup';
 import { Chat, ChatOverlay } from '@/components/chat';
 import { UserList } from '@/components/room/user-list';
@@ -24,6 +25,7 @@ import { VideoChatGrid } from '@/components/room/video-chat-grid';
 import { VideoChatOverlay } from '@/components/room/video-chat-overlay';
 import { useFullscreenPortalContainer } from '@/hooks/use-fullscreen-portal-container';
 import { Spinner } from '../../../components/ui/spinner';
+import { toast } from 'sonner';
 
 type ClientVideoMeta = {
   originalUrl: string;
@@ -147,6 +149,46 @@ export default function RoomPage() {
     if (!currentUser?.isHost) {
       setShowHostDialog(true);
       setShowGuestInfoBanner(false);
+    }
+  };
+
+  const getActivePlayer = () => {
+    if (!room?.videoType) return null;
+    if (room.videoType === 'youtube') return youtubePlayerRef.current;
+    if (room.videoType === 'm3u8') return hlsPlayerRef.current;
+    return videoPlayerRef.current;
+  };
+
+  const safeDuration = (value?: number | null) =>
+    typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
+
+  const handleChatTimestampClick = (seconds: number) => {
+    if (!room?.videoUrl || !room.videoType) {
+      toast.error('No video loaded to seek.');
+      return;
+    }
+
+    if (!currentUser?.isHost) {
+      toast.info('Only hosts can control the video.');
+      handleVideoControlAttempt();
+      return;
+    }
+
+    const player = getActivePlayer();
+    if (!player) {
+      toast.error('Video player is not ready yet.');
+      return;
+    }
+
+    const duration = safeDuration((player as YouTubePlayerRef | VideoPlayerRef | HLSPlayerRef).getDuration?.())
+      ?? safeDuration(room.videoState?.duration);
+    const target = duration ? Math.min(seconds, duration) : seconds;
+
+    player.seekTo(target);
+    handleVideoSeek();
+
+    if (duration && seconds > duration) {
+      toast.info(`Jumped to ${formatTimestamp(target)} (end of video)`);
     }
   };
 
@@ -347,6 +389,7 @@ export default function RoomPage() {
               onDisable: voice.disable,
               onToggleMute: voice.toggleMute,
             }}
+            onTimestampClick={handleChatTimestampClick}
             video={{
               isEnabled: videochat.isEnabled,
               isCameraOff: videochat.isCameraOff,
@@ -425,6 +468,7 @@ export default function RoomPage() {
           toggleCamera: videochat.toggleCamera,
           participantCount: videoParticipantCount,
         }}
+        onTimestampClick={handleChatTimestampClick}
       />
       {videochat.isEnabled && isFullscreen && (
         <VideoChatOverlay

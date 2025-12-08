@@ -49,6 +49,7 @@ interface ChatOverlayProps {
   onToggleMinimize: () => void;
   onClose: () => void;
   onMarkMessagesAsRead?: () => void;
+  onTimestampClick?: (seconds: number) => void;
 }
 
 export function ChatOverlay({
@@ -67,6 +68,7 @@ export function ChatOverlay({
   onToggleMinimize,
   onClose,
   onMarkMessagesAsRead,
+  onTimestampClick,
 }: ChatOverlayProps) {
   const [isClient, setIsClient] = useState(false);
   const portalContainer = useFullscreenPortalContainer();
@@ -134,6 +136,7 @@ export function ChatOverlay({
           unreadCount={unreadCount}
           onToggleMinimize={onToggleMinimize}
           onClose={onClose}
+          onTimestampClick={onTimestampClick}
         />
       )}
     </div>
