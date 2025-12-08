@@ -1,25 +1,38 @@
 'use client';
 
 import React, { memo } from 'react';
-import { parseChatMarkdown, CHAT_MARKDOWN_PATTERN, AUTO_LINK_REGEX, trimAutolink, type Node } from '@/lib/chat-markdown';
+import {
+  parseChatMarkdown,
+  CHAT_MARKDOWN_PATTERN,
+  AUTO_LINK_REGEX,
+  trimAutolink,
+  type Node,
+} from '@/lib/chat-markdown';
 import { CHAT_TIMESTAMP_PATTERN, findNextTimestamp } from '@/lib/chat-timestamps';
 
 export interface MarkdownMessageProps {
   content: string;
   className?: string;
   onTimestampClick?: (seconds: number) => void;
+  isOwnMessage?: boolean;
 }
 
-export const MarkdownMessage = memo(function MarkdownMessage({ content, className, onTimestampClick }: MarkdownMessageProps) {
+export const MarkdownMessage = memo(function MarkdownMessage({
+  content,
+  className,
+  onTimestampClick,
+  isOwnMessage,
+}: MarkdownMessageProps) {
   const shouldParse = CHAT_MARKDOWN_PATTERN.test(content) || CHAT_TIMESTAMP_PATTERN.test(content);
   if (!shouldParse) return <span className={className}>{content}</span>;
   const ast = parseChatMarkdown(content);
-  return <span className={className}>{renderAst(ast, { onTimestampClick })}</span>;
+  return <span className={className}>{renderAst(ast, { onTimestampClick, isOwnMessage })}</span>;
 });
 
 type RenderOptions = {
   onTimestampClick?: (seconds: number) => void;
   disableTimestamps?: boolean;
+  isOwnMessage?: boolean;
 };
 
 // Render AST to React
@@ -160,7 +173,11 @@ function renderTextWithEntities(text: string, key: string, options: RenderOption
         <button
           key={key + '-ts-' + entity.start}
           type="button"
-          className="inline-flex items-center rounded px-1 text-primary underline decoration-dotted underline-offset-2 transition-colors hover:bg-primary/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary/60"
+          className={`inline-flex items-center rounded px-1 underline decoration-dotted underline-offset-2 transition-colors focus-visible:outline focus-visible:outline-2 ${
+            options.isOwnMessage
+              ? 'text-primary-foreground hover:bg-primary-500 focus-visible:outline-primary-foreground'
+              : 'text-destructive hover:bg-destructive-100 focus-visible:outline-destructive-foreground'
+          }`}
           onClick={
             options.onTimestampClick
               ? e => {

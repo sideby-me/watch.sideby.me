@@ -164,31 +164,31 @@ export default function RoomPage() {
 
   const handleChatTimestampClick = (seconds: number) => {
     if (!room?.videoUrl || !room.videoType) {
-      toast.error('No video loaded to seek.');
+      toast.error("Can't time travel without a timeline! We need a video first.");
       return;
     }
 
     if (!currentUser?.isHost) {
-      toast.info('Only hosts can control the video.');
       handleVideoControlAttempt();
       return;
     }
 
     const player = getActivePlayer();
     if (!player) {
-      toast.error('Video player is not ready yet.');
+      toast.error('The player is still waking up. Give it a quick second.');
       return;
     }
 
-    const duration = safeDuration((player as YouTubePlayerRef | VideoPlayerRef | HLSPlayerRef).getDuration?.())
-      ?? safeDuration(room.videoState?.duration);
+    const duration =
+      safeDuration((player as YouTubePlayerRef | VideoPlayerRef | HLSPlayerRef).getDuration?.()) ??
+      safeDuration(room.videoState?.duration);
     const target = duration ? Math.min(seconds, duration) : seconds;
 
     player.seekTo(target);
     handleVideoSeek();
 
     if (duration && seconds > duration) {
-      toast.info(`Jumped to ${formatTimestamp(target)} (end of video)`);
+      toast.info(`That timestamp went past the end of time itself! We stopped at ${formatTimestamp(target)}.`);
     }
   };
 
