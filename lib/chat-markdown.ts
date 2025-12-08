@@ -5,7 +5,10 @@
 
 export type TextNode = { type: 'text'; value: string };
 export type CodeNode = { type: 'code'; value: string };
-export type GenericNode = { type: 'italic' | 'bold' | 'underline' | 'strike' | 'bolditalic'; children: Node[] };
+export type GenericNode = {
+  type: 'italic' | 'bold' | 'underline' | 'strike' | 'bolditalic' | 'spoiler';
+  children: Node[];
+};
 export type LinkNode = { type: 'link'; href: string; children: Node[] };
 export type Node = TextNode | CodeNode | GenericNode | LinkNode;
 
@@ -15,7 +18,7 @@ interface StackEntry {
 }
 
 // Public regex to cheaply detect if parsing needed
-export const CHAT_MARKDOWN_PATTERN = /[`*_~\[]|https?:\/\//;
+export const CHAT_MARKDOWN_PATTERN = /[`*_~\[|]|https?:\/\//;
 
 // Internal helpers
 function markerToType(run: string): GenericNode['type'] | null {
@@ -31,6 +34,8 @@ function markerToType(run: string): GenericNode['type'] | null {
       return 'underline';
     case '~~':
       return 'strike';
+    case '||':
+      return 'spoiler';
     default:
       return null;
   }
@@ -126,8 +131,8 @@ export function parseChatMarkdown(input: string): Node[] {
       continue;
     }
 
-    // Marker runs *, _, ~
-    if (ch === '*' || ch === '_' || ch === '~') {
+    // Marker runs *, _, ~, |
+    if (ch === '*' || ch === '_' || ch === '~' || ch === '|') {
       const runChar = ch;
       let j = i;
       while (j < len && input[j] === runChar && j - i < 3) j++;

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { memo } from 'react';
+import React, { memo, useState } from 'react';
 import {
   parseChatMarkdown,
   CHAT_MARKDOWN_PATTERN,
@@ -94,6 +94,9 @@ function renderAst(nodes: Node[], options: RenderOptions, keyPrefix = ''): React
             {renderAst(n.children, { ...options, disableTimestamps: true }, key + '-')}
           </a>
         );
+        break;
+      case 'spoiler':
+        out.push(<Spoiler key={key}>{renderAst(n.children, options, key + '-')}</Spoiler>);
         break;
     }
   });
@@ -197,4 +200,22 @@ function renderTextWithEntities(text: string, key: string, options: RenderOption
   }
 
   return nodes;
+}
+
+function Spoiler({ children }: { children: React.ReactNode }) {
+  const [revealed, setRevealed] = useState(false);
+  return (
+    <span
+      onClick={e => {
+        e.stopPropagation();
+        setRevealed(!revealed);
+      }}
+      className={`cursor-pointer rounded-sm px-0.5 transition-colors ${
+        revealed ? 'bg-transparent text-foreground' : 'select-none bg-foreground/20 text-transparent'
+      }`}
+      title={revealed ? 'Click to hide' : 'Click to reveal spoiler'}
+    >
+      {children}
+    </span>
+  );
 }
