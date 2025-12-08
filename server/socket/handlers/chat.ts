@@ -79,6 +79,7 @@ export function registerChatHandlers(socket: Socket<SocketEvents, SocketEvents, 
         timestamp: new Date(),
         roomId,
         isRead: false,
+        type: 'user',
         reactions: {},
         replyTo,
       };
