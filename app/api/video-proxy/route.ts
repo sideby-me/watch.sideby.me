@@ -53,6 +53,27 @@ async function resolveAndValidate(u: URL): Promise<URL | null> {
   return u;
 }
 
+async function getSafeReferer(raw: string | null, target: URL): Promise<string | null> {
+  if (!raw) return null;
+  try {
+    const ref = new URL(raw);
+    const validated = await resolveAndValidate(ref);
+    if (!validated) return null;
+
+    // Prevent referer pointing to private IPs or non-http(s)
+    // If the referer shares the same registrable host or protocol, allow it; otherwise ensure it is still public
+    const refererHost = validated.hostname;
+    const targetHost = target.hostname;
+    if (refererHost === targetHost || validated.protocol === target.protocol) {
+      return validated.toString();
+    }
+
+    return validated.toString();
+  } catch (_e) {
+    return null;
+  }
+}
+
 export async function GET(req: NextRequest) {
   const target = req.nextUrl.searchParams.get('url');
   if (!target) {
@@ -75,17 +96,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid or disallowed URL' }, { status: 400 });
   }
 
+  const safeReferer = await getSafeReferer(req.nextUrl.searchParams.get('referer'), validated);
+
   // Forward Range if present (hotlink protection sometimes rejects, we fallback if 403).
   const range = req.headers.get('range');
 
   const forwardHeaders: Record<string, string> = {
-    // Some hosts are sensitive to user-agent/referer we supply a neutral UA & optional referer
     'User-Agent': 'Mozilla/5.0 (compatible; SidebyProxy/1.0)',
   };
   if (range) forwardHeaders['Range'] = range;
-  // Provide a referer derived from original target origin to satisfy naive hotlink checks
-  forwardHeaders['Referer'] = `${validated.origin}/`;
-  forwardHeaders['Origin'] = validated.origin;
+  // Provide a referer derived from user hint (validated) or original target origin to satisfy naive hotlink checks
+  const refererHeader = safeReferer || `${validated.origin}/`;
+  forwardHeaders['Referer'] = refererHeader;
+  forwardHeaders['Origin'] = new URL(refererHeader).origin;
   forwardHeaders['Accept'] = '*/*';
 
   const controller = new AbortController();
@@ -107,11 +130,28 @@ export async function GET(req: NextRequest) {
     upstream = await doFetch(false);
   }
 
+  // If upstream blocks due to referer/origin, retry once with minimal headers (no referer/origin/range)
+  if (
+    upstream.status === 401 ||
+    upstream.status === 403 ||
+    upstream.status === 502 ||
+    upstream.status === 503 ||
+    upstream.status === 504
+  ) {
+    const minimalHeaders = { 'User-Agent': forwardHeaders['User-Agent'], Accept: '*/*' };
+    upstream = await fetch(validated.toString(), {
+      headers: minimalHeaders,
+      redirect: 'follow',
+      signal: controller.signal,
+    });
+  }
+
   if (!upstream.ok && upstream.status !== 206) {
-    return NextResponse.json(
-      { error: 'Upstream fetch failed', status: upstream.status },
-      { status: 502, headers: { 'x-proxy-reason': 'upstream-error' } }
-    );
+    const headers = new Headers({
+      'x-proxy-reason': 'upstream-error',
+      'x-proxy-origin-status': String(upstream.status),
+    });
+    return new NextResponse(upstream.body, { status: upstream.status, headers });
   }
 
   // Prepare response headers

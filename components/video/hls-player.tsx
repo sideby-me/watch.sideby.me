@@ -76,11 +76,28 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
           // Dynamically import HLS.js
           const { default: Hls } = await import('hls.js');
 
+          const toProxyUrl = (target: string) => {
+            if (target.startsWith('/api/video-proxy') || target.includes('/api/video-proxy?')) {
+              return target;
+            }
+            try {
+              const absolute = new URL(target, window.location.origin).toString();
+              return `/api/video-proxy?url=${encodeURIComponent(absolute)}`;
+            } catch {
+              return `/api/video-proxy?url=${encodeURIComponent(target)}`;
+            }
+          };
+
           if (Hls.isSupported()) {
             // Use HLS.js for browsers that don't support HLS natively
             const hls = new Hls({
               enableWorker: true,
               lowLatencyMode: true,
+              // Route all manifest/segment requests through our proxy to avoid CORS
+              xhrSetup: (xhr: XMLHttpRequest, url: string) => {
+                const proxied = toProxyUrl(url);
+                xhr.open('GET', proxied, true);
+              },
             });
 
             hlsRef.current = hls as { destroy: () => void };
@@ -112,9 +129,8 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
               }
             });
           } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-            // Native HLS support (Safari)
-            video.src = src;
-            console.log('📺 Using native HLS support');
+            video.src = toProxyUrl(src);
+            console.log('📺 Using native HLS support via proxy');
           } else {
             console.error('HLS is not supported in this browser');
           }

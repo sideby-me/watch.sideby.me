@@ -157,7 +157,9 @@ export function VideoPlayerContainer({
 
     const parsed = parseVideoUrl(newUrl.trim());
     if (!parsed) {
-      setError("Hmm, that link doesn't look right. We can handle YouTube, .mp4, and .m3u8 links.");
+      setError(
+        `Hmm, that link doesn't look right. We can handle a public http/https video link (YouTube, HLS, MP4, or similar).`
+      );
       setIsLoading(false);
       return;
     }
@@ -193,7 +195,9 @@ export function VideoPlayerContainer({
 
     const parsed = parseVideoUrl(newUrl.trim());
     if (!parsed) {
-      setError("Hmm, that link doesn't look right. We can handle YouTube, .mp4, and .m3u8 links.");
+      setError(
+        `Hmm, that link doesn't look right. We can handle a public http/https video link (YouTube, HLS, MP4, or similar).`
+      );
       setIsLoading(false);
       return;
     }

@@ -286,6 +286,31 @@ export default function RoomPage() {
   const effectiveVideoUrl = meta?.playbackUrl || room.videoUrl;
   const effectiveVideoType = meta?.videoType || room.videoType;
 
+  const formatDecisionReason = (reason: string) => {
+    const lookup: Record<string, string> = {
+      'youtube-detected': 'Detected YouTube link',
+      'hls-manifest': 'HLS manifest detected',
+      'hls-path-hint': 'HLS path hint',
+      'hls-content-type': 'HLS by content-type',
+      'head-success': 'HEAD succeeded',
+      'head-access-denied': 'HEAD blocked (using proxy)',
+      'head-non-200': 'Unexpected HEAD status',
+      'head-failed': 'HEAD failed',
+      'range-probed': 'Sniffed first KB',
+      'range-access-denied': 'Range blocked (using proxy)',
+      'container-mp4': 'Container: MP4',
+      'container-webm': 'Container: WebM',
+      'container-ts': 'Container: TS',
+      'codec-warning': 'Codec may be unsupported',
+      'direct-playable': 'Direct play allowed',
+      'fallback-proxy': 'Falling back to proxy',
+      'url-extensionless': 'Extensionless URL',
+      'url-signed': 'Signed URL',
+      'protocol-unsupported': 'Unsupported protocol',
+    };
+    return lookup[reason] || reason;
+  };
+
   const extractYouTubeId = (url: string | undefined): string | undefined => {
     if (!url) return undefined;
     try {
@@ -333,6 +358,34 @@ export default function RoomPage() {
       <div className="grid gap-6 lg:grid-cols-4">
         {/* Main Content */}
         <div className="col-span-full lg:col-span-3">
+          {currentUser.isHost && meta?.decisionReasons?.length ? (
+            <div className="mb-2 rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
+              <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-foreground/70">
+                <span>Video source diagnostics</span>
+                <span className="rounded-full bg-background px-2 py-0.5 text-[11px] font-medium text-foreground/80">
+                  {meta.deliveryType}
+                </span>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {meta.decisionReasons.map(reason => (
+                  <span
+                    key={reason}
+                    className="rounded-full border bg-background px-2 py-1 text-[11px] font-medium text-foreground/80"
+                  >
+                    {formatDecisionReason(reason)}
+                  </span>
+                ))}
+              </div>
+              {meta.probe?.status ? (
+                <div className="mt-2 text-xs text-foreground/70">
+                  Probe: {meta.probe.status}
+                  {meta.probe.contentType ? ` · ${meta.probe.contentType}` : ''}
+                  {meta.probe.acceptRanges ? ' · accepts ranges' : ''}
+                </div>
+              ) : null}
+              {meta.codecWarning ? <div className="mt-1 text-xs text-destructive">{meta.codecWarning}</div> : null}
+            </div>
+          ) : null}
           {/* Video Player */}
           {effectiveVideoUrl && effectiveVideoType ? (
             <VideoPlayerContainer

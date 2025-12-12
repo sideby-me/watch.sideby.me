@@ -19,10 +19,39 @@ interface ProbeResult {
   error?: string;
 }
 
-function classify(url: string): { kind: 'youtube' | 'hls' | 'file'; videoType: RoomVideoMeta['videoType'] } {
-  if (/youtu\.be|youtube\.com/.test(url)) return { kind: 'youtube', videoType: 'youtube' };
-  if (/\.m3u8(\?.*)?$/i.test(url)) return { kind: 'hls', videoType: 'm3u8' };
-  return { kind: 'file', videoType: null };
+function classify(url: string): {
+  kind: 'youtube' | 'hls' | 'file';
+  videoType: RoomVideoMeta['videoType'];
+  hints: { hlsPath?: boolean; extensionless?: boolean; signedQuery?: boolean };
+} {
+  try {
+    const u = new URL(url);
+    const hostname = u.hostname.toLowerCase();
+    const pathname = u.pathname.toLowerCase();
+    const search = u.search.toLowerCase();
+
+    if (/youtu\.be|youtube\.com/.test(hostname)) {
+      return { kind: 'youtube', videoType: 'youtube', hints: {} };
+    }
+
+    const hlsPath =
+      /\.m3u8(\?.*)?$/i.test(pathname) ||
+      pathname.includes('/hls/') ||
+      pathname.includes('master.m3u8') ||
+      pathname.includes('manifest.m3u8') ||
+      pathname.includes('/live/');
+
+    if (hlsPath) {
+      return { kind: 'hls', videoType: 'm3u8', hints: { hlsPath } };
+    }
+
+    const extensionless = !(pathname.split('/').pop() || '').includes('.');
+    const signedQuery = /(?:token|signature|sig|expires|expiry|exp)=/i.test(search);
+
+    return { kind: 'file', videoType: null, hints: { hlsPath, extensionless, signedQuery } };
+  } catch {
+    return { kind: 'file', videoType: null, hints: {} };
+  }
 }
 
 async function headRequest(url: string, signal: AbortSignal): Promise<ProbeResult> {
@@ -79,8 +108,18 @@ function inferCodecWarning(containerHint?: string, bytes?: Uint8Array): string |
 export async function resolveSource(rawUrl: string): Promise<RoomVideoMeta> {
   const originalUrl = rawUrl.trim();
   const decisionReasons: string[] = [];
-  const { kind, videoType: legacyVideoType } = classify(originalUrl);
+  const protocol = new URL(originalUrl).protocol;
+  if (!['http:', 'https:'].includes(protocol)) {
+    decisionReasons.push('protocol-unsupported');
+    throw new Error('Unsupported protocol');
+  }
+
+  const { kind, videoType: legacyVideoType, hints } = classify(originalUrl);
   const timestamp = Date.now();
+
+  if (hints.hlsPath) decisionReasons.push('hls-path-hint');
+  if (hints.extensionless) decisionReasons.push('url-extensionless');
+  if (hints.signedQuery) decisionReasons.push('url-signed');
 
   // Simple direct classifications first
   if (kind === 'youtube') {
@@ -131,9 +170,31 @@ export async function resolveSource(rawUrl: string): Promise<RoomVideoMeta> {
   let range: ProbeResult | undefined;
   if (head.status === 200 || head.status === 206) {
     decisionReasons.push('head-success');
-    // Only range probe if ambiguous content-type or to sniff container
-    if (!head.contentType || /octet-stream|application\//i.test(head.contentType)) {
+
+    const contentType = head.contentType?.toLowerCase();
+    if (contentType?.includes('application/vnd.apple.mpegurl') || contentType?.includes('application/x-mpegurl')) {
+      decisionReasons.push('hls-content-type');
+      return {
+        originalUrl,
+        playbackUrl: originalUrl,
+        deliveryType: 'hls',
+        videoType: 'm3u8',
+        requiresProxy: false,
+        decisionReasons,
+        probe: { status: head.status, contentType: head.contentType, acceptRanges: head.acceptRanges },
+        timestamp,
+      };
+    }
+
+    const shouldProbe =
+      !head.contentType ||
+      /octet-stream|application\//i.test(head.contentType) ||
+      head.contentType.startsWith('audio/') ||
+      head.contentType.startsWith('video/');
+
+    if (shouldProbe) {
       range = await rangeProbe(originalUrl, controller.signal);
+      decisionReasons.push('range-probed');
       if (range.status === 403) {
         decisionReasons.push('range-access-denied');
         return {
@@ -149,7 +210,7 @@ export async function resolveSource(rawUrl: string): Promise<RoomVideoMeta> {
       }
     }
   } else {
-    decisionReasons.push('head-non-200');
+    decisionReasons.push(head.status === 0 ? 'head-failed' : 'head-non-200');
   }
 
   const containerHint = sniffContainer(range?.bytes);
@@ -158,7 +219,8 @@ export async function resolveSource(rawUrl: string): Promise<RoomVideoMeta> {
   if (codecWarning) decisionReasons.push('codec-warning');
 
   const directLikely =
-    (head.status === 200 || head.status === 206) && (head.contentType?.startsWith('video/') || !!containerHint);
+    (head.status === 200 || head.status === 206) &&
+    (head.contentType?.startsWith('video/') || head.contentType?.startsWith('audio/') || !!containerHint);
 
   if (directLikely) {
     decisionReasons.push('direct-playable');

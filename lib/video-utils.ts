@@ -1,9 +1,15 @@
 import { VideoType } from '@/types';
 
-export function parseVideoUrl(url: string): { type: VideoType; embedUrl: string } | null {
+type ParsedVideo = { type: VideoType | 'unknown'; embedUrl: string };
+
+export function parseVideoUrl(url: string): ParsedVideo | null {
   try {
-    console.log('🔍 Parsing video URL:', url);
     const urlObj = new URL(url);
+
+    // Only allow http/https; everything else is invalid
+    if (!['http:', 'https:'].includes(urlObj.protocol)) {
+      return null;
+    }
 
     // YouTube URLs
     if (urlObj.hostname.includes('youtube.com') || urlObj.hostname.includes('youtu.be')) {
@@ -16,50 +22,55 @@ export function parseVideoUrl(url: string): { type: VideoType; embedUrl: string 
       }
 
       if (videoId) {
-        const result = {
-          type: 'youtube' as VideoType,
+        return {
+          type: 'youtube',
           embedUrl: `https://www.youtube.com/embed/${videoId}?enablejsapi=1&origin=${window.location.origin}`,
         };
-        console.log('✅ Parsed as YouTube:', result);
-        return result;
       }
     }
 
-    // M3U8 HLS streams (check before direct video to prioritize HLS detection)
-    if (url.match(/\.(m3u8)(\?.*)?$/i) || url.includes('/live/') || url.includes('.m3u8')) {
-      const result = {
-        type: 'm3u8' as VideoType,
+    const pathname = urlObj.pathname.toLowerCase();
+    const search = urlObj.search.toLowerCase();
+
+    const looksLikeHls =
+      /\.m3u8(\?.*)?$/i.test(pathname) ||
+      pathname.includes('/hls/') ||
+      pathname.includes('master.m3u8') ||
+      pathname.includes('manifest.m3u8') ||
+      pathname.includes('/live/');
+    if (looksLikeHls) {
+      return {
+        type: 'm3u8',
         embedUrl: url,
       };
-      console.log('✅ Parsed as M3U8 (HLS):', result);
-      return result;
     }
 
     // Direct video URLs (MP4, WebM, etc.)
-    if (url.match(/\.(mp4|webm|ogg|mov|avi|mkv)(\?.*)?$/i)) {
-      // Additional validation for common video hosting patterns
+    if (/\.(mp4|webm|ogg|mov|avi|mkv)(\?.*)?$/i.test(pathname)) {
       const isLikelyVideo =
-        url.includes('/video/') ||
-        url.includes('/videos/') ||
-        url.includes('/media/') ||
-        url.includes('/assets/') ||
-        url.match(/\.(mp4|webm|ogg|mov)(\?.*)?$/i) ||
-        urlObj.pathname.includes('video');
+        pathname.includes('/video') ||
+        pathname.includes('/videos') ||
+        pathname.includes('/media') ||
+        pathname.includes('/assets');
 
-      if (isLikelyVideo || url.match(/\.(mp4|webm|ogg|mov)(\?.*)?$/i)) {
-        const result = {
-          type: 'mp4' as VideoType,
+      if (isLikelyVideo || /\.(mp4|webm|ogg|mov)(\?.*)?$/i.test(pathname)) {
+        return {
+          type: 'mp4',
           embedUrl: url,
         };
-        console.log('✅ Parsed as direct video (MP4):', result);
-        return result;
-      } else {
-        console.warn("⚠️ URL has video extension but doesn't match video hosting patterns");
       }
     }
 
-    console.log('❌ URL did not match any known video formats');
-    console.log('💡 Supported formats: YouTube, MP4, WebM, OGG, MOV, AVI, MKV, M3U8 (HLS)');
+    // Extensionless or signed CDN URLs with tokens/expiry – allow and defer classification to server
+    const hasQueryToken = /(?:token|signature|sig|expires|expiry|exp)=/i.test(search);
+    if (!pathname.split('/').pop()?.includes('.')) {
+      return { type: 'unknown', embedUrl: url };
+    }
+
+    if (hasQueryToken) {
+      return { type: 'unknown', embedUrl: url };
+    }
+
     return null;
   } catch (error) {
     console.error('Error parsing video URL:', error);

@@ -47,7 +47,11 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
       console.log(`Video set in room ${roomId}: ${videoUrl} -> playback: ${meta.playbackUrl} (${meta.deliveryType})`);
     } catch (error) {
       console.error('Error setting video:', error);
-      socket.emit('error', { error: 'Failed to set video' });
+      const message =
+        (error as Error)?.message === 'Unsupported protocol'
+          ? 'Only http/https video links are supported'
+          : 'Failed to set video';
+      socket.emit('error', { error: message });
     }
   });
 
