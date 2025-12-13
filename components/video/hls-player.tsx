@@ -19,12 +19,16 @@ interface HLSPlayerProps {
   onSeeked?: () => void;
   onLoadedMetadata?: () => void;
   onTimeUpdate?: () => void;
+  onError?: (info: { type?: string; details?: string; fatal?: boolean; url?: string; responseCode?: number }) => void;
   className?: string;
   isHost?: boolean;
 }
 
 const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
-  ({ src, onPlay, onPause, onSeeked, onLoadedMetadata, onTimeUpdate, className = '', isHost = false }, ref) => {
+  (
+    { src, onPlay, onPause, onSeeked, onLoadedMetadata, onTimeUpdate, onError, className = '', isHost = false },
+    ref
+  ) => {
     const videoRef = useRef<HTMLVideoElement>(null);
     const hlsRef = useRef<{ destroy: () => void } | null>(null);
     const programmaticActionRef = useRef(false);
@@ -110,22 +114,24 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
 
             hls.on(Hls.Events.ERROR, (_event: unknown, data: unknown) => {
               console.error('HLS error:', data);
-              const errorData = data as { fatal?: boolean; type?: string };
+              const errorData = data as {
+                fatal?: boolean;
+                type?: string;
+                details?: string;
+                response?: { code?: number };
+                url?: string;
+              };
+
               if (errorData.fatal) {
-                switch (errorData.type) {
-                  case Hls.ErrorTypes.NETWORK_ERROR:
-                    console.log('Fatal network error encountered, try to recover');
-                    hls.startLoad();
-                    break;
-                  case Hls.ErrorTypes.MEDIA_ERROR:
-                    console.log('Fatal media error encountered, try to recover');
-                    hls.recoverMediaError();
-                    break;
-                  default:
-                    console.log('Fatal error, cannot recover');
-                    hls.destroy();
-                    break;
-                }
+                onError?.({
+                  type: errorData.type,
+                  details: errorData.details,
+                  fatal: true,
+                  url: errorData.url,
+                  responseCode: errorData.response?.code,
+                });
+                // Stop attempting recovery for fatal errors to avoid loops; surface to UI instead.
+                hls.destroy();
               }
             });
           } else if (video.canPlayType('application/vnd.apple.mpegurl')) {

@@ -82,6 +82,7 @@ export function VideoPlayerContainer({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [videoSourceValid, setVideoSourceValid] = useState<boolean | null>(true);
   const [usingProxy, setUsingProxy] = useState(false);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
   const lastErrorReportRef = useRef<number>(0);
   const ERROR_REPORT_DEBOUNCE_MS = 4000;
 
@@ -111,6 +112,7 @@ export function VideoPlayerContainer({
   useEffect(() => {
     if (videoType === 'youtube') {
       setVideoSourceValid(true);
+      setPlaybackError(null);
       return;
     }
     const supportedFormats = getSupportedVideoFormats();
@@ -118,6 +120,8 @@ export function VideoPlayerContainer({
       console.warn('⚠️ HLS not natively supported; using HLS.js');
     }
     setVideoSourceValid(true);
+    setPlaybackError(null);
+    setUsingProxy(videoUrl?.includes('/api/video-proxy') ?? false);
   }, [videoUrl, videoType]);
 
   // Get video element ref for guest controls
@@ -316,6 +320,15 @@ export function VideoPlayerContainer({
             onPlay={onPlay}
             onPause={onPause}
             onSeeked={onSeeked}
+            onError={err => {
+              setPlaybackError(
+                `We couldn't load this HLS stream. It might be expired, behind a firewall (403), or just being a bit shy with our proxy. Time for a new link?`
+              );
+              setIsLoading(false);
+              setVideoSourceValid(false);
+              setUsingProxy(videoUrl.includes('/api/video-proxy'));
+              console.log('🎯 HLS reported fatal error:', err);
+            }}
             isHost={isHost}
             className="h-full w-full"
           />
@@ -354,10 +367,20 @@ export function VideoPlayerContainer({
                   console.warn('Failed to emit video-error-report', e);
                 }
               }
-              if (err.code === 4 && !usingProxy && onVideoChange) {
+              const alreadyProxy = videoUrl.includes('/api/video-proxy');
+              if (err.code === 4 && !usingProxy && !alreadyProxy && onVideoChange) {
                 console.log('🔁 Switching to proxy due to player error code 4');
-                onVideoChange(`/api/video-proxy?url=${encodeURIComponent(videoUrl)}`);
+                const origin = typeof window !== 'undefined' ? window.location.origin : '';
+                const proxyUrl = `${origin}/api/video-proxy?url=${encodeURIComponent(videoUrl)}`;
+                onVideoChange(proxyUrl);
                 setUsingProxy(true);
+                setPlaybackError(null);
+              } else {
+                setPlaybackError(
+                  `Oof, the player didn't like that one. The link might be broken, blocked, or just unsupported. Do you have a backup link?`
+                );
+                setIsLoading(false);
+                setVideoSourceValid(false);
               }
             }}
           />
@@ -375,6 +398,20 @@ export function VideoPlayerContainer({
           data-video-container
         >
           {renderPlayer()}
+
+          {playbackError ? (
+            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/70 px-4 text-center text-sm text-primary-foreground">
+              <div className="text-xl font-semibold tracking-tighter">Playback hit a snag</div>
+              <div className="mt-2 max-w-lg text-neutral">{playbackError}</div>
+              {isHost ? (
+                <div className="mt-4 flex flex-wrap items-center justify-center">
+                  <Button size="sm" variant="secondary" onClick={() => setIsChangeDialogOpen(true)}>
+                    Pick another link
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           {/* Custom subtitle overlay for non-YouTube videos */}
           {videoType !== 'youtube' && videoSourceValid !== false && (
