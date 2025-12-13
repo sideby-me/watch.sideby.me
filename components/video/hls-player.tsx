@@ -139,22 +139,21 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
               };
 
               const isBufferStall = errorData.details === 'bufferStalledError' && errorData.fatal === false;
-              if (!isBufferStall) {
-                console.error('HLS error:', data);
-              }
+              if (isBufferStall) return;
 
               const networkish =
                 errorData.type === 'networkError' ||
                 errorData.details === 'fragLoadError' ||
                 errorData.details === 'manifestLoadError';
 
-              if (!shouldProxy && networkish && !proxyTriedRef.current) {
-                // Retry once via proxy; don't surface as fatal yet.
+              const willRetryViaProxy = !shouldProxy && networkish && !proxyTriedRef.current;
+              if (willRetryViaProxy) {
                 proxyTriedRef.current = true;
                 setShouldProxy(true);
                 hls.destroy();
                 return;
               }
+              console.error('HLS error:', data);
 
               if (errorData.fatal) {
                 onError?.({

@@ -165,6 +165,64 @@ export async function GET(req: NextRequest) {
   const contentType = upstream.headers.get('content-type') || 'application/octet-stream';
   headers.set('Content-Type', contentType);
 
+  const loweredType = contentType.toLowerCase();
+  const isM3U8 =
+    loweredType.includes('application/vnd.apple.mpegurl') ||
+    loweredType.includes('application/x-mpegurl') ||
+    loweredType.includes('audio/mpegurl') ||
+    validated.pathname.toLowerCase().includes('.m3u8');
+
+  // Only rewrite when the client is proxying (so relative segment URIs resolve correctly)
+  if (isM3U8) {
+    const proxify = (uri: string) => `/api/video-proxy?url=${encodeURIComponent(uri)}`;
+
+    const rewriteM3U8 = (manifest: string) => {
+      const lines = manifest.split(/\r?\n/);
+      return lines
+        .map(line => {
+          const trimmed = line.trim();
+          if (!trimmed) return line;
+
+          if (trimmed.startsWith('#EXT-X-KEY') || trimmed.startsWith('#EXT-X-MAP')) {
+            return line.replace(/URI="([^"]+)"/i, (_m, uri) => {
+              try {
+                const absolute = new URL(uri, validated).toString();
+                return `URI="${proxify(absolute)}"`;
+              } catch {
+                return line;
+              }
+            });
+          }
+
+          if (trimmed.startsWith('#')) return line;
+
+          try {
+            const absolute = new URL(trimmed, validated).toString();
+            return proxify(absolute);
+          } catch {
+            return line;
+          }
+        })
+        .join('\n');
+    };
+
+    try {
+      const manifestText = await upstream.text();
+      const rewritten = rewriteM3U8(manifestText);
+
+      headers.set('Content-Type', 'application/vnd.apple.mpegurl');
+      headers.set('Cache-Control', upstream.headers.get('cache-control') || 'public, max-age=300');
+      headers.set('Access-Control-Allow-Origin', '*');
+      headers.set('Vary', 'Origin');
+      headers.set('x-proxy-origin-status', String(upstream.status));
+      headers.set('x-proxy-reason', 'm3u8-rewrite');
+
+      return new NextResponse(rewritten, { status: upstream.status === 206 ? 200 : upstream.status, headers });
+    } catch (_e) {
+      // fall through to regular streaming
+    }
+  }
+
   // Security: strip set-cookie
   const contentLengthHeader = upstream.headers.get('content-length');
   const maxAllowed = 5 * 1024 * 1024 * 1024; // 5GB soft cap
