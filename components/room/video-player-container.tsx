@@ -317,6 +317,7 @@ export function VideoPlayerContainer({
           <HLSPlayer
             ref={hlsPlayerRef}
             src={videoUrl}
+            useProxy={videoUrl.includes('/api/video-proxy')}
             onPlay={onPlay}
             onPause={onPause}
             onSeeked={onSeeked}

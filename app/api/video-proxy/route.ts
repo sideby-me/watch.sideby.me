@@ -9,12 +9,14 @@ const ALLOWED_PROTOCOLS = new Set(['http:', 'https:']);
 // Disallowed hostnames (immediately rejected before DNS)
 const DISALLOWED_HOST_PATTERNS: RegExp[] = [/^(?:localhost|ip6-localhost)$/i, /\.local$/i];
 
-function isHostnameDisallowed(host: string) {
+function isHostnameDisallowed(host: string, allowLocal: boolean) {
+  if (allowLocal) return false;
   if (host === '0.0.0.0') return true;
   return DISALLOWED_HOST_PATTERNS.some(re => re.test(host));
 }
 
-function isPrivateAddress(address: string): boolean {
+function isPrivateAddress(address: string, allowLocal: boolean): boolean {
+  if (allowLocal) return false;
   if (ip.isPrivate(address)) return true;
   if (address === '127.0.0.1' || address === '::1') return true;
   if (address.startsWith('127.')) return true;
@@ -27,14 +29,14 @@ function isPrivateAddress(address: string): boolean {
   return false;
 }
 
-async function resolveAndValidate(u: URL): Promise<URL | null> {
+async function resolveAndValidate(u: URL, allowLocal: boolean): Promise<URL | null> {
   if (!ALLOWED_PROTOCOLS.has(u.protocol)) return null;
   const host = u.hostname;
-  if (isHostnameDisallowed(host)) return null;
+  if (isHostnameDisallowed(host, allowLocal)) return null;
 
   // If direct IP literal, validate immediately.
   if (net.isIP(host)) {
-    if (isPrivateAddress(host)) return null;
+    if (isPrivateAddress(host, allowLocal)) return null;
     return u;
   }
 
@@ -48,16 +50,16 @@ async function resolveAndValidate(u: URL): Promise<URL | null> {
   if (!records.length) return null;
   // Reject if any resolved address is private for prevents dual-homed / DNS rebinding scenarios.
   for (const r of records) {
-    if (isPrivateAddress(r.address)) return null;
+    if (isPrivateAddress(r.address, allowLocal)) return null;
   }
   return u;
 }
 
-async function getSafeReferer(raw: string | null, target: URL): Promise<string | null> {
+async function getSafeReferer(raw: string | null, target: URL, allowLocal: boolean): Promise<string | null> {
   if (!raw) return null;
   try {
     const ref = new URL(raw);
-    const validated = await resolveAndValidate(ref);
+    const validated = await resolveAndValidate(ref, allowLocal);
     if (!validated) return null;
 
     // Prevent referer pointing to private IPs or non-http(s)
@@ -91,12 +93,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid URL' }, { status: 400 });
   }
 
-  const validated = await resolveAndValidate(parsed);
+  // Allow loopback/localhost targets during local development or when matching the current origin.
+  const isSameHost = parsed.hostname === req.nextUrl.hostname;
+  const allowLocal = process.env.NODE_ENV !== 'production' || isSameHost;
+
+  const validated = await resolveAndValidate(parsed, allowLocal);
   if (!validated) {
     return NextResponse.json({ error: 'Invalid or disallowed URL' }, { status: 400 });
   }
 
-  const safeReferer = await getSafeReferer(req.nextUrl.searchParams.get('referer'), validated);
+  const safeReferer = await getSafeReferer(req.nextUrl.searchParams.get('referer'), validated, allowLocal);
 
   // Forward Range if present (hotlink protection sometimes rejects, we fallback if 403).
   const range = req.headers.get('range');

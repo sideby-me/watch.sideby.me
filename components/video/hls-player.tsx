@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useEffect, useImperativeHandle, forwardRef } from 'react';
+import React, { useRef, useEffect, useImperativeHandle, forwardRef, useState } from 'react';
 
 export interface HLSPlayerRef {
   play: () => Promise<void>;
@@ -22,16 +22,30 @@ interface HLSPlayerProps {
   onError?: (info: { type?: string; details?: string; fatal?: boolean; url?: string; responseCode?: number }) => void;
   className?: string;
   isHost?: boolean;
+  useProxy?: boolean;
 }
 
 const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
   (
-    { src, onPlay, onPause, onSeeked, onLoadedMetadata, onTimeUpdate, onError, className = '', isHost = false },
+    {
+      src,
+      onPlay,
+      onPause,
+      onSeeked,
+      onLoadedMetadata,
+      onTimeUpdate,
+      onError,
+      className = '',
+      isHost = false,
+      useProxy = false,
+    },
     ref
   ) => {
     const videoRef = useRef<HTMLVideoElement>(null);
     const hlsRef = useRef<{ destroy: () => void } | null>(null);
     const programmaticActionRef = useRef(false);
+    const proxyTriedRef = useRef<boolean>(!!useProxy);
+    const [shouldProxy, setShouldProxy] = useState<boolean>(!!useProxy);
 
     useImperativeHandle(ref, () => ({
       play: async () => {
@@ -81,6 +95,7 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
           const { default: Hls } = await import('hls.js');
 
           const toProxyUrl = (target: string) => {
+            if (!shouldProxy) return target;
             if (target.startsWith('/api/video-proxy') || target.includes('/api/video-proxy?')) {
               return target;
             }
@@ -97,15 +112,17 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
             const hls = new Hls({
               enableWorker: true,
               lowLatencyMode: true,
-              // Route all manifest/segment requests through our proxy to avoid CORS
-              xhrSetup: (xhr: XMLHttpRequest, url: string) => {
-                const proxied = toProxyUrl(url);
-                xhr.open('GET', proxied, true);
-              },
+              // Only force proxying when requested; otherwise let Hls.js hit the origin directly
+              xhrSetup: shouldProxy
+                ? (xhr: XMLHttpRequest, url: string) => {
+                    const proxied = toProxyUrl(url);
+                    xhr.open('GET', proxied, true);
+                  }
+                : undefined,
             });
 
             hlsRef.current = hls as { destroy: () => void };
-            hls.loadSource(src);
+            hls.loadSource(shouldProxy ? toProxyUrl(src) : src);
             hls.attachMedia(video);
 
             hls.on(Hls.Events.MANIFEST_PARSED, () => {
@@ -113,7 +130,6 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
             });
 
             hls.on(Hls.Events.ERROR, (_event: unknown, data: unknown) => {
-              console.error('HLS error:', data);
               const errorData = data as {
                 fatal?: boolean;
                 type?: string;
@@ -121,6 +137,24 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
                 response?: { code?: number };
                 url?: string;
               };
+
+              const isBufferStall = errorData.details === 'bufferStalledError' && errorData.fatal === false;
+              if (!isBufferStall) {
+                console.error('HLS error:', data);
+              }
+
+              const networkish =
+                errorData.type === 'networkError' ||
+                errorData.details === 'fragLoadError' ||
+                errorData.details === 'manifestLoadError';
+
+              if (!shouldProxy && networkish && !proxyTriedRef.current) {
+                // Retry once via proxy; don't surface as fatal yet.
+                proxyTriedRef.current = true;
+                setShouldProxy(true);
+                hls.destroy();
+                return;
+              }
 
               if (errorData.fatal) {
                 onError?.({
@@ -135,8 +169,8 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
               }
             });
           } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-            video.src = toProxyUrl(src);
-            console.log('📺 Using native HLS support via proxy');
+            video.src = shouldProxy ? toProxyUrl(src) : src;
+            console.log('📺 Using native HLS support', { proxied: shouldProxy });
           } else {
             console.error('HLS is not supported in this browser');
           }
@@ -157,7 +191,7 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
           hlsRef.current = null;
         }
       };
-    }, [src]);
+    }, [src, shouldProxy]);
 
     const handlePlay = () => {
       console.log('🎬 HLS video started playing', { programmatic: programmaticActionRef.current, isHost });
