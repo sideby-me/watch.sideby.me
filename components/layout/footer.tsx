@@ -11,9 +11,9 @@ const productLinks = [
 ];
 
 const socialLinks = [
-  { href: '#', label: 'Instagram', Icon: Instagram },
+  { href: 'https://www.instagram.com/_sidebyme/', label: 'Instagram', Icon: Instagram },
   { href: 'https://github.com/whonoahexe/sideby.me', label: 'Github', Icon: Github },
-  { href: '#', label: 'Twitter', Icon: Twitter },
+  { href: 'https://x.com/_sidebyme', label: 'Twitter', Icon: Twitter },
 ];
 
 const legalLinks = [
