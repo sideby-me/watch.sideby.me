@@ -36,6 +36,7 @@ interface UseRoomReturn {
   showGuestInfoBanner: boolean;
   showHostDialog: boolean;
   showCopied: boolean;
+  showJoinDialog: boolean;
 
   // Actions
   setShowGuestInfoBanner: (show: boolean) => void;
@@ -53,6 +54,8 @@ interface UseRoomReturn {
   markMessagesAsRead: () => void;
   copyRoomId: () => void;
   shareRoom: () => void;
+  handleJoinWithName: (userName: string) => void;
+  handleCancelJoin: () => void;
 }
 
 export function useRoom({ roomId }: UseRoomOptions): UseRoomReturn {
@@ -69,6 +72,7 @@ export function useRoom({ roomId }: UseRoomOptions): UseRoomReturn {
   const [showGuestInfoBanner, setShowGuestInfoBanner] = useState(false);
   const [showHostDialog, setShowHostDialog] = useState(false);
   const [showCopied, setShowCopied] = useState(false);
+  const [showJoinDialog, setShowJoinDialog] = useState(false);
   const [lastJoinAttempt, setLastJoinAttempt] = useState<number>(0);
 
   const hasAttemptedJoinRef = useRef<boolean>(false);
@@ -397,44 +401,10 @@ export function useRoom({ roomId }: UseRoomOptions): UseRoomReturn {
       return;
     }
 
-    // Prompt for name if no stored data
-    console.log('❓ No stored user data, prompting for name');
-    const userName = prompt(`What's your callname?`);
-    if (!userName || !userName.trim()) {
-      console.log('❌ No name provided, redirecting to join page');
-      setIsJoining(false);
-      hasAttemptedJoinRef.current = false;
-      router.push('/join');
-      return;
-    }
-
-    const trimmedName = userName.trim();
-    if (trimmedName.length < 2) {
-      alert("Hmm, that name's a little brief. We need a callsign that's at least 2 characters long.");
-      setIsJoining(false);
-      hasAttemptedJoinRef.current = false;
-      router.push('/join');
-      return;
-    }
-
-    if (trimmedName.length > 20) {
-      alert('Whoa, what an epic name! Sadly, our little callsign tags can only fit 20 characters.');
-      setIsJoining(false);
-      hasAttemptedJoinRef.current = false;
-      router.push('/join');
-      return;
-    }
-
-    if (!/^[a-zA-Z0-9\s\-_.!?]+$/.test(trimmedName)) {
-      alert('Easy on the fancy characters! Our system is a bit sensitive with those special characters.');
-      setIsJoining(false);
-      hasAttemptedJoinRef.current = false;
-      router.push('/join');
-      return;
-    }
-
-    console.log('📝 Joining room with prompted name:', trimmedName);
-    socket.emit('join-room', { roomId, userName: trimmedName });
+    // Show dialog for name if no stored data (instead of browser prompt)
+    console.log('❓ No stored user data, showing join dialog');
+    setShowJoinDialog(true);
+    // Don't continue - the handleJoinWithName callback will emit the join event
   }, [socket, isConnected, roomId, router, room, currentUser, isJoining, lastJoinAttempt]);
 
   // Update cleanup data ref
@@ -458,6 +428,27 @@ export function useRoom({ roomId }: UseRoomOptions): UseRoomReturn {
       }
     };
   }, []);
+
+  // Handle join with name from dialog
+  const handleJoinWithName = useCallback(
+    (userName: string) => {
+      if (!socket || !isConnected) return;
+
+      console.log('📝 Joining room with dialog name:', userName);
+      setShowJoinDialog(false);
+      socket.emit('join-room', { roomId, userName });
+    },
+    [socket, isConnected, roomId]
+  );
+
+  // Handle cancel join from dialog
+  const handleCancelJoin = useCallback(() => {
+    console.log('❌ Join cancelled, redirecting to join page');
+    setShowJoinDialog(false);
+    setIsJoining(false);
+    hasAttemptedJoinRef.current = false;
+    router.push('/join');
+  }, [router]);
 
   // Actions
   const handlePromoteUser = useCallback(
@@ -541,6 +532,7 @@ export function useRoom({ roomId }: UseRoomOptions): UseRoomReturn {
     showGuestInfoBanner,
     showHostDialog,
     showCopied,
+    showJoinDialog,
 
     // Actions
     setShowGuestInfoBanner,
@@ -555,5 +547,7 @@ export function useRoom({ roomId }: UseRoomOptions): UseRoomReturn {
     markMessagesAsRead,
     copyRoomId,
     shareRoom,
+    handleJoinWithName,
+    handleCancelJoin,
   };
 }

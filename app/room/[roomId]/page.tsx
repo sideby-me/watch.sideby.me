@@ -24,9 +24,10 @@ import { useVideoChat } from '@/hooks/use-video-chat';
 import { VideoChatGrid } from '@/components/room/video-chat-grid';
 import { VideoChatOverlay } from '@/components/room/video-chat-overlay';
 import { useFullscreenPortalContainer } from '@/hooks/use-fullscreen-portal-container';
-import { Spinner } from '../../../components/ui/spinner';
-import { toast } from 'sonner';
 import { LeaveRoomGuard } from '@/components/room/leave-room-guard';
+import { JoinRoomDialog } from '@/components/room/join-room-dialog';
+import { Spinner } from '@/components/ui/spinner';
+import { toast } from 'sonner';
 
 type ClientVideoMeta = {
   originalUrl: string;
@@ -74,6 +75,9 @@ export default function RoomPage() {
     copyRoomId,
     shareRoom,
     handleToggleReaction,
+    showJoinDialog,
+    handleJoinWithName,
+    handleCancelJoin,
   } = useRoom({ roomId });
 
   // Helper function to extract video ID from URL for subtitle storage
@@ -277,8 +281,21 @@ export default function RoomPage() {
     return <ErrorDisplay error={error} onRetry={() => router.push('/join')} />;
   }
 
-  // Handle loading state
+  // Handle loading state - but show join dialog if needed
   if (!room || !currentUser) {
+    if (showJoinDialog) {
+      return (
+        <>
+          <LoadingDisplay roomId={roomId} />
+          <JoinRoomDialog
+            open={showJoinDialog}
+            roomId={roomId}
+            onJoin={handleJoinWithName}
+            onCancel={handleCancelJoin}
+          />
+        </>
+      );
+    }
     return <LoadingDisplay roomId={roomId} />;
   }
 
@@ -482,6 +499,8 @@ export default function RoomPage() {
           portalContainer={fullscreenPortalContainer}
         />
       )}
+
+      <JoinRoomDialog open={showJoinDialog} roomId={roomId} onJoin={handleJoinWithName} onCancel={handleCancelJoin} />
 
       <LeaveRoomGuard roomId={roomId} room={room} socket={socket} />
     </div>
