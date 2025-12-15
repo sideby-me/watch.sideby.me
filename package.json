@@ -54,6 +54,7 @@
     "tailwindcss-animate": "^1.0.7",
     "tsx": "^4.20.0",
     "typescript": "^5",
+    "unique-names-generator": "^4.7.1",
     "uuid": "^11.1.0",
     "zod": "^4.0.10"
   },

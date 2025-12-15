@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { AtSign, Users, Dices } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -13,20 +14,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { AtSign, Users } from 'lucide-react';
-
-const QUIRKY_USERNAMES = [
-  'The Plus One',
-  'The Latecomer',
-  'Friend Of The Host',
-  'Spawning In',
-  'The Audience',
-  'The NPC',
-  'Crashing Couch',
-  'The Reinforcements',
-] as const;
-
-const getRandomUsername = () => QUIRKY_USERNAMES[Math.floor(Math.random() * QUIRKY_USERNAMES.length)];
+import { generateQuirkyName } from '@/lib/name-generator';
 
 interface JoinRoomDialogProps {
   open: boolean;
@@ -39,11 +27,17 @@ export function JoinRoomDialog({ open, roomId, onJoin, onCancel }: JoinRoomDialo
   const router = useRouter();
   const [userName, setUserName] = useState('');
   const [error, setError] = useState('');
-  const [placeholder, setPlaceholder] = useState(`e.g., ${QUIRKY_USERNAMES[1]}`);
+  const [placeholder, setPlaceholder] = useState('e.g., Silly Penguin');
+
+  const handleGenerateName = useCallback(() => {
+    const name = generateQuirkyName();
+    setUserName(name);
+    setPlaceholder(`e.g., ${name}`);
+  }, []);
 
   useEffect(() => {
     if (open) {
-      setPlaceholder(`e.g., ${getRandomUsername()}`);
+      setPlaceholder(`e.g., ${generateQuirkyName()}`);
       setUserName('');
       setError('');
     }
@@ -110,20 +104,32 @@ export function JoinRoomDialog({ open, roomId, onJoin, onCancel }: JoinRoomDialo
               <Label htmlFor="joinDialogUserName" className="text-sm font-bold tracking-tight sm:text-base">
                 Your Callsign
               </Label>
-              <div className="relative">
-                <AtSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform text-neutral" />
-                <Input
-                  id="joinDialogUserName"
-                  name="userName"
-                  type="text"
-                  value={userName}
-                  onChange={e => setUserName(e.target.value)}
-                  placeholder={placeholder}
-                  className="pl-10 text-base tracking-tight sm:text-lg"
-                  maxLength={50}
-                  autoFocus
-                  aria-describedby={error ? 'join-dialog-error' : undefined}
-                />
+              <div className="relative flex items-center gap-2">
+                <div className="relative flex-1">
+                  <AtSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform text-neutral" />
+                  <Input
+                    id="joinDialogUserName"
+                    name="userName"
+                    type="text"
+                    value={userName}
+                    onChange={e => setUserName(e.target.value)}
+                    placeholder={placeholder}
+                    className="pl-10 text-base tracking-tight sm:text-lg"
+                    maxLength={50}
+                    autoFocus
+                    aria-describedby={error ? 'join-dialog-error' : undefined}
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={handleGenerateName}
+                  title="Generate random name"
+                  className="shrink-0"
+                >
+                  <Dices className="h-4 w-4" />
+                </Button>
               </div>
               {error && (
                 <div id="join-dialog-error" className="text-sm font-medium text-red-500" role="alert">

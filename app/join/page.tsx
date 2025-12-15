@@ -1,29 +1,16 @@
 'use client';
 
+import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
+import { AtSign, Hash, Users, MessageCircle, Eye, LucideIcon, Crown, Dices } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useJoinRoom } from '@/hooks/use-join-room';
-import { AtSign, Hash, Users, MessageCircle, Eye, LucideIcon, Crown } from 'lucide-react';
-import { Icon } from '../../components/ui/icon';
+import { Icon } from '@/components/ui/icon';
 import HowItWorks from '@/components/pages/how-it-works';
-import Link from 'next/link';
-import { useEffect, useState } from 'react';
-
-const QUIRKY_USERNAMES = [
-  'The Plus One',
-  'The Latecomer',
-  'Friend Of The Host',
-  'Spawning In',
-  'The Audience',
-  'The NPC',
-  'Crashing Couch',
-  'The Reinforcements',
-] as const;
-
-// Pick a random username on page load
-const getRandomUsername = () => QUIRKY_USERNAMES[Math.floor(Math.random() * QUIRKY_USERNAMES.length)];
+import { generateQuirkyName } from '@/lib/name-generator';
 
 const JOIN_FEATURES = [
   {
@@ -62,11 +49,16 @@ export default function JoinRoomPage() {
     handleRoomIdChange,
   } = useJoinRoom();
   // Keep a deterministic placeholder for SSR and update to a random one on the client
-  const DEFAULT_PLACEHOLDER = `e.g., ${QUIRKY_USERNAMES[1]}`;
-  const [placeholder, setPlaceholder] = useState<string>(DEFAULT_PLACEHOLDER);
+  const [placeholder, setPlaceholder] = useState<string>('e.g., Silly Penguin');
+
+  const handleGenerateName = useCallback(() => {
+    const name = generateQuirkyName();
+    setUserName(name);
+    setPlaceholder(`e.g., ${name}`);
+  }, [setUserName]);
 
   useEffect(() => {
-    setPlaceholder(`e.g., ${getRandomUsername()}`);
+    setPlaceholder(`e.g., ${generateQuirkyName()}`);
   }, []);
 
   return (
@@ -125,21 +117,34 @@ export default function JoinRoomPage() {
                   <Label htmlFor="userName" className="text-sm font-bold tracking-tight sm:text-base">
                     Your Callsign
                   </Label>
-                  <div className="relative">
-                    <AtSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform text-neutral" />
-                    <Input
-                      id="userName"
-                      name="userName"
-                      type="text"
-                      value={userName}
-                      onChange={e => setUserName(e.target.value)}
-                      placeholder={placeholder}
-                      className="pl-10 text-base tracking-tight sm:text-lg"
-                      maxLength={50}
-                      required
+                  <div className="relative flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <AtSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform text-neutral" />
+                      <Input
+                        id="userName"
+                        name="userName"
+                        type="text"
+                        value={userName}
+                        onChange={e => setUserName(e.target.value)}
+                        placeholder={placeholder}
+                        className="pl-10 text-base tracking-tight sm:text-lg"
+                        maxLength={50}
+                        required
+                        disabled={isLoading || !isConnected}
+                        aria-describedby={error ? 'error-message' : undefined}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={handleGenerateName}
                       disabled={isLoading || !isConnected}
-                      aria-describedby={error ? 'error-message' : undefined}
-                    />
+                      title="Generate random name"
+                      className="shrink-0"
+                    >
+                      <Dices className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
 

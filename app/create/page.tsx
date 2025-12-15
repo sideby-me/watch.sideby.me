@@ -1,28 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
+import { AtSign, PenLine, Play, User, LucideIcon, BadgePlus, Dices } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useCreateRoom } from '@/hooks/use-create-room';
-import { AtSign, PenLine, Play, User, LucideIcon, BadgePlus } from 'lucide-react';
-import { Icon } from '../../components/ui/icon';
+import { Icon } from '@/components/ui/icon';
 import HowItWorks from '@/components/pages/how-it-works';
-import Link from 'next/link';
-
-const QUIRKY_USERNAMES = [
-  'The Friend Who Picked The Movie',
-  'Person With The Stable Wi-Fi',
-  'Probably Muted',
-  'The One With The Link',
-  'The Dungeon Master',
-  'That Friend From Discord',
-  'Not-A-Bot-I-Swear',
-] as const;
-
-// Pick a random username on page load
-const getRandomUsername = () => QUIRKY_USERNAMES[Math.floor(Math.random() * QUIRKY_USERNAMES.length)];
+import { useCreateRoom } from '@/hooks/use-create-room';
+import { generateQuirkyName } from '@/lib/name-generator';
 
 const HOST_FEATURES = [
   {
@@ -51,11 +39,16 @@ function FeatureCard({ icon: IconComponent, title }: { icon: LucideIcon; title: 
 export default function CreateRoomPage() {
   const { hostName, setHostName, isLoading, error, isConnected, isInitialized, handleCreateRoom } = useCreateRoom();
   // Keep a deterministic placeholder for SSR and update to a random one on the client
-  const DEFAULT_PLACEHOLDER = `e.g., ${QUIRKY_USERNAMES[1]}`;
-  const [placeholder, setPlaceholder] = useState<string>(DEFAULT_PLACEHOLDER);
+  const [placeholder, setPlaceholder] = useState<string>('e.g., Silly Penguin');
+
+  const handleGenerateName = useCallback(() => {
+    const name = generateQuirkyName();
+    setHostName(name);
+    setPlaceholder(`e.g., ${name}`);
+  }, [setHostName]);
 
   useEffect(() => {
-    setPlaceholder(`e.g., ${getRandomUsername()}`);
+    setPlaceholder(`e.g., ${generateQuirkyName()}`);
   }, []);
 
   return (
@@ -90,21 +83,34 @@ export default function CreateRoomPage() {
                   <Label htmlFor="hostName" className="text-sm font-bold tracking-tight sm:text-base">
                     Your Callsign
                   </Label>
-                  <div className="relative">
-                    <AtSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform text-neutral" />
-                    <Input
-                      id="hostName"
-                      name="hostName"
-                      type="text"
-                      value={hostName}
-                      onChange={e => setHostName(e.target.value)}
-                      placeholder={placeholder}
-                      className="pl-10 text-base tracking-tight sm:text-lg"
-                      maxLength={21}
-                      required
+                  <div className="relative flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <AtSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform text-neutral" />
+                      <Input
+                        id="hostName"
+                        name="hostName"
+                        type="text"
+                        value={hostName}
+                        onChange={e => setHostName(e.target.value)}
+                        placeholder={placeholder}
+                        className="pl-10 text-base tracking-tight sm:text-lg"
+                        maxLength={21}
+                        required
+                        disabled={isLoading || !isConnected}
+                        aria-describedby={error ? 'error-message' : undefined}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={handleGenerateName}
                       disabled={isLoading || !isConnected}
-                      aria-describedby={error ? 'error-message' : undefined}
-                    />
+                      title="Generate random name"
+                      className="shrink-0"
+                    >
+                      <Dices className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
 
