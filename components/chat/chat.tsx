@@ -85,28 +85,37 @@ export function Chat({
   // Notification sound hook
   const { enabled: soundEnabled, toggleEnabled: toggleSound, playNotification } = useNotificationSound();
 
+  // Helper function to scroll to bottom
+  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+    if (scrollAreaRef.current) {
+      if (mode === 'sidebar') {
+        const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+        if (scrollContainer) {
+          scrollContainer.scrollTo({
+            top: scrollContainer.scrollHeight,
+            behavior,
+          });
+        }
+      } else {
+        scrollAreaRef.current.scrollTo({
+          top: scrollAreaRef.current.scrollHeight,
+          behavior,
+        });
+      }
+    }
+  };
+
+  // Wrapper for onToggleReaction that scrolls after reacting
+  const handleToggleReaction = (messageId: string, emoji: string) => {
+    onToggleReaction?.(messageId, emoji);
+    // Scroll after reaction - use small delay to let the UI update
+    setTimeout(() => scrollToBottom(), 100);
+  };
+
   // Auto-scroll to bottom only when new messages arrive
   useEffect(() => {
     if (messages.length > 0 && messages.length > previousMessageCount) {
-      // Scroll within the chat container, not the whole page
-      if (scrollAreaRef.current) {
-        if (mode === 'sidebar') {
-          // For sidebar mode, scroll within the ScrollArea
-          const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
-          if (scrollContainer) {
-            scrollContainer.scrollTo({
-              top: scrollContainer.scrollHeight,
-              behavior: 'smooth',
-            });
-          }
-        } else {
-          // For overlay mode, scroll within the chat area
-          scrollAreaRef.current.scrollTo({
-            top: scrollAreaRef.current.scrollHeight,
-            behavior: 'smooth',
-          });
-        }
-      }
+      scrollToBottom();
 
       // Play notification sound for new messages from other users
       if (previousMessageCount > 0) {
@@ -124,24 +133,7 @@ export function Chat({
   // Scroll to bottom when typing users change
   useEffect(() => {
     if (typingUsers.length > 0) {
-      if (scrollAreaRef.current) {
-        if (mode === 'sidebar') {
-          // Use a more gentle scroll that doesn't affect the main page
-          const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
-          if (scrollContainer) {
-            scrollContainer.scrollTo({
-              top: scrollContainer.scrollHeight,
-              behavior: 'smooth',
-            });
-          }
-        } else {
-          // For overlay mode, scroll within the chat area
-          scrollAreaRef.current.scrollTo({
-            top: scrollAreaRef.current.scrollHeight,
-            behavior: 'smooth',
-          });
-        }
-      }
+      scrollToBottom();
     }
   }, [typingUsers, mode]);
 
@@ -295,7 +287,7 @@ export function Chat({
                       message={message}
                       currentUserId={currentUserId}
                       mode="sidebar"
-                      onToggleReaction={onToggleReaction}
+                      onToggleReaction={handleToggleReaction}
                       onReply={handleReply}
                       onQuoteClick={handleQuoteClick}
                       users={users}
@@ -375,7 +367,7 @@ export function Chat({
                 message={message}
                 currentUserId={currentUserId}
                 mode="overlay"
-                onToggleReaction={onToggleReaction}
+                onToggleReaction={handleToggleReaction}
                 onReply={handleReply}
                 onQuoteClick={handleQuoteClick}
                 users={users}

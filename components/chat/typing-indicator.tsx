@@ -9,7 +9,7 @@ interface TypingIndicatorProps {
 }
 
 export function TypingIndicator({ typingUsers, mode = 'sidebar' }: TypingIndicatorProps) {
-  if (typingUsers.length === 0) return null;
+  const isVisible = typingUsers.length > 0;
 
   const getInitials = (name: string) => {
     return name
@@ -24,7 +24,11 @@ export function TypingIndicator({ typingUsers, mode = 'sidebar' }: TypingIndicat
   const textSize = mode === 'overlay' ? 'text-sm' : 'text-sm';
 
   return (
-    <div className="flex space-x-3">
+    <div
+      className={`flex space-x-3 transition-all duration-200 ${
+        isVisible ? 'opacity-100' : 'pointer-events-none h-0 overflow-hidden opacity-0'
+      }`}
+    >
       {/* Avatar */}
       <Avatar className={`${avatarSize} flex-shrink-0`}>
         <AvatarFallback className="font-mono text-primary-800">

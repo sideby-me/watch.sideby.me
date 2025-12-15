@@ -153,7 +153,7 @@ export function ChatHeader({
                     <Video className="h-2 w-2" />
                   )
                 ) : (
-                  <Video className="h-2 w-2 opacity-50" />
+                  <Video className="h-2 w-2" />
                 )}
                 {video.participantCount ?? 0}
               </Badge>
