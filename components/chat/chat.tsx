@@ -249,7 +249,7 @@ export function Chat({
   // Render sidebar mode
   if (mode === 'sidebar') {
     return (
-      <Card className={`ml-6 mr-6 lg:ml-0 ${className}`}>
+      <Card className={`ml-0 xl:ml-6 ${className}`}>
         {/* Header */}
         <CardHeader className="p-0">
           <CardTitle>
@@ -266,7 +266,7 @@ export function Chat({
 
         {/* Messages */}
         <CardContent className="p-0">
-          <ScrollArea className="h-96 px-4" ref={scrollAreaRef}>
+          <ScrollArea className="4xl:h-[640px] 3xl:h-[480px] h-96 px-4" ref={scrollAreaRef}>
             <div className="min-w-0 space-y-4 pb-4">
               {messages.length === 0 ? (
                 <EmptyState />

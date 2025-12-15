@@ -37,7 +37,7 @@ export function Footer() {
 
   return (
     <footer className="px-6 py-24">
-      <div className="mx-auto flex max-w-7xl flex-col gap-12">
+      <div className="4xl:max-w-screen-3xl mx-auto flex max-w-screen-2xl flex-col gap-12">
         {/* Product Links */}
         <div className="flex flex-col justify-between gap-6 tracking-tight md:flex-row">
           <div className="flex min-w-36 flex-1 flex-col gap-6">

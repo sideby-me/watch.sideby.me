@@ -310,7 +310,7 @@ export default function RoomPage() {
   const youTubeId = effectiveVideoType === 'youtube' ? extractYouTubeId(effectiveVideoUrl) : undefined;
 
   return (
-    <div className="space-y-6">
+    <div className="4xl:max-w-screen-3xl mx-auto max-w-screen-2xl space-y-6">
       {/* Room Header */}
       <RoomHeader
         roomId={roomId}
@@ -330,9 +330,9 @@ export default function RoomPage() {
         <GuestInfoBanner onLearnMore={() => setShowHostDialog(true)} onDismiss={() => setShowGuestInfoBanner(false)} />
       )}
 
-      <div className="grid gap-6 lg:grid-cols-4">
+      <div className="grid gap-6 xl:grid-cols-4">
         {/* Main Content */}
-        <div className="col-span-full lg:col-span-3">
+        <div className="col-span-full xl:col-span-3">
           {/* Video Player */}
           {effectiveVideoUrl && effectiveVideoType ? (
             <VideoPlayerContainer
@@ -369,7 +369,7 @@ export default function RoomPage() {
         </div>
 
         {/* Chat */}
-        <div className="col-span-full lg:col-span-1">
+        <div className="col-span-full xl:col-span-1">
           <Chat
             mode="sidebar"
             messages={messages}

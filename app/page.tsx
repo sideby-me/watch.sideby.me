@@ -31,7 +31,7 @@ export default function HomePage() {
       </section>
 
       {/* Experimental Cards */}
-      <section className="flex w-full justify-center rounded-md bg-primary/60 px-6 py-24">
+      <section className="4xl:4xl:max-w-screen-3xl mx-auto flex w-full max-w-screen-2xl justify-center rounded-md bg-primary/60 px-6 py-24">
         <div className="flex w-full max-w-7xl flex-wrap items-center justify-center gap-12">
           <div className="flex min-w-80 max-w-xl flex-col items-start justify-center gap-12 self-stretch">
             <div className="flex flex-col items-start gap-4">
@@ -96,8 +96,8 @@ export default function HomePage() {
       <HowItWorks />
 
       {/* CTA */}
-      <div className="flex w-full shrink-0 grow basis-0 flex-col items-center justify-center gap-2 px-6 py-24">
-        <div className="flex w-full max-w-7xl flex-col items-center justify-center gap-8 rounded-lg bg-primary-900 px-6 pb-16 pt-28">
+      <section className="flex w-full shrink-0 grow basis-0 flex-col items-center justify-center gap-2 py-24">
+        <div className="4xl:max-w-screen-3xl flex w-full max-w-screen-2xl flex-col items-center justify-center gap-8 rounded-lg bg-primary-900 px-6 pb-16 pt-28">
           <div className="flex w-full flex-col items-center justify-center gap-6 py-12">
             <span className="w-full max-w-3xl whitespace-pre-wrap text-center text-5xl font-extrabold tracking-tighter text-primary-300 md:text-7xl md:font-bold">
               {`OH C'MON, GO AHEAD AND TRY IT OUT, HELP A JOBLESS FRIEND :)`}
@@ -115,7 +115,7 @@ export default function HomePage() {
             </Button>
           </Link>
         </div>
-      </div>
+      </section>
     </>
   );
 }

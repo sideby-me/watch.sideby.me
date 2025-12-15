@@ -13,7 +13,18 @@ module.exports = {
       padding: '2rem',
       screens: {
         '2xl': '1400px',
+        '3xl': '1920px',
+        '4xl': '2560px',
       },
+    },
+    screens: {
+      sm: '640px',
+      md: '768px',
+      lg: '1024px',
+      xl: '1280px',
+      '2xl': '1536px',
+      '3xl': '1920px',
+      '4xl': '2560px',
     },
     extend: {
       fontFamily: {
@@ -128,9 +139,11 @@ module.exports = {
         'slow-slow': 'cubic-bezier(0.77, 0, 0.175, 1)',
         'slow-fast': 'cubic-bezier(0.5, 0, 0.75, 0)',
       },
-      // transitionProperty: {
-      //   interactive: 'background-color, outline, box-shadow, transform',
-      // },
+      maxWidth: {
+        'screen-2xl': '1536px',
+        'screen-3xl': '1920px',
+        'screen-4xl': '2560px',
+      },
     },
   },
   plugins: [

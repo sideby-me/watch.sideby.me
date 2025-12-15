@@ -51,7 +51,7 @@ interface SyncErrorProps {
 
 export function SyncError({ error }: SyncErrorProps) {
   return (
-    <Card className="mx-6 mb-6 border-destructive">
+    <Card className="mb-6 border-destructive">
       <CardContent>
         <div className="flex items-center space-x-2 text-destructive">
           <AlertCircle className="h-4 w-4" />
@@ -70,7 +70,7 @@ interface GuestInfoBannerProps {
 
 export function GuestInfoBanner({ onLearnMore, onDismiss }: GuestInfoBannerProps) {
   return (
-    <Card className="mx-6 mb-6 border-primary bg-primary-50">
+    <Card className="mb-6 border-primary bg-primary-50">
       <CardContent>
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2 text-primary-900">

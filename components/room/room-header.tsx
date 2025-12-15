@@ -26,7 +26,7 @@ export function RoomHeader({
 }: RoomHeaderProps) {
   return (
     <Card className="mt-6 border-0">
-      <CardHeader>
+      <CardHeader className="-px-6">
         {/* Room info */}
         <div className="flex flex-col space-y-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
           <div className="space-y-1">

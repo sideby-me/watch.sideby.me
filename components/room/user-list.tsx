@@ -44,7 +44,7 @@ export function UserList({
   });
 
   return (
-    <Card className={`mx-6 ${className}`}>
+    <Card className={className}>
       <CardHeader>
         <CardTitle className="flex items-center space-x-4">
           <Users className="h-5 w-5" />

@@ -72,7 +72,7 @@ export default function JoinRoomPage() {
   return (
     <>
       <div className="px-4 py-6 sm:px-8 sm:py-8 lg:px-14 lg:py-14">
-        <Card className="mx-auto flex max-w-5xl flex-col items-center justify-center gap-6 rounded-lg border border-border bg-background p-6 sm:gap-8 sm:p-12 lg:gap-12 lg:p-24">
+        <Card className="mx-auto flex max-w-screen-2xl flex-col items-center justify-center gap-6 rounded-lg border border-border bg-background p-6 sm:gap-8 sm:p-12 lg:gap-12 lg:p-24">
           {/* Header Section */}
           <header className="flex w-full shrink-0 grow basis-0 flex-col items-center justify-center gap-6 sm:gap-8 lg:gap-12">
             <div className="flex w-full shrink-0 grow basis-0 flex-col items-center justify-center gap-4">

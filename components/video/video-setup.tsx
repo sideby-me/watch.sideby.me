@@ -68,13 +68,13 @@ export function VideoSetup({ onVideoSet, isHost, hasVideo, videoUrl }: VideoSetu
   if (hasVideo && videoUrl) {
     return (
       <Card>
-        <CardHeader>
+        <CardHeader className="-px-6">
           <CardTitle className="flex items-center space-x-2">
             <Video className="h-5 w-5" />
             <span>Now Playing</span>
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="-px-6">
           <div className="space-y-4">
             <div className="flex items-center space-x-3 rounded-lg bg-muted p-3">
               {getVideoIcon(videoUrl)}
@@ -127,13 +127,13 @@ export function VideoSetup({ onVideoSet, isHost, hasVideo, videoUrl }: VideoSetu
   // For the hosts
   return (
     <Card className="flex h-full flex-col justify-center border-0">
-      <CardHeader>
+      <CardHeader className="-px-6">
         <CardTitle className="flex items-center space-x-4">
           <Video className="h-8 w-8" />
           <span className="text-3xl font-semibold tracking-tighter">Set Up Video</span>
         </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="-px-6">
         <VideoUrlForm url={url} setUrl={setUrl} error={error} onSubmit={handleSubmit} />
       </CardContent>
     </Card>
