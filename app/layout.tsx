@@ -1,11 +1,12 @@
 import type { Metadata } from 'next';
+import NextTopLoader from 'nextjs-toploader';
 import { Space_Grotesk, Space_Mono } from 'next/font/google';
-import './globals.css';
 import { Navigation } from '@/components/layout/navigation';
 import { Footer } from '@/components/layout/footer';
 import { SocketProvider } from '@/contexts/socket-provider';
 import { Toaster } from '@/components/ui/sonner';
 import { ThemeProvider } from '@/contexts/theme-provider';
+import './globals.css';
 
 const spaceGrotesk = Space_Grotesk({
   variable: '--font-space-grotesk',
@@ -89,6 +90,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <body className={`${spaceGrotesk.variable} ${spaceMono.variable} antialiased`}>
+        <NextTopLoader color="#ffffff" height={4} showSpinner={false} shadow="0 0 10px #ffffff, 0 0 20px #ffffff" />
         <ThemeProvider>
           <SocketProvider>
             <div className="max-w-screen-4xl mx-auto flex min-h-screen flex-col bg-background">
