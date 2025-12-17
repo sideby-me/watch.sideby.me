@@ -19,6 +19,19 @@ const copyLinkBtn = document.getElementById('copy-link');
 let detectedVideos = [];
 let selectedIndex = 0;
 
+async function injectContentScript(tabId) {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ['contentScript.js'],
+    });
+    return true;
+  } catch (err) {
+    console.warn('Failed to inject content script', err);
+    return false;
+  }
+}
+
 function getVideoKind(url) {
   if (/\.m3u8(\?|$)/i.test(url)) return 'HLS';
   if (/\.(mp4|m4v)(\?|$)/i.test(url)) return 'MP4';
@@ -78,6 +91,13 @@ async function init() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) {
       throw new Error("Couldn't find active tab");
+    }
+
+    const injected = await injectContentScript(tab.id);
+    if (!injected) {
+      errorMessage.textContent = 'Cannot access this page. Try another tab.';
+      showState('error');
+      return;
     }
 
     chrome.tabs.sendMessage(tab.id, { type: 'GET_VIDEO_INFO' }, response => {

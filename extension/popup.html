@@ -21,7 +21,7 @@
         <!-- State: Loading -->
         <div id="state-loading" class="status_container">
           <div class="spinner"></div>
-          <span class="status-text">Detecting video...</span>
+          <span class="status-text">Hunting for video signals...</span>
         </div>
 
         <!-- State: Error/No Video -->
@@ -43,14 +43,14 @@
               <line x1="12" x2="12.01" y1="16" y2="16" />
             </svg>
           </div>
-          <span class="status-text" id="error-message">No video found on this page.</span>
+          <span class="status-text" id="error-message">It's quiet... too quiet. No video found here.</span>
         </div>
 
         <!-- State: Success (Video Detected) -->
         <div id="state-success" class="flex flex-col gap-6" hidden>
           <div class="card featured">
             <div class="card-header flex items-center justify-between">
-              <div class="pill" id="video-count-pill">Detected 1 video</div>
+              <div class="pill" id="video-count-pill">Bingo! Video found</div>
               <div class="pill pill-ghost" id="video-kind">Stream</div>
             </div>
             <div class="card-content flex flex-col gap-2">
@@ -66,7 +66,7 @@
 
           <div class="flex flex-col gap-2">
             <button id="create-room" class="btn btn-primary">Create Room</button>
-            <button id="copy-link" class="btn btn-outline">Copy Link</button>
+            <button id="copy-link" class="btn btn-outline">Grab Link</button>
           </div>
         </div>
       </main>
