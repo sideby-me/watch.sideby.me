@@ -1,4 +1,4 @@
-const APP_BASE_URL = 'http://localhost:3000';
+const APP_BASE_URL = 'https://sideby.me';
 
 // DOM Elements
 const stateLoading = document.getElementById('state-loading');
@@ -22,7 +22,7 @@ let selectedIndex = 0;
 async function injectContentScript(tabId) {
   try {
     await chrome.scripting.executeScript({
-      target: { tabId },
+      target: { tabId, allFrames: true },
       files: ['contentScript.js'],
     });
     return true;

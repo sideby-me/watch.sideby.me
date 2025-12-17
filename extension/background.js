@@ -1,11 +1,11 @@
-const APP_BASE_URL = 'http://localhost:3000';
+const APP_BASE_URL = 'https://sideby.me';
 
 chrome.runtime.onInstalled.addListener(() => {
   try {
     chrome.contextMenus.create({
-      id: 'sideby-watch-video',
-      title: 'Watch this video with friends on sideby.me',
-      contexts: ['video'],
+      id: 'sideby-pass',
+      title: 'Play with Sideby Pass',
+      contexts: ['video', 'link'],
     });
   } catch (e) {
     // Context menus may already exist on reinstall; ignore.
@@ -13,13 +13,16 @@ chrome.runtime.onInstalled.addListener(() => {
   }
 });
 
-chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === 'sideby-watch-video' && info.srcUrl) {
-    const params = new URLSearchParams();
-    params.set('videoUrl', info.srcUrl);
-    params.set('autoplay', '1');
+chrome.contextMenus.onClicked.addListener(info => {
+  if (info.menuItemId !== 'sideby-watch-video') return;
 
-    const url = `${APP_BASE_URL}/create?${params.toString()}`;
-    chrome.tabs.create({ url });
-  }
+  const videoUrl = info.srcUrl || info.linkUrl;
+  if (!videoUrl) return;
+
+  const params = new URLSearchParams();
+  params.set('videoUrl', videoUrl);
+  params.set('autoplay', '1');
+
+  const url = `${APP_BASE_URL}/create?${params.toString()}`;
+  chrome.tabs.create({ url });
 });

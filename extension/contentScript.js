@@ -11,23 +11,22 @@
 
     const videos = Array.from(document.querySelectorAll('video'));
     for (const video of videos) {
-      if (video.src && !video.src.startsWith('blob:') && !video.src.startsWith('data:')) {
-        urls.add(video.src);
+      const candidates = new Set();
 
-        if (Number.isFinite(video.currentTime) && video.currentTime > 1) {
-          startAtByUrl.set(video.src, Math.floor(video.currentTime));
-        }
-      }
+      if (video.src) candidates.add(video.src);
+      if (video.currentSrc) candidates.add(video.currentSrc);
 
       const sources = Array.from(video.querySelectorAll('source[src]'));
       for (const source of sources) {
-        const src = source.src;
-        if (src && !src.startsWith('blob:') && !src.startsWith('data:')) {
-          urls.add(src);
+        if (source.src) candidates.add(source.src);
+      }
 
-          if (Number.isFinite(video.currentTime) && video.currentTime > 1) {
-            startAtByUrl.set(src, Math.floor(video.currentTime));
-          }
+      for (const url of candidates) {
+        if (url.startsWith('blob:') || url.startsWith('data:')) continue;
+        urls.add(url);
+
+        if (Number.isFinite(video.currentTime) && video.currentTime > 1) {
+          startAtByUrl.set(url, Math.floor(video.currentTime));
         }
       }
     }
@@ -51,7 +50,10 @@
         if (typeof url !== 'string') continue;
         if (url.startsWith('data:') || url.startsWith('blob:')) continue;
 
-        if (/\.(m3u8|mp4|webm|m4v|ts)(\?|$)/i.test(url)) {
+        const hasExtension = /\.(m3u8|mp4|webm|m4v|ts)(\?|$)/i.test(url);
+        const likelyCdn = /video\.twimg\.com/i.test(url);
+
+        if (hasExtension || likelyCdn) {
           entries.push({ url, startTime: typeof entry.startTime === 'number' ? entry.startTime : 0 });
         }
       }
@@ -74,7 +76,47 @@
     if (/chunklist|segment|seg\d|frag|media-|chunk|part-/.test(lower)) score -= 6;
     if (/\.ts(\?|$)/.test(lower)) score -= 4;
 
+    // Prefer CDN files (twitter/video.twimg.com, etc.) over data/other hosts when scored equally
+    if (/video\.twimg\.com/.test(lower)) score += 5;
+
+    // Down-rank obvious ad/cdn trackers often paired with players
+    if (/doubleclick|adsystem|googlesyndication/.test(lower)) score -= 8;
+
     return score;
+  }
+
+  function normalizeUrl(url) {
+    try {
+      const u = new URL(url);
+      u.hash = '';
+
+      const volatileParams = new Set([
+        'range',
+        'rn',
+        'rbuf',
+        'sq',
+        'tmp',
+        'ts',
+        'token',
+        'signature',
+        'sig',
+        'auth',
+        'exp',
+        'expires',
+        'expiry',
+        'playlist',
+      ]);
+
+      for (const key of Array.from(u.searchParams.keys())) {
+        if (volatileParams.has(key.toLowerCase())) {
+          u.searchParams.delete(key);
+        }
+      }
+
+      return u.toString();
+    } catch (_err) {
+      return url;
+    }
   }
 
   function detectVideos() {
@@ -88,22 +130,28 @@
 
     // DOM-based URLs: treat as very recent so they rank highly
     for (const url of domUrls) {
+      const key = normalizeUrl(url);
       const score = scoreVideoUrl(url);
       const startAt = startAtByUrl.get(url);
-      urlMeta.set(url, { score, time: Number.MAX_SAFE_INTEGER, startAt });
+      const existing = urlMeta.get(key);
+      if (!existing || score > existing.score) {
+        urlMeta.set(key, { score, time: Number.MAX_SAFE_INTEGER, startAt, url });
+      }
     }
 
     // Network-based URLs (HLS playlists, mp4, etc.), keep track of most recent time
     for (const { url, startTime } of getNetworkVideoEntries()) {
+      const key = normalizeUrl(url);
       const score = scoreVideoUrl(url);
-      const existing = urlMeta.get(url);
+      const existing = urlMeta.get(key);
       if (!existing) {
-        urlMeta.set(url, { score, time: startTime, startAt: undefined });
+        urlMeta.set(key, { score, time: startTime, startAt: undefined, url });
       } else {
-        urlMeta.set(url, {
+        urlMeta.set(key, {
           score: Math.max(existing.score, score),
           time: Math.max(existing.time, startTime),
           startAt: existing.startAt,
+          url: existing.url || url,
         });
       }
     }
@@ -113,21 +161,20 @@
       const firstVideo = document.querySelector('video');
       const startAt =
         firstVideo && Number.isFinite(firstVideo.currentTime) ? Math.floor(firstVideo.currentTime) : undefined;
-      urlMeta.set(pageUrl, { score: 5, time: Number.MAX_SAFE_INTEGER, startAt });
+      const key = normalizeUrl(pageUrl);
+      urlMeta.set(key, { score: 5, time: Number.MAX_SAFE_INTEGER, startAt, url: pageUrl });
     }
 
-    const sorted = Array.from(urlMeta.entries()).sort((a, b) => {
-      const aMeta = a[1];
-      const bMeta = b[1];
-      if (bMeta.score !== aMeta.score) return bMeta.score - aMeta.score;
-      return bMeta.time - aMeta.time;
+    const sorted = Array.from(urlMeta.values()).sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return b.time - a.time;
     });
 
     // Cap to a smaller number so we only show the best candidates
-    const limited = sorted.slice(0, 5);
+    const limited = sorted.slice(0, 8);
 
-    return limited.map(([url, meta]) => ({
-      videoUrl: url,
+    return limited.map(meta => ({
+      videoUrl: meta.url,
       pageUrl,
       title,
       startAt: meta.startAt,
