@@ -5,6 +5,13 @@
 
   window.__sidebyContentInjected = true;
 
+  const DETECT_THROTTLE_MS = 300;
+  const FALLBACK_RETRY_MS = 250;
+  let latestVideos = [];
+  let lastNonEmptyVideos = [];
+  let lastNonEmptyPageUrl = '';
+  let detectTimeoutId = null;
+
   function collectDomVideos() {
     const urls = new Set();
     const startAtByUrl = new Map();
@@ -181,10 +188,93 @@
     }));
   }
 
+  function refreshDetectedVideos() {
+    latestVideos = detectVideos();
+
+    if (latestVideos.length) {
+      lastNonEmptyVideos = latestVideos;
+      lastNonEmptyPageUrl = latestVideos[0]?.pageUrl || window.location.href;
+    }
+  }
+
+  function scheduleRefresh() {
+    if (detectTimeoutId) {
+      clearTimeout(detectTimeoutId);
+    }
+
+    detectTimeoutId = setTimeout(() => {
+      detectTimeoutId = null;
+      refreshDetectedVideos();
+    }, DETECT_THROTTLE_MS);
+  }
+
+  function mutationTouchesMedia(mutation) {
+    if (mutation.type === 'childList') {
+      const nodes = [...mutation.addedNodes, ...mutation.removedNodes];
+
+      for (const node of nodes) {
+        if (node.nodeType !== Node.ELEMENT_NODE) continue;
+        const el = node;
+        if (el.matches?.('video, source') || el.querySelector?.('video, source')) {
+          return true;
+        }
+      }
+    }
+
+    if (mutation.type === 'attributes') {
+      const target = mutation.target;
+      if (target instanceof Element && mutation.attributeName === 'src') {
+        if (target.matches('video, source')) return true;
+      }
+    }
+
+    return false;
+  }
+
+  function setupMutationObserver() {
+    if (typeof MutationObserver === 'undefined') return;
+
+    const observer = new MutationObserver(mutations => {
+      for (const mutation of mutations) {
+        if (mutationTouchesMedia(mutation)) {
+          scheduleRefresh();
+          break;
+        }
+      }
+    });
+
+    const target = document.documentElement || document.body;
+
+    if (target) {
+      observer.observe(target, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['src'],
+      });
+    }
+  }
+
+  refreshDetectedVideos();
+  setupMutationObserver();
+
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message && message.type === 'GET_VIDEO_INFO') {
-      const videos = detectVideos();
-      sendResponse({ videos });
+      refreshDetectedVideos();
+
+      if (latestVideos.length) {
+        sendResponse({ videos: latestVideos });
+      } else {
+        setTimeout(() => {
+          refreshDetectedVideos();
+          const videosToSend = latestVideos.length
+            ? latestVideos
+            : lastNonEmptyVideos.length && lastNonEmptyPageUrl === window.location.href
+              ? lastNonEmptyVideos
+              : latestVideos;
+          sendResponse({ videos: videosToSend });
+        }, FALLBACK_RETRY_MS);
+      }
     }
     // Indicate we may respond asynchronously (harmless even when we don't).
     return true;

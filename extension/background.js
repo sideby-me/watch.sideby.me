@@ -14,7 +14,7 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 chrome.contextMenus.onClicked.addListener(info => {
-  if (info.menuItemId !== 'sideby-watch-video') return;
+  if (info.menuItemId !== 'sideby-pass') return;
 
   const videoUrl = info.srcUrl || info.linkUrl;
   if (!videoUrl) return;
