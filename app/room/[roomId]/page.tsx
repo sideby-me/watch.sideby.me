@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useSocket } from '@/hooks/use-socket';
 import { useRoom } from '@/hooks/use-room';
 import { useVideoSync } from '@/hooks/use-video-sync';
@@ -45,6 +45,7 @@ type ClientVideoMeta = {
 export default function RoomPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const roomId = params.roomId as string;
   const { socket } = useSocket();
 
@@ -52,6 +53,8 @@ export default function RoomPage() {
   const youtubePlayerRef = useRef<YouTubePlayerRef>(null);
   const videoPlayerRef = useRef<VideoPlayerRef>(null);
   const hlsPlayerRef = useRef<HLSPlayerRef>(null);
+  const initialVideoAppliedRef = useRef(false);
+  const autoplayTriggeredRef = useRef(false);
 
   // Use room hook for state and basic room operations
   const {
@@ -136,6 +139,9 @@ export default function RoomPage() {
     hlsPlayerRef,
   });
 
+  const initialVideoUrlFromQuery = searchParams.get('videoUrl');
+  const autoplayParam = searchParams.get('autoplay');
+
   // Voice chat hook (must be before any early returns)
   const voice = useVoiceChat({ roomId, currentUser });
   const videochat = useVideoChat({ roomId, currentUser });
@@ -215,6 +221,16 @@ export default function RoomPage() {
     onControlAttempt: handleVideoControlAttempt,
   });
 
+  useEffect(() => {
+    if (!room || !currentUser?.isHost) return;
+    if (!initialVideoUrlFromQuery || initialVideoAppliedRef.current) return;
+
+    if (!room.videoUrl) {
+      handleSetVideo(initialVideoUrlFromQuery);
+      initialVideoAppliedRef.current = true;
+    }
+  }, [room, currentUser, initialVideoUrlFromQuery, handleSetVideo]);
+
   // Handle video sync events from socket
   useEffect(() => {
     if (!socket) return;
@@ -275,6 +291,38 @@ export default function RoomPage() {
       stopSyncCheck();
     };
   }, [currentUser?.isHost, room?.videoUrl, startSyncCheck, stopSyncCheck]);
+
+  useEffect(() => {
+    if (!room || !currentUser?.isHost) return;
+    if (autoplayTriggeredRef.current) return;
+    if (autoplayParam !== '1') return;
+
+    const hasVideo = !!room.videoUrl || !!(room as unknown as { videoMeta?: ClientVideoMeta }).videoMeta?.playbackUrl;
+    if (!hasVideo) return;
+
+    const player = getActivePlayer();
+    if (!player) return;
+
+    autoplayTriggeredRef.current = true;
+
+    try {
+      // Best-effort autoplay; may be blocked by browser policies.
+      const maybePromise = (player as YouTubePlayerRef | VideoPlayerRef | HLSPlayerRef).play?.();
+      if (maybePromise && typeof maybePromise.then === 'function') {
+        maybePromise
+          .then(() => {
+            handleVideoPlay();
+          })
+          .catch(() => {
+            // Autoplay blocked; user can press play manually.
+          });
+      } else {
+        handleVideoPlay();
+      }
+    } catch {
+      // Ignore autoplay errors; user can still play manually.
+    }
+  }, [room, currentUser, autoplayParam, getActivePlayer, handleVideoPlay]);
 
   // Handle errors
   if (error) {

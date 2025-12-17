@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { AtSign, PenLine, Play, User, LucideIcon, BadgePlus, Dices } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -37,7 +38,26 @@ function FeatureCard({ icon: IconComponent, title }: { icon: LucideIcon; title: 
 }
 
 export default function CreateRoomPage() {
-  const { hostName, setHostName, isLoading, error, isConnected, isInitialized, handleCreateRoom } = useCreateRoom();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  const videoUrl = searchParams.get('videoUrl');
+  const autoplayParam = searchParams.get('autoplay') ?? '1';
+
+  const { hostName, setHostName, isLoading, error, isConnected, isInitialized, handleCreateRoom } = useCreateRoom({
+    onRoomCreated: ({ roomId }) => {
+      const params = new URLSearchParams();
+      if (videoUrl) {
+        params.set('videoUrl', videoUrl);
+      }
+      if (autoplayParam === '1') {
+        params.set('autoplay', '1');
+      }
+
+      const query = params.toString();
+      router.push(`/room/${roomId}${query ? `?${query}` : ''}`);
+    },
+  });
   // Keep a deterministic placeholder for SSR and update to a random one on the client
   const [placeholder, setPlaceholder] = useState<string>('e.g., Silly Penguin');
 

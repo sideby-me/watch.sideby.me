@@ -17,7 +17,11 @@ interface UseCreateRoomReturn {
   handleCreateRoom: (e: React.FormEvent) => Promise<void>;
 }
 
-export function useCreateRoom(): UseCreateRoomReturn {
+interface UseCreateRoomOptions {
+  onRoomCreated?: (args: { roomId: string; hostToken: string }) => void;
+}
+
+export function useCreateRoom(options?: UseCreateRoomOptions): UseCreateRoomReturn {
   const [hostName, setHostName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -51,8 +55,13 @@ export function useCreateRoom(): UseCreateRoomReturn {
             hostName: validatedData.hostName,
             hostToken,
           });
-          // Navigate immediately - the room page will handle the room-created event
-          router.push(`/room/${roomId}`);
+
+          if (options?.onRoomCreated) {
+            options.onRoomCreated({ roomId, hostToken });
+          } else {
+            // Navigate immediately - the room page will handle the room-created event
+            router.push(`/room/${roomId}`);
+          }
         });
 
         socket.once('room-error', ({ error }) => {
@@ -70,7 +79,7 @@ export function useCreateRoom(): UseCreateRoomReturn {
         }
       }
     },
-    [hostName, socket, isConnected, router]
+    [hostName, socket, isConnected, router, options]
   );
 
   return {
