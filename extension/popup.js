@@ -1,4 +1,4 @@
-const APP_BASE_URL = 'https://sideby.me';
+const APP_BASE_URL = 'http://localhost:3000';
 
 // DOM Elements
 const stateLoading = document.getElementById('state-loading');
@@ -80,6 +80,7 @@ function buildCreateUrl(info) {
   if (info.videoUrl) params.set('videoUrl', info.videoUrl);
   if (info.pageUrl) params.set('source', info.pageUrl);
   if (info.title) params.set('title', info.title);
+  if (Number.isFinite(info.startAt) && info.startAt > 0) params.set('startAt', String(Math.floor(info.startAt)));
   params.set('autoplay', '1');
   return `${APP_BASE_URL}/create?${params.toString()}`;
 }
@@ -109,28 +110,29 @@ async function init() {
         return;
       }
 
-      const videos = response?.videos || [];
+      try {
+        const videos = Array.isArray(response?.videos) ? response.videos : [];
 
-      if (!videos.length) {
-        errorMessage.textContent = 'No video found. Try playing it first.';
-        showState('error');
-        return;
-      }
+        if (!videos.length) {
+          errorMessage.textContent = 'No video found. Try playing it first.';
+          showState('error');
+          return;
+        }
 
-      detectedVideos = videos;
-      selectedIndex = 0;
+        detectedVideos = videos;
+        selectedIndex = 0;
 
-      videoCountPill.textContent = `Detected ${videos.length} ${videos.length === 1 ? 'video' : 'videos'}`;
+        videoCountPill.textContent = `Detected ${videos.length} ${videos.length === 1 ? 'video' : 'videos'}`;
 
-      videoList.innerHTML = '';
-      videos.forEach((v, i) => {
-        const kind = getVideoKind(v.videoUrl);
-        const host = getHost(v.videoUrl);
-        const item = document.createElement('button');
-        item.type = 'button';
-        item.className = 'video-item';
-        item.dataset.index = String(i);
-        item.innerHTML = `
+        videoList.innerHTML = '';
+        videos.forEach((v, i) => {
+          const kind = getVideoKind(v.videoUrl);
+          const host = getHost(v.videoUrl);
+          const item = document.createElement('button');
+          item.type = 'button';
+          item.className = 'video-item';
+          item.dataset.index = String(i);
+          item.innerHTML = `
           <div class="video-item__meta">
             <span class="pill pill-ghost">${kind}</span>
             <span class="text-xs text-muted-foreground">${host}</span>
@@ -139,16 +141,21 @@ async function init() {
           <div class="video-item__url mono text-xs truncate">${v.videoUrl}</div>
         `;
 
-        item.addEventListener('click', () => {
-          selectedIndex = i;
-          updateVideoInfo(i);
+          item.addEventListener('click', () => {
+            selectedIndex = i;
+            updateVideoInfo(i);
+          });
+
+          videoList.appendChild(item);
         });
 
-        videoList.appendChild(item);
-      });
-
-      updateVideoInfo(0);
-      showState('success');
+        updateVideoInfo(0);
+        showState('success');
+      } catch (err) {
+        console.error('Failed to render detected videos', err);
+        errorMessage.textContent = 'Could not read video info from this page.';
+        showState('error');
+      }
     });
   } catch (err) {
     console.error('Popup init failed:', err);

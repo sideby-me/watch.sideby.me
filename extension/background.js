@@ -1,4 +1,4 @@
-const APP_BASE_URL = 'https://sideby.me';
+const APP_BASE_URL = 'http://localhost:3000';
 
 chrome.runtime.onInstalled.addListener(() => {
   try {
