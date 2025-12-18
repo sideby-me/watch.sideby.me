@@ -22,7 +22,7 @@ interface ProbeResult {
 function classify(url: string): {
   kind: 'youtube' | 'hls' | 'file';
   videoType: RoomVideoMeta['videoType'];
-  hints: { hlsPath?: boolean; extensionless?: boolean; signedQuery?: boolean };
+  hints: { hlsPath?: boolean; extensionless?: boolean; signedQuery?: boolean; directRequired?: boolean };
 } {
   try {
     const u = new URL(url);
@@ -34,6 +34,12 @@ function classify(url: string): {
       return { kind: 'youtube', videoType: 'youtube', hints: {} };
     }
 
+    // Instagram/Facebook CDN URLs have IP-bound tokens and strict hotlink protection so they must be fetched directly by the browser (not proxied) to work correctly
+    const isFacebookCDN =
+      /fbcdn\.net$/.test(hostname) ||
+      /cdninstagram\.com$/.test(hostname) ||
+      /instagram\..+\.fna\.fbcdn\.net$/.test(hostname);
+
     const hlsPath =
       /\.m3u8(\?.*)?$/i.test(pathname) ||
       pathname.includes('/hls/') ||
@@ -42,13 +48,13 @@ function classify(url: string): {
       pathname.includes('/live/');
 
     if (hlsPath) {
-      return { kind: 'hls', videoType: 'm3u8', hints: { hlsPath } };
+      return { kind: 'hls', videoType: 'm3u8', hints: { hlsPath, directRequired: isFacebookCDN } };
     }
 
     const extensionless = !(pathname.split('/').pop() || '').includes('.');
     const signedQuery = /(?:token|signature|sig|expires|expiry|exp)=/i.test(search);
 
-    return { kind: 'file', videoType: null, hints: { hlsPath, extensionless, signedQuery } };
+    return { kind: 'file', videoType: null, hints: { hlsPath, extensionless, signedQuery, directRequired: isFacebookCDN } };
   } catch {
     return { kind: 'file', videoType: null, hints: {} };
   }
@@ -135,6 +141,22 @@ export async function resolveSource(rawUrl: string): Promise<RoomVideoMeta> {
       timestamp,
     };
   }
+
+  // Instagram/Facebook CDN URLs must be fetched directly by the browser
+  if (hints.directRequired) {
+    decisionReasons.push('direct-required-cdn');
+    return {
+      originalUrl,
+      playbackUrl: originalUrl,
+      deliveryType: 'file-direct',
+      videoType: legacyVideoType,
+      requiresProxy: false,
+      decisionReasons,
+      probe: { status: 0 },
+      timestamp,
+    };
+  }
+
   if (kind === 'hls') {
     decisionReasons.push('hls-manifest');
     return {
