@@ -128,28 +128,44 @@ export async function GET(req: NextRequest) {
     return fetch(validated.toString(), { headers, redirect: 'follow', signal: controller.signal });
   };
 
-  // First attempt (with range if provided)
-  let upstream = await doFetch(!!range);
+  let upstream: Response;
+  try {
+    // First attempt (with range if provided)
+    upstream = await doFetch(!!range);
 
-  // If a 403 and we used Range, retry without Range (some WAFs block mid-file byte ranges)
-  if (upstream.status === 403 && range) {
-    upstream = await doFetch(false);
-  }
+    // If a 403 and we used Range, retry without Range (some WAFs block mid-file byte ranges)
+    if (upstream.status === 403 && range) {
+      upstream = await doFetch(false);
+    }
 
-  // If upstream blocks due to referer/origin, retry once with minimal headers (no referer/origin/range)
-  if (
-    upstream.status === 401 ||
-    upstream.status === 403 ||
-    upstream.status === 502 ||
-    upstream.status === 503 ||
-    upstream.status === 504
-  ) {
-    const minimalHeaders = { 'User-Agent': forwardHeaders['User-Agent'], Accept: '*/*' };
-    upstream = await fetch(validated.toString(), {
-      headers: minimalHeaders,
-      redirect: 'follow',
-      signal: controller.signal,
-    });
+    // If upstream blocks due to referer/origin, retry once with minimal headers (no referer/origin/range)
+    if (
+      upstream.status === 401 ||
+      upstream.status === 403 ||
+      upstream.status === 502 ||
+      upstream.status === 503 ||
+      upstream.status === 504
+    ) {
+      const minimalHeaders = { 'User-Agent': forwardHeaders['User-Agent'], Accept: '*/*' };
+      upstream = await fetch(validated.toString(), {
+        headers: minimalHeaders,
+        redirect: 'follow',
+        signal: controller.signal,
+      });
+    }
+  } catch (fetchError) {
+    const errorMessage = fetchError instanceof Error ? fetchError.message : 'Unknown fetch error';
+    console.error('[video-proxy] Fetch error:', errorMessage, 'URL:', validated.toString().slice(0, 200));
+    return NextResponse.json(
+      { error: 'Failed to fetch upstream video', detail: errorMessage },
+      {
+        status: 502,
+        headers: {
+          'x-proxy-reason': 'fetch-error',
+          'x-proxy-error': errorMessage.slice(0, 100),
+        },
+      }
+    );
   }
 
   if (!upstream.ok && upstream.status !== 206) {
