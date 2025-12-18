@@ -54,7 +54,11 @@ function classify(url: string): {
     const extensionless = !(pathname.split('/').pop() || '').includes('.');
     const signedQuery = /(?:token|signature|sig|expires|expiry|exp)=/i.test(search);
 
-    return { kind: 'file', videoType: null, hints: { hlsPath, extensionless, signedQuery, directRequired: isFacebookCDN } };
+    return {
+      kind: 'file',
+      videoType: null,
+      hints: { hlsPath, extensionless, signedQuery, directRequired: isFacebookCDN },
+    };
   } catch {
     return { kind: 'file', videoType: null, hints: {} };
   }
