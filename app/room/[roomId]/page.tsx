@@ -395,7 +395,7 @@ export default function RoomPage() {
         <GuestInfoBanner onLearnMore={() => setShowHostDialog(true)} onDismiss={() => setShowGuestInfoBanner(false)} />
       )}
 
-      <div className="grid gap-6 xl:grid-cols-4 grid-cols-1">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-4">
         {/* Main Content */}
         <div className="col-span-full xl:col-span-3">
           {/* Video Player */}
