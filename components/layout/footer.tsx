@@ -16,9 +16,9 @@ const socialLinks = [
   { href: 'https://x.com/_sidebyme', label: 'Twitter', Icon: Twitter },
 ];
 
-const legalLinks = [
-  { href: '/legal', label: 'Legal' },
+const otherLinks = [
   { href: '/feedback', label: 'Give Feedback' },
+  { href: 'https://buymeacoffee.com/sidebyme', label: 'Buy Me a Coffee', external: true },
 ];
 
 const policyLinks = [
@@ -26,9 +26,9 @@ const policyLinks = [
   { href: '/terms', label: 'Terms of Service' },
 ];
 
-const otherLinks = [
+const legalLinks = [
+  { href: '/legal', label: 'Legal' },
   { href: '/cookie-policy', label: 'Cookie Policy' },
-  { href: '/sitemap', label: 'Sitemap' },
 ];
 
 export function Footer() {
@@ -94,11 +94,23 @@ export function Footer() {
             ))}
           </div>
           <div className="flex min-w-36 flex-1 flex-col items-start gap-4">
-            {otherLinks.map(l => (
-              <Link key={l.href} href={l.href} className={footerLink}>
-                {l.label}
-              </Link>
-            ))}
+            {otherLinks.map(l =>
+              l.external ? (
+                <a
+                  key={l.href}
+                  href={l.href}
+                  className={footerLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {l.label}
+                </a>
+              ) : (
+                <Link key={l.href} href={l.href} className={footerLink}>
+                  {l.label}
+                </Link>
+              )
+            )}
           </div>
         </div>
 
