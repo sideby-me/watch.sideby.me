@@ -3,7 +3,8 @@
   "name": "Sideby Pass",
   "description": "Ready to watch? Just pass it.",
   "version": "0.1.0",
-  "permissions": ["tabs", "activeTab", "scripting", "contextMenus"],
+  "permissions": ["tabs", "activeTab", "scripting", "contextMenus", "webRequest"],
+  "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"
   },
@@ -20,11 +21,5 @@
       "16": "icon-16.png",
       "32": "icon-32.png"
     }
-  },
-  "web_accessible_resources": [
-    {
-      "resources": ["page-sniffer.js"],
-      "matches": ["<all_urls>"]
-    }
-  ]
+  }
 }

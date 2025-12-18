@@ -19,25 +19,17 @@ const copyLinkBtn = document.getElementById('copy-link');
 
 let detectedVideos = [];
 let selectedIndex = 0;
+let pageInfo = { title: '', pageUrl: '' };
 
-async function injectContentScript(tabId) {
-  try {
-    await chrome.scripting.executeScript({
-      target: { tabId, allFrames: true },
-      files: ['contentScript.js'],
-    });
-    return true;
-  } catch (err) {
-    console.warn('Failed to inject content script', err);
-    return false;
-  }
-}
+// ============================================================================
+// HELPERS
+// ============================================================================
 
 function getVideoKind(url) {
   if (/\.m3u8(\?|$)/i.test(url)) return 'HLS';
   if (/\.(mp4|m4v)(\?|$)/i.test(url)) return 'MP4';
   if (/\.webm(\?|$)/i.test(url)) return 'WebM';
-  return 'Stream';
+  return 'Video';
 }
 
 function getHost(url) {
@@ -45,8 +37,16 @@ function getHost(url) {
     const host = new URL(url).hostname;
     return host.replace(/^www\./, '');
   } catch (_err) {
-    return 'this page';
+    return 'unknown';
   }
+}
+
+function formatSize(bytes) {
+  if (!bytes) return '';
+  if (bytes > 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(1)} GB`;
+  if (bytes > 1_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`;
+  if (bytes > 1_000) return `${(bytes / 1_000).toFixed(0)} KB`;
+  return `${bytes} B`;
 }
 
 function showState(state) {
@@ -59,24 +59,30 @@ function showState(state) {
   else if (state === 'success') stateSuccess.hidden = false;
 }
 
+// ============================================================================
+// UI UPDATES
+// ============================================================================
+
 function updateVideoInfo(index) {
   if (!detectedVideos[index]) return;
   const video = detectedVideos[index];
 
-  videoTitle.textContent = video.title || 'Untitled Video';
-  videoTitle.title = video.title || ''; // Tooltip for truncated text
-  const quality = video.quality;
-  if (quality) {
+  videoTitle.textContent = pageInfo.title || 'Untitled Video';
+  videoTitle.title = pageInfo.title || '';
+
+  // Show file size as quality indicator
+  if (video.size) {
     videoQuality.hidden = false;
-    videoQuality.textContent = quality;
-    videoQuality.title = `Detected quality: ${quality}`;
+    videoQuality.textContent = formatSize(video.size);
+    videoQuality.title = `File size: ${formatSize(video.size)}`;
   } else {
     videoQuality.hidden = true;
   }
-  videoUrl.textContent = video.videoUrl;
-  videoUrl.title = video.videoUrl;
-  pageHost.textContent = getHost(video.pageUrl || video.videoUrl);
-  videoKind.textContent = getVideoKind(video.videoUrl);
+
+  videoUrl.textContent = video.url;
+  videoUrl.title = video.url;
+  pageHost.textContent = getHost(pageInfo.pageUrl || video.url);
+  videoKind.textContent = getVideoKind(video.url);
 
   const items = Array.from(videoList.querySelectorAll('.video-item'));
   items.forEach(item => {
@@ -84,16 +90,48 @@ function updateVideoInfo(index) {
   });
 }
 
-function buildCreateUrl(info) {
+function renderVideoList(videos) {
+  videoList.innerHTML = '';
+
+  videos.forEach((v, i) => {
+    const kind = getVideoKind(v.url);
+    const host = getHost(v.url);
+    const size = v.size ? formatSize(v.size) : '';
+
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'video-item';
+    item.dataset.index = String(i);
+    item.innerHTML = `
+      <div class="video-item__meta">
+        <span class="pill pill-ghost">${kind}</span>
+        ${size ? `<span class="pill pill-ghost">${size}</span>` : ''}
+        <span class="text-xs text-muted-foreground">${host}</span>
+      </div>
+      <div class="video-item__url mono text-xs truncate">${v.url}</div>
+    `;
+
+    item.addEventListener('click', () => {
+      selectedIndex = i;
+      updateVideoInfo(i);
+    });
+
+    videoList.appendChild(item);
+  });
+}
+
+function buildCreateUrl(videoUrl) {
   const params = new URLSearchParams();
-  if (info.videoUrl) params.set('videoUrl', info.videoUrl);
-  if (info.pageUrl) params.set('source', info.pageUrl);
-  if (info.title) params.set('title', info.title);
-  if (Number.isFinite(info.startAt) && info.startAt > 0) params.set('startAt', String(Math.floor(info.startAt)));
-  if (info.quality) params.set('quality', info.quality);
+  params.set('videoUrl', videoUrl);
+  if (pageInfo.pageUrl) params.set('source', pageInfo.pageUrl);
+  if (pageInfo.title) params.set('title', pageInfo.title);
   params.set('autoplay', '1');
   return `${APP_BASE_URL}/create?${params.toString()}`;
 }
+
+// ============================================================================
+// INITIALIZATION
+// ============================================================================
 
 async function init() {
   showState('loading');
@@ -104,68 +142,61 @@ async function init() {
       throw new Error("Couldn't find active tab");
     }
 
-    const injected = await injectContentScript(tab.id);
-    if (!injected) {
-      errorMessage.textContent = 'Cannot access this page. Try another tab.';
-      showState('error');
-      return;
+    // Inject content script (for DOM scanning)
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id, allFrames: true },
+        files: ['contentScript.js'],
+      });
+    } catch (err) {
+      console.warn('Failed to inject content script', err);
     }
 
-    chrome.tabs.sendMessage(tab.id, { type: 'GET_VIDEO_INFO' }, response => {
-      // Handle connection errors (e.g., content script not loaded)
+    // Get page info from content script
+    try {
+      const info = await chrome.tabs.sendMessage(tab.id, { type: 'GET_PAGE_INFO' });
+      if (info) {
+        pageInfo = info;
+      }
+    } catch (err) {
+      // Use tab info as fallback
+      pageInfo = { title: tab.title || '', pageUrl: tab.url || '' };
+    }
+
+    // Trigger DOM scan
+    try {
+      await chrome.tabs.sendMessage(tab.id, { type: 'SCAN_DOM' });
+    } catch (err) {
+      console.warn('DOM scan failed', err);
+    }
+
+    // Small delay to let DOM videos register
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    // Get videos from background script
+    chrome.runtime.sendMessage({ type: 'GET_VIDEOS', tabId: tab.id }, response => {
       if (chrome.runtime.lastError) {
         console.warn('Runtime error:', chrome.runtime.lastError.message);
-        errorMessage.textContent = 'Refresh the page to detect videos.';
+        errorMessage.textContent = 'Could not detect videos.';
         showState('error');
         return;
       }
 
-      try {
-        const videos = Array.isArray(response?.videos) ? response.videos : [];
+      const videos = Array.isArray(response?.videos) ? response.videos : [];
 
-        if (!videos.length) {
-          errorMessage.textContent = 'No video found. Try playing it first.';
-          showState('error');
-          return;
-        }
-
-        detectedVideos = videos;
-        selectedIndex = 0;
-
-        videoCountPill.textContent = `Detected ${videos.length} ${videos.length === 1 ? 'video' : 'videos'}`;
-
-        videoList.innerHTML = '';
-        videos.forEach((v, i) => {
-          const kind = getVideoKind(v.videoUrl);
-          const host = getHost(v.videoUrl);
-          const item = document.createElement('button');
-          item.type = 'button';
-          item.className = 'video-item';
-          item.dataset.index = String(i);
-          item.innerHTML = `
-          <div class="video-item__meta">
-            <span class="pill pill-ghost">${kind}</span>
-            <span class="text-xs text-muted-foreground">${host}</span>
-          </div>
-          <div class="video-item__title truncate">${v.title || 'Untitled video'}</div>
-          <div class="video-item__url mono text-xs truncate">${v.videoUrl}</div>
-        `;
-
-          item.addEventListener('click', () => {
-            selectedIndex = i;
-            updateVideoInfo(i);
-          });
-
-          videoList.appendChild(item);
-        });
-
-        updateVideoInfo(0);
-        showState('success');
-      } catch (err) {
-        console.error('Failed to render detected videos', err);
-        errorMessage.textContent = 'Could not read video info from this page.';
+      if (!videos.length) {
+        errorMessage.textContent = 'No video found. Try playing it first.';
         showState('error');
+        return;
       }
+
+      detectedVideos = videos;
+      selectedIndex = 0;
+
+      videoCountPill.textContent = `${videos.length} ${videos.length === 1 ? 'video' : 'videos'}`;
+      renderVideoList(videos);
+      updateVideoInfo(0);
+      showState('success');
     });
   } catch (err) {
     console.error('Popup init failed:', err);
@@ -174,18 +205,22 @@ async function init() {
   }
 }
 
+// ============================================================================
+// EVENT HANDLERS
+// ============================================================================
+
 createRoomBtn.addEventListener('click', () => {
   if (!detectedVideos[selectedIndex]) return;
-  const url = buildCreateUrl(detectedVideos[selectedIndex]);
+  const url = buildCreateUrl(detectedVideos[selectedIndex].url);
   chrome.tabs.create({ url });
 });
 
 copyLinkBtn.addEventListener('click', async () => {
   if (!detectedVideos[selectedIndex]) return;
-  const url = buildCreateUrl(detectedVideos[selectedIndex]);
+  const rawVideoUrl = detectedVideos[selectedIndex].url;
 
   try {
-    await navigator.clipboard.writeText(url);
+    await navigator.clipboard.writeText(rawVideoUrl);
     const originalText = copyLinkBtn.textContent;
     copyLinkBtn.textContent = 'Copied!';
     setTimeout(() => {
