@@ -1,4 +1,4 @@
-const APP_BASE_URL = 'https://sideby.me';
+const APP_BASE_URL = 'http://localhost:3000';
 
 // DOM Elements
 const stateLoading = document.getElementById('state-loading');
@@ -21,14 +21,10 @@ let detectedVideos = [];
 let selectedIndex = 0;
 let pageInfo = { title: '', pageUrl: '' };
 
-// ============================================================================
-// HELPERS
-// ============================================================================
-
+// Helpers
 function getVideoKind(url) {
   if (/\.m3u8(\?|$)/i.test(url)) return 'HLS';
   if (/\.(mp4|m4v)(\?|$)/i.test(url)) return 'MP4';
-  if (/\.webm(\?|$)/i.test(url)) return 'WebM';
   return 'Video';
 }
 
@@ -59,16 +55,15 @@ function showState(state) {
   else if (state === 'success') stateSuccess.hidden = false;
 }
 
-// ============================================================================
-// UI UPDATES
-// ============================================================================
-
+// UI Updates
 function updateVideoInfo(index) {
   if (!detectedVideos[index]) return;
   const video = detectedVideos[index];
 
-  videoTitle.textContent = pageInfo.title || 'Untitled Video';
-  videoTitle.title = pageInfo.title || '';
+  // Use video title if available (from API parsing), otherwise page title
+  const title = video.title || pageInfo.title || 'Untitled Video';
+  videoTitle.textContent = title;
+  videoTitle.title = title;
 
   // Show file size as quality indicator
   if (video.size) {
@@ -97,6 +92,8 @@ function renderVideoList(videos) {
     const kind = getVideoKind(v.url);
     const host = getHost(v.url);
     const size = v.size ? formatSize(v.size) : '';
+    const quality = v.quality || '';
+    const source = v.source || '';
 
     const item = document.createElement('button');
     item.type = 'button';
@@ -105,7 +102,9 @@ function renderVideoList(videos) {
     item.innerHTML = `
       <div class="video-item__meta">
         <span class="pill pill-ghost">${kind}</span>
+        ${quality ? `<span class="pill pill-ghost">${quality}</span>` : ''}
         ${size ? `<span class="pill pill-ghost">${size}</span>` : ''}
+        ${source ? `<span class="pill pill-ghost">${source}</span>` : ''}
         <span class="text-xs text-muted-foreground">${host}</span>
       </div>
       <div class="video-item__url mono text-xs truncate">${v.url}</div>
@@ -129,10 +128,7 @@ function buildCreateUrl(videoUrl) {
   return `${APP_BASE_URL}/create?${params.toString()}`;
 }
 
-// ============================================================================
-// INITIALIZATION
-// ============================================================================
-
+// Initialization
 async function init() {
   showState('loading');
 
@@ -205,10 +201,7 @@ async function init() {
   }
 }
 
-// ============================================================================
-// EVENT HANDLERS
-// ============================================================================
-
+// Event Handlers
 createRoomBtn.addEventListener('click', () => {
   if (!detectedVideos[selectedIndex]) return;
   const url = buildCreateUrl(detectedVideos[selectedIndex].url);

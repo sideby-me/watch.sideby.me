@@ -1,5 +1,4 @@
 :root {
-  /* Design Tokens from globals.css */
   --font-space-grotesk: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
   --radius: 0.75rem;
 
@@ -370,8 +369,10 @@ body {
 .video-item__meta {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   font-size: 12px;
+  flex-wrap: wrap;
+  overflow: hidden;
 }
 
 .video-item__title {
@@ -383,7 +384,7 @@ body {
   color: hsl(var(--muted-foreground));
 }
 
-/* Utility for hiding elements */
+/* Utilities */
 [hidden] {
   display: none !important;
 }

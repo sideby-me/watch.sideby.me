@@ -1,19 +1,18 @@
-const APP_BASE_URL = 'https://sideby.me';
+const APP_BASE_URL = 'http://localhost:3000';
 
-// ============================================================================
-// VIDEO DETECTION VIA WEBREQUEST API
-// ============================================================================
+// Sideby Pass - Background Script
+// Video detection via webrequest API
 
-// Store detected video URLs per tab: Map<tabId, Map<url, VideoInfo>>
+// Store detected video URLs per tab
 const videosByTab = new Map();
 
-// Configuration
-const MIN_VIDEO_SIZE_BYTES = 500_000; // 500KB - filter out small segments
+// Config
+const MIN_VIDEO_SIZE_BYTES = 500_000; // Filter out small segments
 const MAX_RESULTS = 5;
-const ENTRY_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const ENTRY_TTL_MS = 10 * 60 * 1000;
 
 // Patterns for video detection
-const VIDEO_EXTENSIONS = /\.(mp4|m4v|webm|mov|m3u8)(\?|#|$)/i;
+const VIDEO_EXTENSIONS = /\.(mp4|m4v|mov|m3u8)(\?|#|$)/i;
 const SEGMENT_EXTENSIONS = /\.(ts|m4s|m4a)(\?|#|$)/i;
 const VIDEO_CONTENT_TYPES = /^(video\/|application\/(vnd\.apple\.mpegurl|x-mpegurl))/i;
 
@@ -23,16 +22,32 @@ const SEGMENT_PATTERNS = [
   /[_\-/]init[_\-]?\d*\.(mp4|m4s)/i,
   /[&?]range=\d+[_\-]\d+/i,
   /\/range\/\d+/i,
+  // Byte-range requests (Instagram uses these for segments)
+  /[&?]bytestart=/i,
+  /[&?]byteend=/i,
 ];
 
 // Patterns to identify audio-only (should be filtered out)
 const AUDIO_ONLY_PATTERNS = [/[_\-/]audio[_\-/]/i, /audio[_\-]only/i, /\.m4a(\?|#|$)/i, /\.aac(\?|#|$)/i];
 
-/**
- * Check if URL looks like a playable video (not a segment)
- */
+// Check if URL looks like a playable video (not a segment)
 function isPlayableVideo(url, contentType, size) {
   const lower = url.toLowerCase();
+
+  // Allow YouTube URLs through (they're played directly by our player)
+  if (lower.includes('youtube.com/watch') || lower.includes('youtube.com/shorts/') || lower.includes('youtu.be/')) {
+    return true;
+  }
+
+  // Filter out webm files
+  if (/\.webm(\?|#|$)/i.test(lower)) {
+    return false;
+  }
+
+  // Filter out m4s segment files
+  if (/\.m4s(\?|#|$)/i.test(lower)) {
+    return false;
+  }
 
   // Must have video extension or content type
   const hasVideoExt = VIDEO_EXTENSIONS.test(lower);
@@ -66,20 +81,17 @@ function isPlayableVideo(url, contentType, size) {
   return true;
 }
 
-/**
- * Score a video URL (higher = better)
- */
-function scoreVideo(url, size) {
+// Score a video URL (higher = better)
+function scoreVideo(url, size, source) {
   let score = 10;
 
   const lower = url.toLowerCase();
 
   // Boost by extension
   if (/\.mp4(\?|#|$)/i.test(lower)) score += 20;
-  else if (/\.webm(\?|#|$)/i.test(lower)) score += 15;
   else if (/\.m3u8(\?|#|$)/i.test(lower)) score += 25; // Master playlist
 
-  // Boost by size (larger = more likely complete video)
+  // Boost by size
   if (size) {
     if (size > 50_000_000)
       score += 30; // >50MB
@@ -92,12 +104,15 @@ function scoreVideo(url, size) {
   if (/1080|1920|hd|high/i.test(lower)) score += 5;
   if (/720|sd/i.test(lower)) score += 3;
 
+  // Boost videos from API parsing (instagram, twitter, etc.)
+  if (source === 'instagram' || source === 'twitter' || source === 'api') {
+    score += 50;
+  }
+
   return score;
 }
 
-/**
- * Get filtered and sorted videos for a tab
- */
+// Get filtered and sorted videos for a tab
 function getVideosForTab(tabId) {
   const tabVideos = videosByTab.get(tabId);
   if (!tabVideos) return [];
@@ -120,8 +135,11 @@ function getVideosForTab(tabId) {
     results.push({
       url,
       size: info.size,
-      score: scoreVideo(url, info.size),
+      score: scoreVideo(url, info.size, info.source),
       timestamp: info.timestamp,
+      quality: info.quality,
+      source: info.source,
+      title: info.title,
     });
   }
 
@@ -134,10 +152,7 @@ function getVideosForTab(tabId) {
   return results.slice(0, MAX_RESULTS);
 }
 
-// ============================================================================
-// WEBREQUEST LISTENER
-// ============================================================================
-
+// Webrequest listener
 chrome.webRequest.onCompleted.addListener(
   details => {
     try {
@@ -175,9 +190,7 @@ chrome.webRequest.onCompleted.addListener(
           timestamp: Date.now(),
         });
       }
-    } catch (e) {
-      // Silently ignore errors
-    }
+    } catch (e) {}
   },
   { urls: ['<all_urls>'], types: ['media', 'xmlhttprequest', 'other'] },
   ['responseHeaders']
@@ -188,10 +201,7 @@ chrome.tabs.onRemoved.addListener(tabId => {
   videosByTab.delete(tabId);
 });
 
-// ============================================================================
-// MESSAGE HANDLERS
-// ============================================================================
-
+// Message handlers
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === 'GET_VIDEOS') {
     const tabId = message.tabId;
@@ -227,12 +237,57 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     return true;
   }
+
+  // Handle videos from XHR/fetch interception (watcher.js)
+  if (message?.type === 'ADD_VIDEO') {
+    const tabId = message.tabId || sender?.tab?.id;
+    const url = message.url;
+    if (!tabId || !url) return;
+
+    // Skip blob/data URLs
+    if (url.startsWith('blob:') || url.startsWith('data:')) return;
+
+    if (!videosByTab.has(tabId)) {
+      videosByTab.set(tabId, new Map());
+    }
+
+    const tabVideos = videosByTab.get(tabId);
+    const existing = tabVideos.get(url);
+
+    if (!existing) {
+      tabVideos.set(url, {
+        size: null,
+        contentType: null,
+        timestamp: Date.now(),
+        source: message.source,
+        quality: message.quality,
+        title: message.title,
+        fromApi: message.source === 'instagram' || message.source === 'twitter' || message.source === 'api',
+      });
+    } else {
+      // Update with API source if available (higher priority)
+      if (message.source && !existing.source) {
+        existing.source = message.source;
+      }
+      if (message.quality && !existing.quality) {
+        existing.quality = message.quality;
+      }
+    }
+
+    return true;
+  }
+
+  // Handle clearing videos when URL changes
+  if (message?.type === 'CLEAR_VIDEOS') {
+    const tabId = sender?.tab?.id;
+    if (tabId && videosByTab.has(tabId)) {
+      videosByTab.get(tabId).clear();
+    }
+    return true;
+  }
 });
 
-// ============================================================================
-// CONTEXT MENU
-// ============================================================================
-
+// Context menu
 chrome.runtime.onInstalled.addListener(() => {
   try {
     chrome.contextMenus.create({

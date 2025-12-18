@@ -21,5 +21,26 @@
       "16": "icon-16.png",
       "32": "icon-32.png"
     }
-  }
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["watcher.js"],
+      "all_frames": true,
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["contentScript.js"],
+      "all_frames": true,
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["watcher.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }
