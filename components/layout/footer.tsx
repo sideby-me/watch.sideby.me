@@ -104,7 +104,7 @@ export function Footer() {
 
         {/* Copyright */}
         <p className="w-full text-center text-sm font-medium tracking-tight text-neutral">
-          © Watch.With {new Date().getFullYear()}
+          © SidebyMe {new Date().getFullYear()}
         </p>
       </div>
     </footer>
