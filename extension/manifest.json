@@ -20,5 +20,11 @@
       "16": "icon-16.png",
       "32": "icon-32.png"
     }
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["page-sniffer.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }

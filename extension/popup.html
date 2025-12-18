@@ -55,7 +55,10 @@
             </div>
             <div class="card-content flex flex-col gap-2">
               <div class="flex flex-col gap-1">
-                <div id="video-title" class="truncate text-base font-semibold">Untitled Video</div>
+                <div class="flex items-center gap-2">
+                  <span id="video-quality" class="pill pill-ghost" hidden>1080p</span>
+                  <div id="video-title" class="truncate text-base font-semibold">Untitled Video</div>
+                </div>
                 <div class="text-xs text-muted-foreground">From <span id="page-host">this page</span></div>
               </div>
               <div id="video-url" class="mono truncate text-xs"></div>

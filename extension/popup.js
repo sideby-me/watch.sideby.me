@@ -11,6 +11,7 @@ const videoUrl = document.getElementById('video-url');
 const videoList = document.getElementById('video-list');
 const videoCountPill = document.getElementById('video-count-pill');
 const videoKind = document.getElementById('video-kind');
+const videoQuality = document.getElementById('video-quality');
 const pageHost = document.getElementById('page-host');
 
 const createRoomBtn = document.getElementById('create-room');
@@ -64,6 +65,14 @@ function updateVideoInfo(index) {
 
   videoTitle.textContent = video.title || 'Untitled Video';
   videoTitle.title = video.title || ''; // Tooltip for truncated text
+  const quality = video.quality;
+  if (quality) {
+    videoQuality.hidden = false;
+    videoQuality.textContent = quality;
+    videoQuality.title = `Detected quality: ${quality}`;
+  } else {
+    videoQuality.hidden = true;
+  }
   videoUrl.textContent = video.videoUrl;
   videoUrl.title = video.videoUrl;
   pageHost.textContent = getHost(video.pageUrl || video.videoUrl);
@@ -81,6 +90,7 @@ function buildCreateUrl(info) {
   if (info.pageUrl) params.set('source', info.pageUrl);
   if (info.title) params.set('title', info.title);
   if (Number.isFinite(info.startAt) && info.startAt > 0) params.set('startAt', String(Math.floor(info.startAt)));
+  if (info.quality) params.set('quality', info.quality);
   params.set('autoplay', '1');
   return `${APP_BASE_URL}/create?${params.toString()}`;
 }
