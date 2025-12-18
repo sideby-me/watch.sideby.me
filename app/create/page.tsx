@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { AtSign, PenLine, Play, User, LucideIcon, BadgePlus, Dices } from 'lucide-react';
@@ -38,6 +38,27 @@ function FeatureCard({ icon: IconComponent, title }: { icon: LucideIcon; title: 
 }
 
 export default function CreateRoomPage() {
+  return (
+    <Suspense fallback={<CreateRoomPageSkeleton />}>
+      <CreateRoomPageContent />
+    </Suspense>
+  );
+}
+
+function CreateRoomPageSkeleton() {
+  return (
+    <div className="px-4 py-6 sm:px-8 sm:py-8 lg:px-14 lg:py-14">
+      <Card className="mx-auto flex max-w-screen-2xl flex-col items-center justify-center gap-6 rounded-lg border border-border bg-background p-6 sm:gap-8 sm:p-12 lg:gap-12 lg:p-24">
+        <div className="flex w-full shrink-0 grow basis-0 flex-col items-center justify-center gap-4">
+          <div className="h-12 w-12 animate-pulse rounded-full bg-muted" />
+          <div className="h-12 w-64 animate-pulse rounded bg-muted" />
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function CreateRoomPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
