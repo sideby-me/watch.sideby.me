@@ -12,11 +12,7 @@ const OPENSUBTITLES_API_URL = 'https://api.opensubtitles.com/api/v1';
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY = 100; // ms
 
-async function fetchWithRetry(
-  url: string,
-  options: RequestInit,
-  retries = MAX_RETRIES
-): Promise<Response> {
+async function fetchWithRetry(url: string, options: RequestInit, retries = MAX_RETRIES): Promise<Response> {
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < retries; attempt++) {
@@ -25,9 +21,7 @@ async function fetchWithRetry(
       return response;
     } catch (error) {
       lastError = error as Error;
-      const isRetryable =
-        error instanceof Error &&
-        (error.cause as { code?: string })?.code === 'ECONNRESET';
+      const isRetryable = error instanceof Error && (error.cause as { code?: string })?.code === 'ECONNRESET';
 
       if (!isRetryable || attempt === retries - 1) {
         throw error;
@@ -35,7 +29,7 @@ async function fetchWithRetry(
 
       // Exponential backoff
       const delay = INITIAL_RETRY_DELAY * Math.pow(2, attempt);
-      await new Promise((resolve) => setTimeout(resolve, delay));
+      await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
 
@@ -111,10 +105,7 @@ function mapToResult(apiItem: OpenSubtitlesAPIResponse['data'][0]): OpenSubtitle
 export async function GET(req: NextRequest) {
   const apiKey = process.env.OPENSUBTITLES_API_KEY;
   if (!apiKey) {
-    return NextResponse.json(
-      { error: 'Subtitle search is not configured' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Subtitle search is not configured' }, { status: 500 });
   }
 
   const query = req.nextUrl.searchParams.get('query');
@@ -122,10 +113,7 @@ export async function GET(req: NextRequest) {
 
   // Validate query - reject empty or whitespace-only queries
   if (!query || query.trim().length === 0) {
-    return NextResponse.json(
-      { error: 'Search query is required' },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: 'Search query is required' }, { status: 400 });
   }
 
   const searchParams = new URLSearchParams({
@@ -137,50 +125,35 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const response = await fetchWithRetry(
-      `${OPENSUBTITLES_API_URL}/subtitles?${searchParams.toString()}`,
-      {
-        headers: {
-          'Api-Key': apiKey,
-          'Content-Type': 'application/json',
-          'User-Agent': 'SideBy v1.0',
-        },
-      }
-    );
+    const response = await fetchWithRetry(`${OPENSUBTITLES_API_URL}/subtitles?${searchParams.toString()}`, {
+      headers: {
+        'Api-Key': apiKey,
+        'Content-Type': 'application/json',
+        'User-Agent': 'SideBy v1.0',
+      },
+    });
 
     if (!response.ok) {
       if (response.status === 401) {
-        return NextResponse.json(
-          { error: 'Subtitle search is not configured' },
-          { status: 500 }
-        );
+        return NextResponse.json({ error: 'Subtitle search is not configured' }, { status: 500 });
       }
       if (response.status === 429) {
-        return NextResponse.json(
-          { error: 'Too many requests. Please wait a moment and try again.' },
-          { status: 429 }
-        );
+        return NextResponse.json({ error: 'Too many requests. Please wait a moment and try again.' }, { status: 429 });
       }
-      return NextResponse.json(
-        { error: 'Subtitle service unavailable' },
-        { status: 502 }
-      );
+      return NextResponse.json({ error: 'Subtitle service unavailable' }, { status: 502 });
     }
 
     const data = await response.json();
-    
+
     // Validate and parse the API response
     const parseResult = OpenSubtitlesAPIResponseSchema.safeParse(data);
     if (!parseResult.success) {
       console.error('OpenSubtitles API response validation failed:', parseResult.error);
-      return NextResponse.json(
-        { error: 'Subtitle service unavailable' },
-        { status: 502 }
-      );
+      return NextResponse.json({ error: 'Subtitle service unavailable' }, { status: 502 });
     }
 
     const apiResponse = parseResult.data;
-    
+
     // Filter out items without files and map to internal types
     const results: OpenSubtitlesResult[] = apiResponse.data
       .filter(item => item.attributes.files.length > 0)
@@ -194,10 +167,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(searchResponse);
   } catch (error) {
     console.error('OpenSubtitles API error:', error);
-    return NextResponse.json(
-      { error: 'Subtitle service unavailable' },
-      { status: 502 }
-    );
+    return NextResponse.json({ error: 'Subtitle service unavailable' }, { status: 502 });
   }
 }
 
