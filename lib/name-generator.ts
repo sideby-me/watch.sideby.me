@@ -22,12 +22,14 @@ const SHORT_STYLES = [
 
 function generate(styles: typeof NAME_STYLES): string {
   const style = styles[Math.floor(Math.random() * styles.length)];
-  return uniqueNamesGenerator({
+  const raw = uniqueNamesGenerator({
     dictionaries: style.dictionaries,
     separator: ' ',
     style: 'capital',
     length: style.length,
   });
+  // (letters, numbers, spaces, and basic punctuation: -_.!?)
+  return raw.replace(/[^a-zA-Z0-9\s\-_.!?]/g, '').replace(/\s+/g, ' ').trim();
 }
 
 export function generateQuirkyName(): string {

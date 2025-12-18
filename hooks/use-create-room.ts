@@ -48,7 +48,6 @@ export function useCreateRoom(options?: UseCreateRoomOptions): UseCreateRoomRetu
 
         // Listen for room creation response
         socket.once('room-created', ({ roomId, hostToken }) => {
-          setIsLoading(false);
           // Store creator info so room page knows not to prompt again
           roomSessionStorage.setRoomCreator({
             roomId,

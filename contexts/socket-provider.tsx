@@ -38,7 +38,6 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     if (typeof window === 'undefined') return;
 
     console.log('🚀 Initializing socket...');
-    setIsInitialized(true);
 
     const socketUrl = process.env.NODE_ENV === 'production' ? undefined : 'http://localhost:3000';
 
@@ -52,6 +51,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     const handleConnect = () => {
       console.log('✅ Socket connected:', socketInstance.id);
       setIsConnected(true);
+      setIsInitialized(true);
     };
 
     const handleDisconnect = (reason: string) => {
