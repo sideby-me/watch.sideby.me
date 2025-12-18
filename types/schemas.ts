@@ -296,6 +296,66 @@ export const VideoChatIceCandidateEventResponseSchema = z.object({
   candidate: z.any(),
 });
 
+// OpenSubtitles API schemas
+export const OpenSubtitlesResultSchema = z.object({
+  id: z.string(),
+  fileId: z.string(),
+  language: z.string(),
+  languageName: z.string(),
+  releaseName: z.string(),
+  downloadCount: z.number().int().min(0),
+  format: z.string(),
+  fps: z.number().nullable(),
+  hearingImpaired: z.boolean(),
+});
+
+// OpenSubtitles API response structure (from external API)
+export const OpenSubtitlesAPIFileSchema = z.object({
+  file_id: z.number(),
+  file_name: z.string(),
+});
+
+export const OpenSubtitlesAPIAttributesSchema = z.object({
+  language: z.string(),
+  download_count: z.number(),
+  hearing_impaired: z.boolean(),
+  fps: z.number().nullable().optional(),
+  release: z.string().nullable().optional(),
+  files: z.array(OpenSubtitlesAPIFileSchema),
+});
+
+export const OpenSubtitlesAPIItemSchema = z.object({
+  id: z.string(),
+  attributes: OpenSubtitlesAPIAttributesSchema,
+});
+
+export const OpenSubtitlesAPIResponseSchema = z.object({
+  data: z.array(OpenSubtitlesAPIItemSchema),
+  total_count: z.number(),
+});
+
+// Subtitle search API request/response schemas
+export const SubtitleSearchRequestSchema = z.object({
+  query: z.string().min(1, 'Search query is required'),
+  language: z.string().optional(),
+});
+
+export const SubtitleSearchResponseSchema = z.object({
+  results: z.array(OpenSubtitlesResultSchema),
+  totalCount: z.number().int().min(0),
+});
+
+// Subtitle download API request/response schemas
+export const SubtitleDownloadRequestSchema = z.object({
+  fileId: z.string().min(1, 'File ID is required'),
+});
+
+export const SubtitleDownloadResponseSchema = z.object({
+  content: z.string(),
+  format: z.string(),
+  filename: z.string(),
+});
+
 // Response schemas
 export const RoomCreatedResponseSchema = z.object({
   roomId: RoomIdSchema,
@@ -441,3 +501,14 @@ export type VideoChatParticipantCountResponse = z.infer<typeof VideoChatParticip
 export type VideoChatOfferEventResponse = z.infer<typeof VideoChatOfferEventResponseSchema>;
 export type VideoChatAnswerEventResponse = z.infer<typeof VideoChatAnswerEventResponseSchema>;
 export type VideoChatIceCandidateEventResponse = z.infer<typeof VideoChatIceCandidateEventResponseSchema>;
+
+// OpenSubtitles types
+export type OpenSubtitlesResult = z.infer<typeof OpenSubtitlesResultSchema>;
+export type OpenSubtitlesAPIFile = z.infer<typeof OpenSubtitlesAPIFileSchema>;
+export type OpenSubtitlesAPIAttributes = z.infer<typeof OpenSubtitlesAPIAttributesSchema>;
+export type OpenSubtitlesAPIItem = z.infer<typeof OpenSubtitlesAPIItemSchema>;
+export type OpenSubtitlesAPIResponse = z.infer<typeof OpenSubtitlesAPIResponseSchema>;
+export type SubtitleSearchRequest = z.infer<typeof SubtitleSearchRequestSchema>;
+export type SubtitleSearchResponse = z.infer<typeof SubtitleSearchResponseSchema>;
+export type SubtitleDownloadRequest = z.infer<typeof SubtitleDownloadRequestSchema>;
+export type SubtitleDownloadResponse = z.infer<typeof SubtitleDownloadResponseSchema>;
