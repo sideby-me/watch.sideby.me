@@ -96,13 +96,7 @@ export function Footer() {
           <div className="flex min-w-36 flex-1 flex-col items-start gap-4">
             {otherLinks.map(l =>
               l.external ? (
-                <a
-                  key={l.href}
-                  href={l.href}
-                  className={footerLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
+                <a key={l.href} href={l.href} className={footerLink} target="_blank" rel="noopener noreferrer">
                   {l.label}
                 </a>
               ) : (
