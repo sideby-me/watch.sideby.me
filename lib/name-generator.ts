@@ -29,7 +29,10 @@ function generate(styles: typeof NAME_STYLES): string {
     length: style.length,
   });
   // (letters, numbers, spaces, and basic punctuation: -_.!?)
-  return raw.replace(/[^a-zA-Z0-9\s\-_.!?]/g, '').replace(/\s+/g, ' ').trim();
+  return raw
+    .replace(/[^a-zA-Z0-9\s\-_.!?]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 export function generateQuirkyName(): string {

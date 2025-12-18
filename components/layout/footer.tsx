@@ -12,7 +12,7 @@ const productLinks = [
 
 const socialLinks = [
   { href: 'https://www.instagram.com/_sidebyme/', label: 'Instagram', Icon: Instagram },
-  { href: 'https://github.com/whonoahexe/sideby.me', label: 'Github', Icon: Github },
+  { href: 'https://github.com/sideby-me/watch.sideby.me', label: 'Github', Icon: Github },
   { href: 'https://x.com/_sidebyme', label: 'Twitter', Icon: Twitter },
 ];
 
