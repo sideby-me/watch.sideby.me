@@ -60,6 +60,15 @@ export function registerVoiceHandlers(socket: Socket<SocketEvents, SocketEvents,
       return;
     }
 
+    // Check if chat is locked for non-hosts
+    if (room.settings?.isChatLocked) {
+      const user = room.users.find(u => u.id === socket.data.userId);
+      if (!user?.isHost) {
+        socket.emit('voice-error', { error: 'Voice chat is currently locked. Only hosts can join.' });
+        return;
+      }
+    }
+
     const voiceRoomKey = `voice:${roomId}`;
 
     // If already in voice room, treat as idempotent (re-send peers later)

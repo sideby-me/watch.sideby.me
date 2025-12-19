@@ -67,7 +67,10 @@ export function SubtitleSearchTab({ onSubtitleSelected }: SubtitleSearchTabProps
       setState(prev => ({
         ...prev,
         isLoading: false,
-        error: error instanceof Error ? error.message : 'Unable to search. Check your connection and try again.',
+        error:
+          error instanceof Error
+            ? error.message
+            : 'The search connection timed out. The internet gremlins are at it again.',
       }));
     }
   }, [state.query]);
@@ -110,7 +113,7 @@ export function SubtitleSearchTab({ onSubtitleSelected }: SubtitleSearchTabProps
       <form onSubmit={handleSubmit} className="flex gap-2">
         <Input
           type="text"
-          placeholder="Search by movie or show title..."
+          placeholder="What are we watching? (e.g. The Matrix)"
           value={state.query}
           onChange={e => setState(prev => ({ ...prev, query: e.target.value }))}
           className="flex-1"
@@ -118,7 +121,7 @@ export function SubtitleSearchTab({ onSubtitleSelected }: SubtitleSearchTabProps
         />
         <Button type="submit" disabled={state.isLoading || !state.query.trim()}>
           {state.isLoading ? <Spinner variant="circle" className="h-4 w-4" /> : <Search className="h-4 w-4" />}
-          <span className="ml-2 hidden sm:inline">Search</span>
+          <span className="ml-2 hidden sm:inline">Find Tracks</span>
         </Button>
       </form>
 
@@ -126,7 +129,8 @@ export function SubtitleSearchTab({ onSubtitleSelected }: SubtitleSearchTabProps
       {state.isLoading && (
         <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
           <Spinner variant="circle" className="mb-2 h-8 w-8" />
-          <p>Searching for subtitles...</p>
+          {/* Active voice */}
+          <p>Scouring the archives...</p>
         </div>
       )}
 
@@ -137,7 +141,7 @@ export function SubtitleSearchTab({ onSubtitleSelected }: SubtitleSearchTabProps
           <p className="mb-4 text-destructive">{state.error}</p>
           <Button variant="outline" onClick={handleRetry}>
             <RefreshCw className="mr-2 h-4 w-4" />
-            Try Again
+            Give it another shot
           </Button>
         </div>
       )}
@@ -146,8 +150,8 @@ export function SubtitleSearchTab({ onSubtitleSelected }: SubtitleSearchTabProps
       {!state.isLoading && !state.error && state.results.length === 0 && state.query.trim() && (
         <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
           <Search className="mb-2 h-8 w-8 opacity-50" />
-          <p className="mb-2">No subtitles found for &quot;{state.query}&quot;</p>
-          <p className="text-sm">Try a different search term or check the spelling.</p>
+          <p className="mb-2">We came up empty for &quot;{state.query}&quot;.</p>
+          <p className="text-sm">Maybe check the spelling or try a simpler title?</p>
         </div>
       )}
 
@@ -157,14 +161,14 @@ export function SubtitleSearchTab({ onSubtitleSelected }: SubtitleSearchTabProps
           {/* Language Filter */}
           <div className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
-              {filteredResults.length} result{filteredResults.length !== 1 ? 's' : ''}
+              Found {filteredResults.length} match{filteredResults.length !== 1 ? 'es' : ''}
               {state.languageFilter && ` in ${availableLanguages.find(l => l.code === state.languageFilter)?.name}`}
             </p>
             <div className="flex items-center gap-2">
               {state.languageFilter && (
                 <Button variant="ghost" size="sm" onClick={() => setLanguageFilter(null)} className="h-8 px-2">
                   <X className="mr-1 h-3 w-3" />
-                  Clear filter
+                  Show all
                 </Button>
               )}
               <DropdownMenu>
@@ -173,7 +177,7 @@ export function SubtitleSearchTab({ onSubtitleSelected }: SubtitleSearchTabProps
                     <Filter className="mr-1 h-3 w-3" />
                     {state.languageFilter
                       ? availableLanguages.find(l => l.code === state.languageFilter)?.name
-                      : 'Filter by language'}
+                      : 'Filter Language'}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="max-h-60 overflow-y-auto">
@@ -271,7 +275,8 @@ function SubtitleResultItem({
 
       onSelect(track);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to download subtitle. Please try again.');
+      // On-brand error
+      setError(err instanceof Error ? err.message : 'Failed to grab that file. Mind trying another one?');
     } finally {
       onDownloadEnd();
     }
@@ -307,12 +312,12 @@ function SubtitleResultItem({
           {isDownloading ? (
             <>
               <Spinner variant="circle" className="mr-1 h-3 w-3" />
-              Loading...
+              Grabbing...
             </>
           ) : (
             <>
               <Download className="mr-1 h-3 w-3" />
-              Select
+              Use This
             </>
           )}
         </Button>

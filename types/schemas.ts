@@ -74,6 +74,18 @@ export const SubtitleTrackSchema = z.object({
   isDefault: z.boolean().default(false),
 });
 
+// Room settings for host controls
+export const RoomSettingsSchema = z.object({
+  isLocked: z.boolean().default(false),
+  passcode: z
+    .string()
+    .length(4)
+    .regex(/^\d{4}$/)
+    .nullable()
+    .optional(),
+  isChatLocked: z.boolean().default(false),
+});
+
 export const RoomSchema = z.object({
   id: RoomIdSchema,
   hostId: z.string().uuid(),
@@ -103,6 +115,8 @@ export const RoomSchema = z.object({
       timestamp: z.number(),
     })
     .optional(),
+  // Room settings for host controls (lock, passcode, chat lock)
+  settings: RoomSettingsSchema.optional(),
 });
 
 // Socket event schemas
@@ -165,6 +179,39 @@ export const RoomActionDataSchema = z.object({
 export const KickUserDataSchema = z.object({
   roomId: RoomIdSchema,
   userId: z.string().uuid(),
+});
+
+// Room settings socket event schemas
+export const UpdateRoomSettingsDataSchema = z.object({
+  roomId: RoomIdSchema,
+  settings: z.object({
+    isLocked: z.boolean().optional(),
+    passcode: z
+      .string()
+      .length(4)
+      .regex(/^\d{4}$/)
+      .nullable()
+      .optional(),
+    isChatLocked: z.boolean().optional(),
+  }),
+});
+
+export const VerifyPasscodeDataSchema = z.object({
+  roomId: RoomIdSchema,
+  userName: UserNameSchema,
+  passcode: z
+    .string()
+    .length(4)
+    .regex(/^\d{4}$/),
+  hostToken: z.string().uuid().optional(),
+});
+
+export const PasscodeRequiredResponseSchema = z.object({
+  roomId: RoomIdSchema,
+});
+
+export const RoomSettingsUpdatedResponseSchema = z.object({
+  settings: RoomSettingsSchema,
 });
 
 // Voice chat schemas
@@ -443,6 +490,7 @@ export type TypingUser = z.infer<typeof TypingUserSchema>;
 export type VideoState = z.infer<typeof VideoStateSchema>;
 export type VideoType = z.infer<typeof VideoTypeSchema>;
 export type SubtitleTrack = z.infer<typeof SubtitleTrackSchema>;
+export type RoomSettings = z.infer<typeof RoomSettingsSchema>;
 
 // Socket event data types
 export type CreateRoomData = z.infer<typeof CreateRoomDataSchema>;
@@ -455,6 +503,10 @@ export type MessageReactionData = z.infer<typeof MessageReactionDataSchema>;
 export type SyncCheckData = z.infer<typeof SyncCheckDataSchema>;
 export type RoomActionData = z.infer<typeof RoomActionDataSchema>;
 export type KickUserData = z.infer<typeof KickUserDataSchema>;
+export type UpdateRoomSettingsData = z.infer<typeof UpdateRoomSettingsDataSchema>;
+export type VerifyPasscodeData = z.infer<typeof VerifyPasscodeDataSchema>;
+export type PasscodeRequiredResponse = z.infer<typeof PasscodeRequiredResponseSchema>;
+export type RoomSettingsUpdatedResponse = z.infer<typeof RoomSettingsUpdatedResponseSchema>;
 
 // Response types
 export type RoomCreatedResponse = z.infer<typeof RoomCreatedResponseSchema>;

@@ -71,6 +71,16 @@ export function registerChatHandlers(socket: Socket<SocketEvents, SocketEvents, 
         return;
       }
 
+      // Check if chat is locked for non-hosts
+      const room = await redisService.rooms.getRoom(roomId);
+      if (room?.settings?.isChatLocked) {
+        const user = room.users.find(u => u.id === socket.data.userId);
+        if (!user?.isHost) {
+          socket.emit('error', { error: 'Chat is currently locked. Only hosts can send messages.' });
+          return;
+        }
+      }
+
       const chatMessage: ChatMessage = {
         id: uuidv4(),
         userId: socket.data.userId,

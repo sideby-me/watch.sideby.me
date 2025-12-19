@@ -9,6 +9,8 @@ import {
   JoinRoomDataSchema,
   RoomActionDataSchema,
   KickUserDataSchema,
+  UpdateRoomSettingsDataSchema,
+  VerifyPasscodeDataSchema,
 } from '@/types';
 import { SocketEvents, SocketData } from '../types';
 import { validateData, emitSystemMessage } from '../utils';
@@ -133,6 +135,21 @@ export function registerRoomHandlers(socket: Socket<SocketEvents, SocketEvents, 
       const room = await redisService.rooms.getRoom(roomId);
       if (!room) {
         socket.emit('room-error', { error: 'Room not found' });
+        return;
+      }
+
+      // Check room lock (only affects non-host tokens)
+      const isHostWithToken = hostToken && hostToken === room.hostToken;
+      if (room.settings?.isLocked && !isHostWithToken) {
+        console.log(`🔒 Room ${roomId} is locked, rejecting ${userName}`);
+        socket.emit('room-error', { error: 'This room is currently locked. New guests cannot join.' });
+        return;
+      }
+
+      // Check passcode requirement (only affects non-host tokens)
+      if (room.settings?.passcode && !isHostWithToken) {
+        console.log(`🔑 Room ${roomId} requires passcode, prompting ${userName}`);
+        socket.emit('passcode-required', { roomId });
         return;
       }
 
@@ -386,6 +403,136 @@ export function registerRoomHandlers(socket: Socket<SocketEvents, SocketEvents, 
     } catch (error) {
       console.error('Error kicking user:', error);
       socket.emit('error', { error: 'Failed to kick user' });
+    }
+  });
+
+  // Verify passcode and complete join
+  socket.on('verify-passcode', async data => {
+    try {
+      const validatedData = validateData(VerifyPasscodeDataSchema, data, socket);
+      if (!validatedData) return;
+
+      const { roomId, userName, passcode, hostToken } = validatedData;
+      const room = await redisService.rooms.getRoom(roomId);
+      if (!room) {
+        socket.emit('room-error', { error: 'Room not found' });
+        return;
+      }
+
+      // Verify the passcode
+      if (room.settings?.passcode !== passcode) {
+        console.log(`🚫 Invalid passcode attempt for room ${roomId} by ${userName}`);
+        socket.emit('room-error', { error: 'Incorrect passcode. Please try again.' });
+        return;
+      }
+
+      console.log(`✅ Passcode verified for ${userName} in room ${roomId}`);
+
+      // Check if room became locked while entering passcode
+      if (room.settings?.isLocked && !(hostToken && hostToken === room.hostToken)) {
+        socket.emit('room-error', { error: 'This room is currently locked. New guests cannot join.' });
+        return;
+      }
+
+      // Check if this user is already in the room (by name)
+      const existingUser = room.users.find(u => u.name === userName);
+      if (existingUser) {
+        if (existingUser.isHost && (!hostToken || hostToken !== room.hostToken)) {
+          socket.emit('room-error', { error: `We don't allow copycats. Please choose a different callsign.` });
+          return;
+        }
+        if (!existingUser.isHost) {
+          socket.emit('room-error', {
+            error: `Looks like the name "${userName}" is already in use here. Could you pick another one?`,
+          });
+          return;
+        }
+        // Host with valid token - rejoin
+        socket.data.userId = existingUser.id;
+        socket.data.userName = existingUser.name;
+        socket.data.roomId = roomId;
+        await socket.join(roomId);
+        await redisService.userMapping.setUserSocket(existingUser.id, socket.id);
+        socket.emit('room-joined', { room, user: existingUser });
+        emitVoiceParticipantCountToSocket(roomId);
+        return;
+      }
+
+      // Create new user
+      const userId = uuidv4();
+      const isRoomHost = room.hostName === userName && hostToken === room.hostToken;
+      const user: User = {
+        id: userId,
+        name: userName,
+        isHost: isRoomHost,
+        joinedAt: new Date(),
+      };
+
+      await redisService.rooms.addUserToRoom(roomId, user);
+      const updatedRoom = await redisService.rooms.getRoom(roomId);
+
+      socket.data.userId = userId;
+      socket.data.userName = userName;
+      socket.data.roomId = roomId;
+
+      await socket.join(roomId);
+      await redisService.userMapping.setUserSocket(userId, socket.id);
+
+      socket.emit('room-joined', { room: updatedRoom!, user });
+      socket.to(roomId).emit('user-joined', { user });
+      emitVoiceParticipantCountToSocket(roomId);
+      emitSystemMessage(io, roomId, `${user.name} joined the room`, 'join', { userId, userName: user.name });
+
+      console.log(`${user.name} joined room ${roomId} after passcode verification`);
+    } catch (error) {
+      console.error('Error verifying passcode:', error);
+      socket.emit('room-error', { error: 'Failed to verify passcode' });
+    }
+  });
+
+  // Update room settings (host only)
+  socket.on('update-room-settings', async data => {
+    try {
+      const validatedData = validateData(UpdateRoomSettingsDataSchema, data, socket);
+      if (!validatedData) return;
+
+      const { roomId, settings } = validatedData;
+
+      if (!socket.data.userId) {
+        socket.emit('error', { error: 'Hmm, we lost your connection details.' });
+        return;
+      }
+
+      const room = await redisService.rooms.getRoom(roomId);
+      if (!room) {
+        socket.emit('room-error', { error: 'Room not found' });
+        return;
+      }
+
+      const currentUser = room.users.find(u => u.id === socket.data.userId);
+      if (!currentUser?.isHost) {
+        socket.emit('error', { error: 'Only hosts can update room settings' });
+        return;
+      }
+
+      // Merge settings
+      const currentSettings = room.settings || { isLocked: false, passcode: null, isChatLocked: false };
+      const updatedSettings = {
+        isLocked: settings.isLocked ?? currentSettings.isLocked,
+        passcode: settings.passcode !== undefined ? settings.passcode : currentSettings.passcode,
+        isChatLocked: settings.isChatLocked ?? currentSettings.isChatLocked,
+      };
+
+      const updatedRoom = { ...room, settings: updatedSettings };
+      await redisService.rooms.updateRoom(roomId, updatedRoom);
+
+      // Broadcast to all users in the room
+      io.to(roomId).emit('room-settings-updated', { settings: updatedSettings });
+
+      console.log(`⚙️ Room ${roomId} settings updated by ${currentUser.name}:`, updatedSettings);
+    } catch (error) {
+      console.error('Error updating room settings:', error);
+      socket.emit('error', { error: 'Failed to update room settings' });
     }
   });
 }

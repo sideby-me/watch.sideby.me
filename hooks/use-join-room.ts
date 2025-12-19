@@ -78,6 +78,18 @@ export function useJoinRoom(): UseJoinRoomReturn {
           setError(error);
         });
 
+        // Handle passcode required - redirect to room page where passcode dialog is shown
+        socket.once('passcode-required', ({ roomId: reqRoomId }) => {
+          console.log(`🔑 Passcode required for room ${reqRoomId}, redirecting to room page`);
+          setIsLoading(false);
+          // Store the join data so room page can use it for passcode verification
+          roomSessionStorage.setJoinData({
+            roomId: validatedData.roomId,
+            userName: validatedData.userName,
+          });
+          router.push(`/room/${validatedData.roomId}`);
+        });
+
         // Join the room
         socket.emit('join-room', validatedData);
       } catch (error) {

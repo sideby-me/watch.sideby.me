@@ -52,6 +52,10 @@ import type {
   VideoChatAnswerEventResponse,
   VideoChatIceCandidateEventResponse,
   VideoChatParticipantCountResponse,
+  UpdateRoomSettingsData,
+  VerifyPasscodeData,
+  PasscodeRequiredResponse,
+  RoomSettingsUpdatedResponse,
 } from './schemas';
 
 export interface SocketEvents {
@@ -68,6 +72,12 @@ export interface SocketEvents {
   'user-left': (data: UserLeftResponse) => void;
   'user-promoted': (data: UserPromotedResponse) => void;
   'user-kicked': (data: UserKickedResponse) => void;
+
+  // Room settings events
+  'update-room-settings': (data: UpdateRoomSettingsData) => void;
+  'room-settings-updated': (data: RoomSettingsUpdatedResponse) => void;
+  'passcode-required': (data: PasscodeRequiredResponse) => void;
+  'verify-passcode': (data: VerifyPasscodeData) => void;
 
   // Video events
   'set-video': (data: SetVideoData) => void;

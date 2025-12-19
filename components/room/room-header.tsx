@@ -3,7 +3,7 @@
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Copy, Check, Crown, Share } from 'lucide-react';
+import { Copy, Check, Crown, Share, Settings } from 'lucide-react';
 
 interface RoomHeaderProps {
   roomId: string;
@@ -13,6 +13,7 @@ interface RoomHeaderProps {
   showCopied: boolean;
   onCopyRoomId: () => void;
   onShareRoom: () => void;
+  onOpenSettings?: () => void;
 }
 
 export function RoomHeader({
@@ -23,6 +24,7 @@ export function RoomHeader({
   showCopied,
   onCopyRoomId,
   onShareRoom,
+  onOpenSettings,
 }: RoomHeaderProps) {
   return (
     <Card className="mt-6 border-0">
@@ -49,6 +51,12 @@ export function RoomHeader({
 
           {/* Room actions */}
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            {isHost && onOpenSettings && (
+              <Button variant="ghost" onClick={onOpenSettings}>
+                <Settings className="mr-2 h-4 w-4" />
+                Settings
+              </Button>
+            )}
             <Button variant="ghost" onClick={onCopyRoomId}>
               {showCopied ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
               {showCopied ? 'Copied!' : 'Copy ID'}

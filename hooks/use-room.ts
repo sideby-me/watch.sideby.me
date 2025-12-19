@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSocket } from '@/hooks/use-socket';
-import { Room, User, ChatMessage, TypingUser } from '@/types';
+import { Room, User, ChatMessage, TypingUser, RoomSettings } from '@/types';
 import { toast } from 'sonner';
 import { roomSessionStorage } from '@/lib/session-storage';
 
@@ -56,6 +56,14 @@ interface UseRoomReturn {
   shareRoom: () => void;
   handleJoinWithName: (userName: string) => void;
   handleCancelJoin: () => void;
+  showPasscodeDialog: boolean;
+  passcodeError: string;
+  isVerifyingPasscode: boolean;
+  showSettingsDialog: boolean;
+  setShowSettingsDialog: (show: boolean) => void;
+  handleVerifyPasscode: (passcode: string) => void;
+  handleCancelPasscode: () => void;
+  handleUpdateRoomSettings: (settings: Partial<RoomSettings>) => void;
 }
 
 export function useRoom({ roomId }: UseRoomOptions): UseRoomReturn {
@@ -74,6 +82,11 @@ export function useRoom({ roomId }: UseRoomOptions): UseRoomReturn {
   const [showCopied, setShowCopied] = useState(false);
   const [showJoinDialog, setShowJoinDialog] = useState(false);
   const [lastJoinAttempt, setLastJoinAttempt] = useState<number>(0);
+  const [showPasscodeDialog, setShowPasscodeDialog] = useState(false);
+  const [pendingUserName, setPendingUserName] = useState('');
+  const [passcodeError, setPasscodeError] = useState('');
+  const [isVerifyingPasscode, setIsVerifyingPasscode] = useState(false);
+  const [showSettingsDialog, setShowSettingsDialog] = useState(false);
 
   const hasAttemptedJoinRef = useRef<boolean>(false);
   const hasShownClosureToastRef = useRef<boolean>(false);
@@ -106,6 +119,12 @@ export function useRoom({ roomId }: UseRoomOptions): UseRoomReturn {
       setError('');
       setIsJoining(false);
       hasAttemptedJoinRef.current = false;
+
+      // Reset passcode dialog state on successful join
+      setShowPasscodeDialog(false);
+      setPasscodeError('');
+      setIsVerifyingPasscode(false);
+      setPendingUserName('');
 
       // Show info banner for guests when joining a room with video
       if (!user.isHost && joinedRoom.videoUrl) {
@@ -310,10 +329,26 @@ export function useRoom({ roomId }: UseRoomOptions): UseRoomReturn {
         toast.error('Video Error', {
           description: error,
         });
+      } else if (error.toLowerCase().includes('passcode') || error.toLowerCase().includes('incorrect')) {
+        setPasscodeError(error);
+        setIsVerifyingPasscode(false);
       } else {
         setSyncError(error);
         setTimeout(() => setSyncError(''), 5000);
       }
+    };
+
+    // Handle passcode required - show passcode dialog
+    const handlePasscodeRequired = ({ roomId: reqRoomId }: { roomId: string }) => {
+      console.log(`🔑 Passcode required for room ${reqRoomId}`);
+      setIsJoining(false);
+      setShowPasscodeDialog(true);
+    };
+
+    // Handle room settings updated
+    const handleRoomSettingsUpdated = ({ settings }: { settings: RoomSettings }) => {
+      console.log('⚙️ Room settings updated:', settings);
+      setRoom(prev => (prev ? { ...prev, settings } : null));
     };
 
     socket.on('room-joined', handleRoomJoined);
@@ -328,6 +363,8 @@ export function useRoom({ roomId }: UseRoomOptions): UseRoomReturn {
     socket.on('reaction-updated', handleReactionUpdated);
     socket.on('room-error', handleRoomError);
     socket.on('error', handleSocketError);
+    socket.on('passcode-required', handlePasscodeRequired);
+    socket.on('room-settings-updated', handleRoomSettingsUpdated);
 
     return () => {
       socket.off('room-joined', handleRoomJoined);
@@ -342,6 +379,8 @@ export function useRoom({ roomId }: UseRoomOptions): UseRoomReturn {
       socket.off('reaction-updated', handleReactionUpdated);
       socket.off('room-error', handleRoomError);
       socket.off('error', handleSocketError);
+      socket.off('passcode-required', handlePasscodeRequired);
+      socket.off('room-settings-updated', handleRoomSettingsUpdated);
     };
   }, [socket, isConnected, router, currentUser, room]);
 
@@ -395,6 +434,8 @@ export function useRoom({ roomId }: UseRoomOptions): UseRoomReturn {
     // Check if user came from join page
     const joinData = roomSessionStorage.getJoinData(roomId);
     if (joinData) {
+      // Store userName in state for passcode flow before clearing session
+      setPendingUserName(joinData.userName);
       roomSessionStorage.clearJoinData();
       console.log('👤 Joining with stored data:', joinData.userName);
       socket.emit('join-room', { roomId, userName: joinData.userName });
@@ -520,6 +561,60 @@ export function useRoom({ roomId }: UseRoomOptions): UseRoomReturn {
     setMessages(prev => prev.map(message => ({ ...message, isRead: true })));
   }, []);
 
+  // Passcode verification
+  const handleVerifyPasscode = useCallback(
+    (passcode: string) => {
+      if (!socket || !isConnected) return;
+
+      console.log('🔐 Verifying passcode for room:', roomId);
+      setPasscodeError('');
+      setIsVerifyingPasscode(true);
+
+      // Get the pending user name from join dialog or session storage
+      const joinData = roomSessionStorage.getJoinData(roomId);
+      const userName = pendingUserName || joinData?.userName || '';
+
+      if (!userName) {
+        setPasscodeError('Please enter your name first.');
+        setIsVerifyingPasscode(false);
+        return;
+      }
+
+      socket.emit('verify-passcode', { roomId, userName, passcode });
+    },
+    [socket, isConnected, roomId, pendingUserName]
+  );
+
+  const handleCancelPasscode = useCallback(() => {
+    console.log('❌ Passcode entry cancelled');
+    setShowPasscodeDialog(false);
+    setPasscodeError('');
+    setIsVerifyingPasscode(false);
+    setPendingUserName('');
+    hasAttemptedJoinRef.current = false;
+    router.push('/join');
+  }, [router]);
+
+  // Room settings update
+  const handleUpdateRoomSettings = useCallback(
+    (settings: Partial<RoomSettings>) => {
+      if (!socket || !currentUser?.isHost) return;
+
+      console.log('⚙️ Updating room settings:', settings);
+      socket.emit('update-room-settings', { roomId, settings });
+    },
+    [socket, currentUser?.isHost, roomId]
+  );
+
+  // Store pending user name when join dialog submits (for passcode flow)
+  const handleJoinWithNameWrapped = useCallback(
+    (userName: string) => {
+      setPendingUserName(userName);
+      handleJoinWithName(userName);
+    },
+    [handleJoinWithName]
+  );
+
   return {
     // State
     room,
@@ -547,7 +642,16 @@ export function useRoom({ roomId }: UseRoomOptions): UseRoomReturn {
     markMessagesAsRead,
     copyRoomId,
     shareRoom,
-    handleJoinWithName,
+    handleJoinWithName: handleJoinWithNameWrapped,
     handleCancelJoin,
+    // Room settings
+    showPasscodeDialog,
+    passcodeError,
+    isVerifyingPasscode,
+    showSettingsDialog,
+    setShowSettingsDialog,
+    handleVerifyPasscode,
+    handleCancelPasscode,
+    handleUpdateRoomSettings,
   };
 }

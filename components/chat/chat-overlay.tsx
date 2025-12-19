@@ -50,6 +50,8 @@ interface ChatOverlayProps {
   onClose: () => void;
   onMarkMessagesAsRead?: () => void;
   onTimestampClick?: (seconds: number) => void;
+  isChatLocked?: boolean;
+  isHost?: boolean;
 }
 
 export function ChatOverlay({
@@ -69,6 +71,8 @@ export function ChatOverlay({
   onClose,
   onMarkMessagesAsRead,
   onTimestampClick,
+  isChatLocked = false,
+  isHost = false,
 }: ChatOverlayProps) {
   const [isClient, setIsClient] = useState(false);
   const portalContainer = useFullscreenPortalContainer();
@@ -137,6 +141,8 @@ export function ChatOverlay({
           onToggleMinimize={onToggleMinimize}
           onClose={onClose}
           onTimestampClick={onTimestampClick}
+          isChatLocked={isChatLocked}
+          isHost={isHost}
         />
       )}
     </div>

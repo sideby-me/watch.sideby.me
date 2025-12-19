@@ -26,6 +26,8 @@ import { VideoChatOverlay } from '@/components/room/video-chat-overlay';
 import { useFullscreenPortalContainer } from '@/hooks/use-fullscreen-portal-container';
 import { LeaveRoomGuard } from '@/components/room/leave-room-guard';
 import { JoinRoomDialog } from '@/components/room/join-room-dialog';
+import { PasscodeDialog } from '@/components/room/passcode-dialog';
+import { RoomSettingsDialog } from '@/components/room/room-settings-dialog';
 import { Spinner } from '@/components/ui/spinner';
 import { toast } from 'sonner';
 
@@ -81,6 +83,14 @@ export default function RoomPage() {
     showJoinDialog,
     handleJoinWithName,
     handleCancelJoin,
+    showPasscodeDialog,
+    passcodeError,
+    isVerifyingPasscode,
+    showSettingsDialog,
+    setShowSettingsDialog,
+    handleVerifyPasscode,
+    handleCancelPasscode,
+    handleUpdateRoomSettings,
   } = useRoom({ roomId });
 
   // Helper function to extract video ID from URL for subtitle storage
@@ -329,7 +339,7 @@ export default function RoomPage() {
     return <ErrorDisplay error={error} onRetry={() => router.push('/join')} />;
   }
 
-  // Handle loading state - but show join dialog if needed
+  // Handle loading state - but show join dialog or passcode dialog if needed
   if (!room || !currentUser) {
     if (showJoinDialog) {
       return (
@@ -340,6 +350,21 @@ export default function RoomPage() {
             roomId={roomId}
             onJoin={handleJoinWithName}
             onCancel={handleCancelJoin}
+          />
+        </>
+      );
+    }
+    if (showPasscodeDialog) {
+      return (
+        <>
+          <LoadingDisplay roomId={roomId} />
+          <PasscodeDialog
+            open={showPasscodeDialog}
+            roomId={roomId}
+            error={passcodeError}
+            isLoading={isVerifyingPasscode}
+            onSubmit={handleVerifyPasscode}
+            onCancel={handleCancelPasscode}
           />
         </>
       );
@@ -385,6 +410,7 @@ export default function RoomPage() {
         showCopied={showCopied}
         onCopyRoomId={copyRoomId}
         onShareRoom={shareRoom}
+        onOpenSettings={() => setShowSettingsDialog(true)}
       />
 
       {/* Sync Error */}
@@ -466,6 +492,8 @@ export default function RoomPage() {
               participantCount: videoParticipantCount,
             }}
             className="border-0 p-0"
+            isChatLocked={room.settings?.isChatLocked}
+            isHost={currentUser.isHost}
           />
         </div>
 
@@ -535,6 +563,8 @@ export default function RoomPage() {
           participantCount: videoParticipantCount,
         }}
         onTimestampClick={handleChatTimestampClick}
+        isChatLocked={room.settings?.isChatLocked}
+        isHost={currentUser.isHost}
       />
       {videochat.isEnabled && isFullscreen && (
         <VideoChatOverlay
@@ -549,6 +579,22 @@ export default function RoomPage() {
       )}
 
       <JoinRoomDialog open={showJoinDialog} roomId={roomId} onJoin={handleJoinWithName} onCancel={handleCancelJoin} />
+
+      <PasscodeDialog
+        open={showPasscodeDialog}
+        roomId={roomId}
+        error={passcodeError}
+        isLoading={isVerifyingPasscode}
+        onSubmit={handleVerifyPasscode}
+        onCancel={handleCancelPasscode}
+      />
+
+      <RoomSettingsDialog
+        open={showSettingsDialog}
+        onOpenChange={setShowSettingsDialog}
+        settings={room.settings}
+        onUpdateSettings={handleUpdateRoomSettings}
+      />
 
       <LeaveRoomGuard roomId={roomId} room={room} socket={socket} />
     </div>

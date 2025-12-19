@@ -10,6 +10,7 @@ import { ChatHeader } from './chat-header';
 import { ChatMessageItem } from './chat-message';
 import { ChatInput } from './chat-input';
 import { TypingIndicator } from './typing-indicator';
+import { MessageSquareLock } from 'lucide-react';
 
 interface VoiceConfig {
   isEnabled: boolean;
@@ -48,11 +49,12 @@ export interface ChatProps {
   voice?: VoiceConfig;
   video?: VideoConfig;
   onTimestampClick?: (seconds: number) => void;
-  // Mode props
   mode?: 'sidebar' | 'overlay';
   unreadCount?: number;
   onToggleMinimize?: () => void;
   onClose?: () => void;
+  isChatLocked?: boolean;
+  isHost?: boolean;
 }
 
 export function Chat({
@@ -72,7 +74,11 @@ export function Chat({
   unreadCount = 0,
   onToggleMinimize,
   onClose,
+  isChatLocked = false,
+  isHost = false,
 }: ChatProps) {
+  // Determine if chat should be disabled for this user
+  const chatDisabled = isChatLocked && !isHost;
   const [inputMessage, setInputMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [previousMessageCount, setPreviousMessageCount] = useState(0);
@@ -246,6 +252,21 @@ export function Chat({
     </div>
   );
 
+  // Chat locked state component for non-hosts
+  const ChatLockedState = ({ isOverlay }: { isOverlay?: boolean }) => (
+    <div className="flex items-center gap-4 rounded-lg border border-destructive-100 bg-destructive-50 px-4 py-3">
+      <MessageSquareLock className="h-5 w-5 flex-shrink-0 text-destructive-800" />
+      <div>
+        <p className="text-sm font-medium text-destructive-900">Chat is locked!</p>
+        {!isOverlay && (
+          <p className="text-xs text-destructive-800">
+            The hosts have the floor right now. Sit back and enjoy the show.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+
   // Render sidebar mode
   if (mode === 'sidebar') {
     return (
@@ -302,27 +323,31 @@ export function Chat({
             </div>
           </ScrollArea>
 
-          {/* Input */}
-          <ChatInput
-            inputMessage={inputMessage}
-            onInputChange={handleInputChange}
-            onValueChange={v => setInputMessage(v)}
-            onSubmit={handleSendMessage}
-            voice={voice}
-            video={video}
-            mode="sidebar"
-            replyTo={replyTo}
-            onCancelReply={handleCancelReply}
-            onEmojiSelect={emoji => {
-              setInputMessage(prev => (prev + emoji).slice(0, 500));
-              if (!isTyping) {
-                setIsTyping(true);
-                onTypingStart?.();
-              }
-            }}
-            users={users}
-            currentUserId={currentUserId}
-          />
+          {/* Input or Locked State */}
+          {chatDisabled ? (
+            <ChatLockedState />
+          ) : (
+            <ChatInput
+              inputMessage={inputMessage}
+              onInputChange={handleInputChange}
+              onValueChange={v => setInputMessage(v)}
+              onSubmit={handleSendMessage}
+              voice={voice}
+              video={video}
+              mode="sidebar"
+              replyTo={replyTo}
+              onCancelReply={handleCancelReply}
+              onEmojiSelect={emoji => {
+                setInputMessage(prev => (prev + emoji).slice(0, 500));
+                if (!isTyping) {
+                  setIsTyping(true);
+                  onTypingStart?.();
+                }
+              }}
+              users={users}
+              currentUserId={currentUserId}
+            />
+          )}
         </CardContent>
       </Card>
     );
@@ -381,27 +406,33 @@ export function Chat({
         <div ref={bottomRef} />
       </div>
 
-      {/* Input */}
-      <ChatInput
-        inputMessage={inputMessage}
-        onInputChange={handleInputChange}
-        onValueChange={v => setInputMessage(v)}
-        onSubmit={handleSendMessage}
-        voice={voice}
-        video={video}
-        mode="overlay"
-        replyTo={replyTo}
-        onCancelReply={handleCancelReply}
-        onEmojiSelect={emoji => {
-          setInputMessage(prev => (prev + emoji).slice(0, 500));
-          if (!isTyping) {
-            setIsTyping(true);
-            onTypingStart?.();
-          }
-        }}
-        users={users}
-        currentUserId={currentUserId}
-      />
+      {/* Input or Locked State */}
+      {chatDisabled ? (
+        <div className="p-3">
+          <ChatLockedState isOverlay />
+        </div>
+      ) : (
+        <ChatInput
+          inputMessage={inputMessage}
+          onInputChange={handleInputChange}
+          onValueChange={v => setInputMessage(v)}
+          onSubmit={handleSendMessage}
+          voice={voice}
+          video={video}
+          mode="overlay"
+          replyTo={replyTo}
+          onCancelReply={handleCancelReply}
+          onEmojiSelect={emoji => {
+            setInputMessage(prev => (prev + emoji).slice(0, 500));
+            if (!isTyping) {
+              setIsTyping(true);
+              onTypingStart?.();
+            }
+          }}
+          users={users}
+          currentUserId={currentUserId}
+        />
+      )}
     </>
   );
 }

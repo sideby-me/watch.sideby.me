@@ -55,6 +55,16 @@ export function registerVideoChatHandlers(
       socket.emit('videochat-error', { error: "We couldn't find that room." });
       return;
     }
+
+    // Check if chat is locked for non-hosts
+    if (room.settings?.isChatLocked) {
+      const user = room.users.find(u => u.id === socket.data.userId);
+      if (!user?.isHost) {
+        socket.emit('videochat-error', { error: 'Video chat is currently locked. Only hosts can join.' });
+        return;
+      }
+    }
+
     const vcRoomKey = `videochat:${roomId}`;
     let { sockets: current, staleSocketIds } = computeValidVideoChatParticipants(io, roomId);
     if (staleSocketIds.length) {
