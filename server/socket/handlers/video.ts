@@ -243,6 +243,10 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
             originalUrl?: string;
             playbackUrl: string;
             requiresProxy?: boolean;
+            deliveryType?: string;
+            videoType?: 'youtube' | 'mp4' | 'm3u8' | null;
+            decisionReasons?: string[];
+            timestamp?: number;
           }
         | undefined;
       if (!videoMeta) return;
@@ -253,17 +257,46 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
         return;
       }
 
+      const originalUrl = videoMeta.originalUrl || currentSrc;
+      if (!originalUrl) return;
+
+      let legacyVideoType: 'youtube' | 'mp4' | 'm3u8' = 'mp4';
+      if (videoMeta.videoType === 'youtube') legacyVideoType = 'youtube';
+      else if (videoMeta.videoType === 'm3u8') legacyVideoType = 'm3u8';
+
+      const proxyDisallowed =
+        legacyVideoType === 'youtube' || videoMeta.decisionReasons?.includes('direct-required-cdn');
+
+      // If a client reports failure and we're not already proxying, force a proxy fallback for the room.
+      if (!proxyDisallowed && !videoMeta.playbackUrl.includes('/api/video-proxy')) {
+        const proxyUrl = `/api/video-proxy?url=${encodeURIComponent(originalUrl)}`;
+        const fallbackMeta = {
+          ...videoMeta,
+          playbackUrl: proxyUrl,
+          deliveryType: legacyVideoType === 'm3u8' ? 'hls' : 'file-proxy',
+          requiresProxy: true,
+          decisionReasons: [...(videoMeta.decisionReasons || []), 'client-error-fallback'],
+          timestamp: Date.now(),
+        };
+
+        await redisService.rooms.setVideoUrl(roomId, proxyUrl, legacyVideoType, fallbackMeta);
+        io.to(roomId).emit('video-set', { videoUrl: proxyUrl, videoType: legacyVideoType, videoMeta: fallbackMeta });
+        emitSystemMessage(io, roomId, `Video source changed`, 'video-change', { videoUrl: proxyUrl });
+        console.log(`Forced proxy fallback for room ${roomId} after client error (code ${code})`);
+        return;
+      }
+
       console.log(`Late video error reported in room ${roomId}: code=${code} msg=${message}`);
 
       // Re-resolve using originalUrl (not the playbackUrl) to see if we now need proxy
-      const meta = await resolveSource(videoMeta.originalUrl || currentSrc);
+      const meta = await resolveSource(originalUrl);
       if (meta.playbackUrl !== videoMeta.playbackUrl) {
         // Update stored room video url & meta
-        let legacyVideoType: 'youtube' | 'mp4' | 'm3u8' = 'mp4';
-        if (meta.videoType === 'youtube') legacyVideoType = 'youtube';
-        else if (meta.videoType === 'm3u8') legacyVideoType = 'm3u8';
-        await redisService.rooms.setVideoUrl(roomId, meta.playbackUrl, legacyVideoType, meta);
-        io.to(roomId).emit('video-set', { videoUrl: meta.playbackUrl, videoType: legacyVideoType, videoMeta: meta });
+        let resolvedVideoType: 'youtube' | 'mp4' | 'm3u8' = 'mp4';
+        if (meta.videoType === 'youtube') resolvedVideoType = 'youtube';
+        else if (meta.videoType === 'm3u8') resolvedVideoType = 'm3u8';
+        await redisService.rooms.setVideoUrl(roomId, meta.playbackUrl, resolvedVideoType, meta);
+        io.to(roomId).emit('video-set', { videoUrl: meta.playbackUrl, videoType: resolvedVideoType, videoMeta: meta });
         emitSystemMessage(io, roomId, `Video source changed`, 'video-change', { videoUrl: meta.playbackUrl });
         console.log(`Re-resolved video source for room ${roomId} -> ${meta.deliveryType}`);
       }
