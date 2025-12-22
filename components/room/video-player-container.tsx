@@ -20,6 +20,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { parseVideoUrl, getSupportedVideoFormats } from '@/lib/video-utils';
+import { VIDEO_PROXY_URL, isProxiedUrl } from '@/lib/video-proxy-client';
 import { toast } from 'sonner';
 import { useSocket } from '@/hooks/use-socket';
 
@@ -121,7 +122,7 @@ export function VideoPlayerContainer({
     }
     setVideoSourceValid(true);
     setPlaybackError(null);
-    setUsingProxy(videoUrl?.includes('/api/video-proxy') ?? false);
+    setUsingProxy(videoUrl ? isProxiedUrl(videoUrl) : false);
   }, [videoUrl, videoType]);
 
   // Get video element ref for guest controls
@@ -317,7 +318,7 @@ export function VideoPlayerContainer({
           <HLSPlayer
             ref={hlsPlayerRef}
             src={videoUrl}
-            useProxy={videoUrl.includes('/api/video-proxy')}
+            useProxy={isProxiedUrl(videoUrl)}
             onPlay={onPlay}
             onPause={onPause}
             onSeeked={onSeeked}
@@ -327,7 +328,7 @@ export function VideoPlayerContainer({
               );
               setIsLoading(false);
               setVideoSourceValid(false);
-              setUsingProxy(videoUrl.includes('/api/video-proxy'));
+              setUsingProxy(isProxiedUrl(videoUrl));
               console.log('🎯 HLS reported fatal error:', err);
             }}
             isHost={isHost}
@@ -368,11 +369,10 @@ export function VideoPlayerContainer({
                   console.warn('Failed to emit video-error-report', e);
                 }
               }
-              const alreadyProxy = videoUrl.includes('/api/video-proxy');
+              const alreadyProxy = isProxiedUrl(videoUrl);
               if (err.code === 4 && !usingProxy && !alreadyProxy && onVideoChange) {
                 console.log('🔁 Switching to proxy due to player error code 4');
-                const origin = typeof window !== 'undefined' ? window.location.origin : '';
-                const proxyUrl = `${origin}/api/video-proxy?url=${encodeURIComponent(videoUrl)}`;
+                const proxyUrl = `${VIDEO_PROXY_URL}?url=${encodeURIComponent(videoUrl)}`;
                 onVideoChange(proxyUrl);
                 setUsingProxy(true);
                 setPlaybackError(null);

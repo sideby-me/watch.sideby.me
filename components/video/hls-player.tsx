@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useRef, useEffect, useImperativeHandle, forwardRef, useState } from 'react';
+import { VIDEO_PROXY_URL, isProxiedUrl } from '@/lib/video-proxy-client';
 
 export interface HLSPlayerRef {
   play: () => Promise<void>;
@@ -96,14 +97,14 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
 
           const toProxyUrl = (target: string) => {
             if (!shouldProxy) return target;
-            if (target.startsWith('/api/video-proxy') || target.includes('/api/video-proxy?')) {
+            if (isProxiedUrl(target)) {
               return target;
             }
             try {
               const absolute = new URL(target, window.location.origin).toString();
-              return `/api/video-proxy?url=${encodeURIComponent(absolute)}`;
+              return `${VIDEO_PROXY_URL}?url=${encodeURIComponent(absolute)}`;
             } catch {
-              return `/api/video-proxy?url=${encodeURIComponent(target)}`;
+              return `${VIDEO_PROXY_URL}?url=${encodeURIComponent(target)}`;
             }
           };
 

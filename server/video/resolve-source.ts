@@ -1,3 +1,5 @@
+import { buildProxyUrl } from '@/lib/video-proxy-client';
+
 export interface RoomVideoMeta {
   originalUrl: string;
   playbackUrl: string;
@@ -182,7 +184,7 @@ export async function resolveSource(rawUrl: string): Promise<RoomVideoMeta> {
     decisionReasons.push('head-access-denied');
     const meta: RoomVideoMeta = {
       originalUrl,
-      playbackUrl: `/api/video-proxy?url=${encodeURIComponent(originalUrl)}`,
+      playbackUrl: buildProxyUrl(originalUrl),
       deliveryType: 'file-proxy',
       videoType: legacyVideoType,
       requiresProxy: true,
@@ -225,7 +227,7 @@ export async function resolveSource(rawUrl: string): Promise<RoomVideoMeta> {
         decisionReasons.push('range-access-denied');
         return {
           originalUrl,
-          playbackUrl: `/api/video-proxy?url=${encodeURIComponent(originalUrl)}`,
+          playbackUrl: buildProxyUrl(originalUrl),
           deliveryType: 'file-proxy',
           videoType: legacyVideoType,
           requiresProxy: true,
@@ -267,7 +269,7 @@ export async function resolveSource(rawUrl: string): Promise<RoomVideoMeta> {
   decisionReasons.push('fallback-proxy');
   return {
     originalUrl,
-    playbackUrl: `/api/video-proxy?url=${encodeURIComponent(originalUrl)}`,
+    playbackUrl: buildProxyUrl(originalUrl),
     deliveryType: 'file-proxy',
     videoType: legacyVideoType,
     containerHint,

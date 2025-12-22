@@ -4,6 +4,7 @@ import { SetVideoDataSchema, VideoControlDataSchema, SyncCheckDataSchema } from 
 import { SocketEvents, SocketData } from '../types';
 import { validateData, emitSystemMessage } from '../utils';
 import { resolveSource } from '@/server/video/resolve-source';
+import { buildProxyUrl, isProxiedUrl } from '@/lib/video-proxy-client';
 
 // Map to store pause timeouts per room
 const lastErrorReport: Record<string, number> = {};
@@ -268,8 +269,8 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
         legacyVideoType === 'youtube' || videoMeta.decisionReasons?.includes('direct-required-cdn');
 
       // If a client reports failure and we're not already proxying, force a proxy fallback for the room.
-      if (!proxyDisallowed && !videoMeta.playbackUrl.includes('/api/video-proxy')) {
-        const proxyUrl = `/api/video-proxy?url=${encodeURIComponent(originalUrl)}`;
+      if (!proxyDisallowed && !isProxiedUrl(videoMeta.playbackUrl)) {
+        const proxyUrl = buildProxyUrl(originalUrl);
         const fallbackMeta = {
           ...videoMeta,
           playbackUrl: proxyUrl,
