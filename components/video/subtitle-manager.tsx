@@ -10,8 +10,9 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
-import { Subtitles, Plus, X } from 'lucide-react';
+import { Subtitles, Plus, X, Settings } from 'lucide-react';
 import { SubtitleUploadDialog } from './subtitle-upload-dialog';
+import { SubtitleSettingsDialog } from './subtitle-settings-dialog';
 import type { SubtitleTrack } from '@/types/schemas';
 
 interface SubtitleManagerProps {
@@ -36,6 +37,7 @@ export function SubtitleManager({
   isFullscreen = false,
 }: SubtitleManagerProps) {
   const [showSearchDialog, setShowSearchDialog] = useState(false);
+  const [showSettingsDialog, setShowSettingsDialog] = useState(false);
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
@@ -68,6 +70,11 @@ export function SubtitleManager({
     setShowSearchDialog(true);
   };
 
+  const handleSettingsClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowSettingsDialog(true);
+  };
+
   return (
     <>
       {isFullscreen && isClient ? (
@@ -78,6 +85,7 @@ export function SubtitleManager({
           onTrackSelect={handleTrackSelect}
           onRemoveTrack={handleRemoveTrack}
           onUploadClick={handleUploadClick}
+          onSettingsClick={handleSettingsClick}
           isHost={isHost}
           isFullscreen={isFullscreen}
         />
@@ -119,7 +127,7 @@ export function SubtitleManager({
                     </div>
                   </div>
                 </DropdownMenuItem>
-                {/* Remove track button - now available to all users since subtitles are local */}
+                {/* Remove track button */}
                 <Button
                   variant="ghost"
                   size="sm"
@@ -134,22 +142,32 @@ export function SubtitleManager({
               </div>
             ))}
 
-            {/* Upload subtitles - now available to all users since subtitles are local */}
+            {/* Upload subtitles */}
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleUploadClick} className="text-primary">
+            <DropdownMenuItem onClick={handleUploadClick}>
               <Plus className="mr-2 h-4 w-4" />
-              Upload Subtitles
+              Upload or Search
+            </DropdownMenuItem>
+
+            {/* Subtitle Settings */}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={handleSettingsClick}>
+              <Settings className="mr-2 h-4 w-4" />
+              Subtitle Settings
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       )}
 
-      {/* Subtitle upload dialog - now available to all users since subtitles are local */}
+      {/* Subtitle upload dialog */}
       <SubtitleUploadDialog
         open={showSearchDialog}
         onOpenChange={setShowSearchDialog}
         onSubtitleSelected={handleAddSubtitles}
       />
+
+      {/* Subtitle settings dialog */}
+      <SubtitleSettingsDialog open={showSettingsDialog} onOpenChange={setShowSettingsDialog} />
     </>
   );
 }
@@ -161,6 +179,7 @@ interface FullscreenSubtitleDropdownProps {
   onTrackSelect: (trackId?: string) => void;
   onRemoveTrack: (trackId: string) => void;
   onUploadClick: (e: React.MouseEvent) => void;
+  onSettingsClick: (e: React.MouseEvent) => void;
   isHost: boolean;
   isFullscreen: boolean;
 }
@@ -171,6 +190,7 @@ function FullscreenSubtitleDropdown({
   onTrackSelect,
   onRemoveTrack,
   onUploadClick,
+  onSettingsClick,
   isHost: _isHost,
   isFullscreen: _isFullscreen,
 }: FullscreenSubtitleDropdownProps) {
@@ -220,7 +240,7 @@ function FullscreenSubtitleDropdown({
               </div>
             </div>
           </div>
-          {/* Remove track button - now available to all users since subtitles are local */}
+          {/* Remove track button */}
           <Button
             variant="ghost"
             size="sm"
@@ -235,14 +255,24 @@ function FullscreenSubtitleDropdown({
         </div>
       ))}
 
-      {/* Upload subtitles - now available to all users since subtitles are local */}
+      {/* Upload subtitles */}
       <div className="my-1 h-px bg-border" />
       <div
-        className="cursor-pointer rounded-sm px-2 py-1.5 text-sm text-primary outline-none transition-colors hover:bg-accent hover:text-accent-foreground"
+        className="cursor-pointer rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground"
         onClick={onUploadClick}
       >
         <Plus className="mr-2 inline h-4 w-4" />
-        Upload Subtitles
+        Upload or Search
+      </div>
+
+      {/* Subtitle Settings */}
+      <div className="my-1 h-px bg-border" />
+      <div
+        className="cursor-pointer rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground"
+        onClick={onSettingsClick}
+      >
+        <Settings className="mr-2 inline h-4 w-4" />
+        Subtitle Settings
       </div>
     </div>
   ) : null;
