@@ -169,7 +169,7 @@ export function SubtitleSettingsDialog({ open, onOpenChange }: SubtitleSettingsD
                     </span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="w-12 text-xs text-muted-foreground">Too Early</span>
+                    <span className="w-12 text-xs text-muted-foreground">Early</span>
                     <Slider
                       value={[settings.syncOffset]}
                       onValueChange={([value]) => setSyncOffset(value)}
@@ -178,7 +178,7 @@ export function SubtitleSettingsDialog({ open, onOpenChange }: SubtitleSettingsD
                       step={SYNC_OFFSET_STEP}
                       className="flex-1"
                     />
-                    <span className="w-10 text-right text-xs text-muted-foreground">Too Late</span>
+                    <span className="w-10 text-right text-xs text-muted-foreground">Late</span>
                   </div>
                 </div>
               </div>
