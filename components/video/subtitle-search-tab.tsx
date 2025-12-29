@@ -25,6 +25,7 @@ interface SubtitleSearchState {
   error: string | null;
   languageFilter: string | null;
   downloadingId: string | null;
+  hasSearched: boolean;
 }
 
 export function SubtitleSearchTab({ onSubtitleSelected }: SubtitleSearchTabProps) {
@@ -35,6 +36,7 @@ export function SubtitleSearchTab({ onSubtitleSelected }: SubtitleSearchTabProps
     error: null,
     languageFilter: null,
     downloadingId: null,
+    hasSearched: false,
   });
 
   const searchSubtitles = useCallback(async () => {
@@ -62,6 +64,7 @@ export function SubtitleSearchTab({ onSubtitleSelected }: SubtitleSearchTabProps
         results: sortedResults,
         isLoading: false,
         languageFilter: null,
+        hasSearched: true,
       }));
     } catch (error) {
       setState(prev => ({
@@ -147,7 +150,7 @@ export function SubtitleSearchTab({ onSubtitleSelected }: SubtitleSearchTabProps
       )}
 
       {/* No Results State */}
-      {!state.isLoading && !state.error && state.results.length === 0 && state.query.trim() && (
+      {!state.isLoading && !state.error && state.results.length === 0 && state.hasSearched && (
         <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
           <Search className="mb-2 h-8 w-8 opacity-50" />
           <p className="mb-2">We came up empty for &quot;{state.query}&quot;.</p>

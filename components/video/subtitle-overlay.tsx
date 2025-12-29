@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import type { SubtitleTrack } from '@/types/schemas';
 import { SubtitleParser, type SubtitleCue as ParsedSubtitleCue } from '@/lib/subtitle-utils';
+import { useSubtitleSettings } from '@/lib/subtitle-settings-store';
 
 interface SubtitleCue {
   text: string;
@@ -34,6 +35,7 @@ export function SubtitleOverlay({
 }: SubtitleOverlayProps) {
   const [currentCue, setCurrentCue] = useState<SubtitleCue | null>(null);
   const [parsedCues, setParsedCues] = useState<SubtitleCue[]>([]);
+  const { settings } = useSubtitleSettings();
 
   // Load and parse subtitle file
   useEffect(() => {
@@ -64,7 +66,7 @@ export function SubtitleOverlay({
       });
   }, [activeSubtitleTrack, subtitleTracks]);
 
-  // Update current cue based on video time
+  // Update current cue based on video time (with syncOffset applied)
   useEffect(() => {
     if (!videoRef?.current || parsedCues.length === 0) {
       setCurrentCue(null);
@@ -74,8 +76,9 @@ export function SubtitleOverlay({
     const video = videoRef.current;
 
     const updateCurrentCue = () => {
-      const currentTime = video.currentTime;
-      const activeCue = parsedCues.find(cue => currentTime >= cue.startTime && currentTime <= cue.endTime);
+      // Apply sync offset: positive = subtitles appear later, negative = earlier
+      const adjustedTime = video.currentTime - settings.syncOffset;
+      const activeCue = parsedCues.find(cue => adjustedTime >= cue.startTime && adjustedTime <= cue.endTime);
       setCurrentCue(activeCue || null);
     };
 
@@ -90,37 +93,71 @@ export function SubtitleOverlay({
       video.removeEventListener('timeupdate', updateCurrentCue);
       video.removeEventListener('seeked', updateCurrentCue);
     };
-  }, [videoRef, parsedCues]);
+  }, [videoRef, parsedCues, settings.syncOffset]);
 
   // Don't render if no current cue
   if (!currentCue) {
     return null;
   }
 
-  // Calculate positioning
+  // Calculate positioning based on settings and controls visibility
   const getPositionStyles = () => {
-    let bottomOffset = 40;
+    // Base offset from user settings (percentage of container height)
+    const baseOffsetPercent = settings.verticalPosition;
 
+    // Additional offset when controls are visible
+    let additionalOffset = 0;
     if (controlsVisible) {
-      bottomOffset = isFullscreen ? 160 : 120; // Push up when controls are visible
+      additionalOffset = isFullscreen ? 120 : 80;
     }
 
     return {
-      bottom: `${bottomOffset}px`,
+      bottom: `calc(${baseOffsetPercent}% + ${additionalOffset}px)`,
     };
+  };
+
+  // Calculate font size based on settings
+  const getFontSize = () => {
+    const baseSize = isFullscreen ? 1.25 : 1; // rem
+    return `${(baseSize * settings.fontSize) / 100}rem`;
+  };
+
+  // Build background styles
+  const getBackgroundStyles = () => {
+    const styles: React.CSSProperties = {};
+
+    if (settings.backgroundFill) {
+      styles.backgroundColor = 'rgba(0, 0, 0, 0.75)';
+      styles.border = '1px solid rgba(255, 255, 255, 0.1)';
+    } else {
+      styles.backgroundColor = 'transparent';
+    }
+
+    if (settings.backgroundBlur) {
+      styles.backdropFilter = 'blur(8px)';
+      styles.WebkitBackdropFilter = 'blur(8px)';
+    }
+
+    // Only add text shadow when there's no background (for readability on video)
+    if (!settings.backgroundFill && !settings.backgroundBlur) {
+      styles.textShadow = '2px 2px 4px rgba(0, 0, 0, 0.9), 0 0 8px rgba(0, 0, 0, 0.5)';
+    }
+
+    return styles;
   };
 
   return (
     <div className="pointer-events-none absolute inset-x-0 z-30 flex justify-center" style={getPositionStyles()}>
       <div
-        className={`max-w-[85%] rounded-lg px-4 py-2 text-center ${isFullscreen ? 'max-w-[70%] text-xl' : 'text-sm sm:text-base'} border border-white/10 bg-black/75 text-white shadow-2xl backdrop-blur-sm`}
+        className={`max-w-[85%] rounded-lg px-4 py-2 text-center ${isFullscreen ? 'max-w-[70%]' : ''} text-white`}
         style={{
           fontFamily: 'var(--font-space-grotesk), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-          fontWeight: '500',
-          textShadow: '2px 2px 4px rgba(0, 0, 0, 0.9), 0 0 8px rgba(0, 0, 0, 0.5)',
+          fontWeight: settings.isBold ? 700 : 500,
+          fontSize: getFontSize(),
           lineHeight: isFullscreen ? '1.15' : '1.25',
           whiteSpace: 'pre-line',
           letterSpacing: '0.02em',
+          ...getBackgroundStyles(),
         }}
       >
         {currentCue.text}
