@@ -31,8 +31,7 @@ const STORAGE_KEY = 'subtitle_settings';
 
 // Module-level state (singleton)
 let settings: SubtitleSettings = DEFAULT_SETTINGS;
-let listeners = new Set<() => void>();
-let isHydrated = false;
+const listeners = new Set<() => void>();
 
 // Load from localStorage on module init (client-side only)
 if (typeof window !== 'undefined') {
@@ -42,7 +41,6 @@ if (typeof window !== 'undefined') {
       const parsed = JSON.parse(stored) as Partial<SubtitleSettings>;
       settings = { ...DEFAULT_SETTINGS, ...parsed };
     }
-    isHydrated = true;
   } catch (error) {
     console.error('Failed to load subtitle settings from localStorage:', error);
   }
