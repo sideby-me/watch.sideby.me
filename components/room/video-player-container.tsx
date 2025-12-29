@@ -332,6 +332,8 @@ export function VideoPlayerContainer({
               console.log('🎯 HLS reported fatal error:', err);
             }}
             isHost={isHost}
+            subtitleTracks={subtitleTracks}
+            activeSubtitleTrack={activeSubtitleTrack}
             className="h-full w-full"
           />
         );

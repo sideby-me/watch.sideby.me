@@ -2,6 +2,8 @@
 
 import React, { useRef, useEffect, useImperativeHandle, forwardRef, useState } from 'react';
 import { VIDEO_PROXY_URL, isProxiedUrl } from '@/lib/video-proxy-client';
+import { useVideoSubtitleTracks } from '@/hooks/use-video-subtitle-tracks';
+import type { SubtitleTrack } from '@/types/schemas';
 
 export interface HLSPlayerRef {
   play: () => Promise<void>;
@@ -24,6 +26,8 @@ interface HLSPlayerProps {
   className?: string;
   isHost?: boolean;
   useProxy?: boolean;
+  subtitleTracks?: SubtitleTrack[];
+  activeSubtitleTrack?: string;
 }
 
 const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
@@ -39,6 +43,8 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
       className = '',
       isHost = false,
       useProxy = false,
+      subtitleTracks = [],
+      activeSubtitleTrack,
     },
     ref
   ) => {
@@ -47,6 +53,13 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
     const programmaticActionRef = useRef(false);
     const proxyTriedRef = useRef<boolean>(!!useProxy);
     const [shouldProxy, setShouldProxy] = useState<boolean>(!!useProxy);
+
+    // Inject native <track> elements for iOS Safari native HLS playback
+    useVideoSubtitleTracks({
+      videoElement: videoRef.current,
+      subtitleTracks,
+      activeSubtitleTrack,
+    });
 
     useImperativeHandle(ref, () => ({
       play: async () => {
@@ -246,6 +259,7 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
         preload="metadata"
         controlsList="nodownload noremoteplayback"
         disablePictureInPicture={!isHost}
+        crossOrigin="anonymous"
       />
     );
   }

@@ -207,9 +207,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(
         playsInline
         controlsList="nodownload noremoteplayback"
         disablePictureInPicture={!isHost}
-        {...(typeof window !== 'undefined' && src.startsWith(window.location.origin)
-          ? { crossOrigin: 'anonymous' as const }
-          : {})}
+        crossOrigin="anonymous"
       >
         Looks like your browser is a bit of a fossil! To watch videos here, you might need to update or switch to a
         newer browser like Chrome or Firefox.
