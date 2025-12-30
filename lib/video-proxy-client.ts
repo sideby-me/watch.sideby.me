@@ -14,5 +14,5 @@ export function buildProxyUrl(targetUrl: string, referer?: string): string {
 // Check if a URL is already proxied
 export function isProxiedUrl(url: string): boolean {
   if (!url) return false;
-  return url.includes('pipe.sideby.me') || url.includes('/api/video-proxy');
+  return url.includes('pipe.sideby.me') || url.includes('/api/video-proxy') || url.includes(VIDEO_PROXY_URL);
 }

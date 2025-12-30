@@ -102,6 +102,10 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
       const video = videoRef.current;
       if (!video || !src) return;
 
+      // Reset proxy state when src changes to allow fresh retry attempts
+      proxyTriedRef.current = !!useProxy;
+      setShouldProxy(!!useProxy);
+
       // Check if HLS.js is supported
       const loadHLS = async () => {
         try {
