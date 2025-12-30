@@ -11,6 +11,8 @@ export interface RoomVideoMeta {
   decisionReasons: string[];
   probe: { status: number; contentType?: string; acceptRanges?: boolean };
   timestamp: number;
+  confidence: 'high' | 'medium' | 'low';
+  confidenceReason?: string;
 }
 
 interface ProbeResult {
@@ -148,6 +150,8 @@ export async function resolveSource(rawUrl: string): Promise<RoomVideoMeta> {
       decisionReasons,
       probe: { status: 0 },
       timestamp,
+      confidence: 'high',
+      confidenceReason: 'already-proxied',
     };
   }
 
@@ -163,6 +167,8 @@ export async function resolveSource(rawUrl: string): Promise<RoomVideoMeta> {
       decisionReasons,
       probe: { status: 0 },
       timestamp,
+      confidence: 'high',
+      confidenceReason: 'youtube-detected',
     };
   }
 
@@ -178,6 +184,8 @@ export async function resolveSource(rawUrl: string): Promise<RoomVideoMeta> {
       decisionReasons,
       probe: { status: 0 },
       timestamp,
+      confidence: 'low',
+      confidenceReason: 'direct-required-cdn',
     };
   }
 
@@ -192,6 +200,8 @@ export async function resolveSource(rawUrl: string): Promise<RoomVideoMeta> {
       decisionReasons,
       probe: { status: 0 },
       timestamp,
+      confidence: 'medium',
+      confidenceReason: 'hls-manifest',
     };
   }
 
@@ -209,7 +219,14 @@ export async function resolveSource(rawUrl: string): Promise<RoomVideoMeta> {
       decisionReasons,
       probe: { status: head.status, contentType: head.contentType, acceptRanges: head.acceptRanges },
       timestamp,
+      confidence: 'medium',
+      confidenceReason: 'head-access-denied-proxy',
     };
+    // Downgrade confidence if it looks really suspicious (signed/extensionless)
+    if (hints.signedQuery || hints.extensionless) {
+      meta.confidence = 'low';
+      meta.confidenceReason = 'suspicious-signed-or-extensionless';
+    }
     return meta;
   }
 
@@ -229,6 +246,8 @@ export async function resolveSource(rawUrl: string): Promise<RoomVideoMeta> {
         decisionReasons,
         probe: { status: head.status, contentType: head.contentType, acceptRanges: head.acceptRanges },
         timestamp,
+        confidence: 'medium',
+        confidenceReason: 'hls-content-type',
       };
     }
 
@@ -243,7 +262,7 @@ export async function resolveSource(rawUrl: string): Promise<RoomVideoMeta> {
       decisionReasons.push('range-probed');
       if (range.status === 403) {
         decisionReasons.push('range-access-denied');
-        return {
+        const meta: RoomVideoMeta = {
           originalUrl,
           playbackUrl: buildProxyUrl(originalUrl),
           deliveryType: 'file-proxy',
@@ -252,7 +271,14 @@ export async function resolveSource(rawUrl: string): Promise<RoomVideoMeta> {
           decisionReasons,
           probe: { status: range.status, contentType: range.contentType, acceptRanges: range.acceptRanges },
           timestamp,
+          confidence: 'medium',
+          confidenceReason: 'range-access-denied-proxy',
         };
+        if (hints.signedQuery || hints.extensionless) {
+          meta.confidence = 'low';
+          meta.confidenceReason = 'suspicious-signed-or-extensionless';
+        }
+        return meta;
       }
     }
   } else {
@@ -281,6 +307,8 @@ export async function resolveSource(rawUrl: string): Promise<RoomVideoMeta> {
       decisionReasons,
       probe: { status: head.status, contentType: head.contentType, acceptRanges: head.acceptRanges },
       timestamp,
+      confidence: 'high',
+      confidenceReason: 'direct-playable',
     };
   }
 
@@ -296,5 +324,7 @@ export async function resolveSource(rawUrl: string): Promise<RoomVideoMeta> {
     decisionReasons,
     probe: { status: head.status, contentType: head.contentType, acceptRanges: head.acceptRanges },
     timestamp,
+    confidence: 'low',
+    confidenceReason: 'fallback-proxy',
   };
 }
