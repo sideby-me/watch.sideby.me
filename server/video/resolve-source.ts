@@ -133,6 +133,24 @@ export async function resolveSource(rawUrl: string): Promise<RoomVideoMeta> {
   if (hints.extensionless) decisionReasons.push('url-extensionless');
   if (hints.signedQuery) decisionReasons.push('url-signed');
 
+  // Local helper to mirror client-side proxy detection
+  const isProxiedUrl = (url: string) => url.includes('pipe.sideby.me') || url.includes('/api/video-proxy');
+
+  // Early exit for already-proxied URLs
+  if (isProxiedUrl(originalUrl)) {
+    decisionReasons.push('incoming-proxied-url');
+    return {
+      originalUrl,
+      playbackUrl: originalUrl,
+      deliveryType: 'file-proxy',
+      videoType: legacyVideoType,
+      requiresProxy: true,
+      decisionReasons,
+      probe: { status: 0 },
+      timestamp,
+    };
+  }
+
   // Simple direct classifications first
   if (kind === 'youtube') {
     decisionReasons.push('youtube-detected');

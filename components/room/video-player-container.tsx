@@ -20,7 +20,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { parseVideoUrl, getSupportedVideoFormats } from '@/lib/video-utils';
-import { VIDEO_PROXY_URL, isProxiedUrl } from '@/lib/video-proxy-client';
+import { VIDEO_PROXY_URL, isProxiedUrl, buildProxyUrl } from '@/lib/video-proxy-client';
 import { toast } from 'sonner';
 import { useSocket } from '@/hooks/use-socket';
 
@@ -374,7 +374,10 @@ export function VideoPlayerContainer({
               const alreadyProxy = isProxiedUrl(videoUrl);
               if (err.code === 4 && !usingProxy && !alreadyProxy && onVideoChange) {
                 console.log('🔁 Switching to proxy due to player error code 4');
-                const proxyUrl = `${VIDEO_PROXY_URL}?url=${encodeURIComponent(videoUrl)}`;
+                const proxyUrl = buildProxyUrl(
+                  videoUrl,
+                  typeof window !== 'undefined' ? window.location.href : undefined
+                );
                 onVideoChange(proxyUrl);
                 setUsingProxy(true);
                 setPlaybackError(null);

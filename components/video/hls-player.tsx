@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useEffect, useImperativeHandle, forwardRef, useState } from 'react';
-import { VIDEO_PROXY_URL, isProxiedUrl } from '@/lib/video-proxy-client';
+import { VIDEO_PROXY_URL, isProxiedUrl, buildProxyUrl } from '@/lib/video-proxy-client';
 import { useVideoSubtitleTracks } from '@/hooks/use-video-subtitle-tracks';
 import type { SubtitleTrack } from '@/types/schemas';
 
@@ -115,9 +115,9 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
             }
             try {
               const absolute = new URL(target, window.location.origin).toString();
-              return `${VIDEO_PROXY_URL}?url=${encodeURIComponent(absolute)}`;
+              return buildProxyUrl(absolute, window.location.href);
             } catch {
-              return `${VIDEO_PROXY_URL}?url=${encodeURIComponent(target)}`;
+              return buildProxyUrl(target, window.location.href);
             }
           };
 
