@@ -19,13 +19,32 @@ export async function POST(req: NextRequest) {
     }
 
     const meta = await resolveSource(url);
-    return NextResponse.json({ meta });
+    const response = NextResponse.json({ meta });
+    response.headers.set('Access-Control-Allow-Origin', '*');
+    return response;
   } catch (error) {
     if (error instanceof Error && error.message === 'Unsupported protocol') {
-      return NextResponse.json({ error: 'Unsupported protocol' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Unsupported protocol' },
+        { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } }
+      );
     }
 
     console.error('Video resolve error:', error);
-    return NextResponse.json({ error: 'Failed to resolve video source' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Failed to resolve video source' },
+      { status: 500, headers: { 'Access-Control-Allow-Origin': '*' } }
+    );
   }
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    },
+  });
 }
