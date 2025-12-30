@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useEffect, useImperativeHandle, forwardRef, useState } from 'react';
-import { VIDEO_PROXY_URL, isProxiedUrl, buildProxyUrl } from '@/lib/video-proxy-client';
+import { isProxiedUrl, buildProxyUrl } from '@/lib/video-proxy-client';
 import { useVideoSubtitleTracks } from '@/hooks/use-video-subtitle-tracks';
 import type { SubtitleTrack } from '@/types/schemas';
 

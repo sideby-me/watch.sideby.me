@@ -20,7 +20,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { parseVideoUrl, getSupportedVideoFormats } from '@/lib/video-utils';
-import { VIDEO_PROXY_URL, isProxiedUrl, buildProxyUrl } from '@/lib/video-proxy-client';
+import { isProxiedUrl, buildProxyUrl } from '@/lib/video-proxy-client';
 import { toast } from 'sonner';
 import { useSocket } from '@/hooks/use-socket';
 
