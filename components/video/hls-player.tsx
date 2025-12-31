@@ -102,9 +102,24 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
       const video = videoRef.current;
       if (!video || !src) return;
 
+      // Force proxy when URL contains embedded headers (needs proxy to extract them)
+      const hasEmbeddedHeaders = src.includes('headers=');
+
+      // Heuristically force proxy for Cloudflare worker style hosts that reject direct browser fetches
+      const looksLikeWorkerHost = (() => {
+        try {
+          const hostname = new URL(src, window.location.href).hostname;
+          return hostname.includes('workers.dev');
+        } catch {
+          return src.includes('workers.dev');
+        }
+      })();
+
+      const initialProxy = !!useProxy || hasEmbeddedHeaders || looksLikeWorkerHost;
+
       // Reset proxy state when src changes to allow fresh retry attempts
-      proxyTriedRef.current = !!useProxy;
-      setShouldProxy(!!useProxy);
+      proxyTriedRef.current = initialProxy;
+      setShouldProxy(initialProxy);
 
       // Check if HLS.js is supported
       const loadHLS = async () => {
@@ -171,6 +186,22 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
                 hls.destroy();
                 return;
               }
+
+              const responseCode = errorData.response?.code;
+              const hardHttpBlock = networkish && responseCode !== undefined && responseCode >= 400;
+
+              if (hardHttpBlock) {
+                onError?.({
+                  type: errorData.type,
+                  details: errorData.details,
+                  fatal: true,
+                  url: errorData.url,
+                  responseCode,
+                });
+                hls.destroy();
+                return;
+              }
+
               console.error('HLS error:', data);
 
               if (errorData.fatal) {
