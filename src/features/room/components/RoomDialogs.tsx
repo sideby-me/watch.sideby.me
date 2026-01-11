@@ -1,5 +1,6 @@
 'use client';
 
+import { memo } from 'react';
 import { HostControlDialog } from '@/components/room/host-control-dialog';
 import { JoinRoomDialog } from '@/components/room/join-room-dialog';
 import { PasscodeDialog } from '@/components/room/passcode-dialog';
@@ -32,7 +33,7 @@ interface RoomDialogsProps {
   onUpdateSettings: (settings: Partial<RoomSettings>) => void;
 }
 
-export function RoomDialogs({
+export const RoomDialogs = memo(function RoomDialogs({
   roomId,
   roomSettings,
   showHostDialog,
@@ -72,4 +73,4 @@ export function RoomDialogs({
       />
     </>
   );
-}
+});

@@ -1,5 +1,6 @@
 'use client';
 
+import { memo } from 'react';
 import { Chat, ChatOverlay } from '@/components/chat';
 import { ChatMessage, TypingUser, User } from '@/types';
 
@@ -43,7 +44,7 @@ interface RoomChatSectionProps {
   onTimestampClick: (seconds: number) => void;
 }
 
-export function RoomChatSection({
+export const RoomChatSection = memo(function RoomChatSection({
   messages,
   currentUserId,
   users,
@@ -94,7 +95,7 @@ export function RoomChatSection({
       isHost={isHost}
     />
   );
-}
+});
 
 interface RoomChatOverlayProps {
   messages: ChatMessage[];
@@ -120,7 +121,7 @@ interface RoomChatOverlayProps {
   onMarkMessagesAsRead: () => void;
 }
 
-export function RoomChatOverlaySection({
+export const RoomChatOverlaySection = memo(function RoomChatOverlaySection({
   messages,
   currentUserId,
   users,
@@ -179,4 +180,4 @@ export function RoomChatOverlaySection({
       isHost={isHost}
     />
   );
-}
+});

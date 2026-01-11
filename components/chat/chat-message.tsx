@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, memo } from 'react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { ChatMessage } from '@/types';
 import { MarkdownMessage } from './markdown-message';
@@ -20,7 +20,7 @@ interface ChatMessageItemProps {
   onTimestampClick?: (seconds: number) => void;
 }
 
-export function ChatMessageItem({
+export const ChatMessageItem = memo(function ChatMessageItem({
   message,
   currentUserId,
   mode = 'sidebar',
@@ -251,7 +251,7 @@ export function ChatMessageItem({
       )}
     </div>
   );
-}
+});
 
 // Mention highlights supports structured tokens (@[Name](uuid)) and plain @Name
 const MessageWithMentions = ({

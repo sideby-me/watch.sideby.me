@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Socket } from 'socket.io-client';
 import { ChatMessage, TypingUser } from '@/types';
 
@@ -117,14 +117,27 @@ export function useChat({ roomId, currentUserId, socket, isConnected }: UseChatO
     setTypingUsers(prev => prev.filter(user => user.userId !== userId));
   }, []);
 
-  return {
-    messages,
-    typingUsers,
-    handleSendMessage,
-    handleTypingStart,
-    handleTypingStop,
-    handleToggleReaction,
-    markMessagesAsRead,
-    clearTypingUser,
-  };
+  // Memoize return object for referential stability
+  return useMemo(
+    () => ({
+      messages,
+      typingUsers,
+      handleSendMessage,
+      handleTypingStart,
+      handleTypingStop,
+      handleToggleReaction,
+      markMessagesAsRead,
+      clearTypingUser,
+    }),
+    [
+      messages,
+      typingUsers,
+      handleSendMessage,
+      handleTypingStart,
+      handleTypingStop,
+      handleToggleReaction,
+      markMessagesAsRead,
+      clearTypingUser,
+    ]
+  );
 }

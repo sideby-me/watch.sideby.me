@@ -1,5 +1,6 @@
 'use client';
 
+import { memo } from 'react';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -16,7 +17,7 @@ interface RoomHeaderProps {
   onOpenSettings?: () => void;
 }
 
-export function RoomHeader({
+export const RoomHeader = memo(function RoomHeader({
   roomId,
   hostName,
   hostCount,
@@ -70,4 +71,4 @@ export function RoomHeader({
       </CardHeader>
     </Card>
   );
-}
+});

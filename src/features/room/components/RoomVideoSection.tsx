@@ -1,6 +1,6 @@
 'use client';
 
-import { RefObject } from 'react';
+import { RefObject, memo } from 'react';
 import { VideoPlayerContainer } from '@/components/room/video-player-container';
 import { VideoSetup } from '@/components/video/video-setup';
 import { YouTubePlayerRef } from '@/components/video/youtube-player';
@@ -45,7 +45,7 @@ interface RoomVideoSectionProps {
   onCastClick: () => void;
 }
 
-export function RoomVideoSection({
+export const RoomVideoSection = memo(function RoomVideoSection({
   roomId,
   videoUrl,
   videoType,
@@ -106,4 +106,4 @@ export function RoomVideoSection({
   }
 
   return <VideoSetup onVideoSet={onVideoChange} isHost={isHost} hasVideo={hasVideo} videoUrl={originalVideoUrl} />;
-}
+});

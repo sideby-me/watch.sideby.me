@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect, useCallback, useState } from 'react';
+import { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useSocket } from '@/hooks/use-socket';
 import { useRoomCore } from '@/src/features/room/hooks/use-room-core';
@@ -215,6 +215,51 @@ export function RoomShell({ roomId }: RoomShellProps) {
   const videoParticipantCount = videochat.isEnabled
     ? videochat.remoteStreams.length + 1
     : videochat.publicParticipantCount;
+
+  // Voice/video chat props - memoized for referential stability
+  const voiceProps = useMemo(
+    () => ({
+      isEnabled: voice.isEnabled,
+      isMuted: voice.isMuted,
+      isConnecting: voice.isConnecting,
+      participantCount: voiceParticipantCount,
+      overCap,
+      onEnable: voice.enable,
+      onDisable: voice.disable,
+      onToggleMute: voice.toggleMute,
+    }),
+    [
+      voice.isEnabled,
+      voice.isMuted,
+      voice.isConnecting,
+      voiceParticipantCount,
+      overCap,
+      voice.enable,
+      voice.disable,
+      voice.toggleMute,
+    ]
+  );
+
+  const videoProps = useMemo(
+    () => ({
+      isEnabled: videochat.isEnabled,
+      isCameraOff: videochat.isCameraOff,
+      isConnecting: videochat.isConnecting,
+      enable: videochat.enable,
+      disable: videochat.disable,
+      toggleCamera: videochat.toggleCamera,
+      participantCount: videoParticipantCount,
+    }),
+    [
+      videochat.isEnabled,
+      videochat.isCameraOff,
+      videochat.isConnecting,
+      videochat.enable,
+      videochat.disable,
+      videochat.toggleCamera,
+      videoParticipantCount,
+    ]
+  );
 
   // Handle video control attempts by guests
   const handleVideoControlAttempt = useCallback(() => {
@@ -508,28 +553,6 @@ export function RoomShell({ roomId }: RoomShellProps) {
     }
   };
   const youTubeId = effectiveVideoType === 'youtube' ? extractYouTubeId(effectiveVideoUrl) : undefined;
-
-  // Voice/video chat props
-  const voiceProps = {
-    isEnabled: voice.isEnabled,
-    isMuted: voice.isMuted,
-    isConnecting: voice.isConnecting,
-    participantCount: voiceParticipantCount,
-    overCap,
-    onEnable: voice.enable,
-    onDisable: voice.disable,
-    onToggleMute: voice.toggleMute,
-  };
-
-  const videoProps = {
-    isEnabled: videochat.isEnabled,
-    isCameraOff: videochat.isCameraOff,
-    isConnecting: videochat.isConnecting,
-    enable: videochat.enable,
-    disable: videochat.disable,
-    toggleCamera: videochat.toggleCamera,
-    participantCount: videoParticipantCount,
-  };
 
   return (
     <div className="mx-auto max-w-screen-2xl space-y-6 4xl:max-w-screen-3xl">
