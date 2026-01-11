@@ -2,7 +2,18 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Maximize, Volume2, VolumeX, Play, Pause, RotateCcw, RotateCw, Loader2, MessageCircle } from 'lucide-react';
+import {
+  Maximize,
+  Volume2,
+  VolumeX,
+  Play,
+  Pause,
+  RotateCcw,
+  RotateCw,
+  Loader2,
+  MessageCircle,
+  Cast,
+} from 'lucide-react';
 import { SubtitleManager } from './subtitle-manager';
 import type { SubtitleTrack } from '@/types/schemas';
 
@@ -23,6 +34,11 @@ interface VideoControlsProps {
   className?: string;
   onControlsVisibilityChange?: (visible: boolean) => void;
   onFullscreenChange?: (isFullscreen: boolean) => void;
+  // Cast controls
+  isCasting?: boolean;
+  isCastAvailable?: boolean;
+  castDeviceName?: string;
+  onCastClick?: () => void;
 }
 
 export function VideoControls({
@@ -42,6 +58,10 @@ export function VideoControls({
   className,
   onControlsVisibilityChange,
   onFullscreenChange,
+  isCasting = false,
+  isCastAvailable = false,
+  castDeviceName,
+  onCastClick,
 }: VideoControlsProps) {
   const [isMuted, setIsMuted] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -197,8 +217,8 @@ export function VideoControls({
     };
   }, []);
 
-  // Don't render if no video ref
-  if (!videoRef) {
+  // Don't render if no video ref (unless we're casting, which doesn't need local video)
+  if (!videoRef && !isCasting) {
     return null;
   }
 
@@ -533,6 +553,23 @@ export function VideoControls({
                 title="Show chat"
               >
                 <MessageCircle className="h-5 w-5" />
+              </Button>
+            )}
+
+            {/* Cast button - only show if Cast is available */}
+            {isCastAvailable && onCastClick && (
+              <Button
+                variant="secondary"
+                size={isFullscreen ? 'default' : 'sm'}
+                onClick={onCastClick}
+                className={`${isFullscreen ? 'h-11 w-11' : 'h-9 w-9'} border p-0 duration-200 transition-interactive ${
+                  isCasting
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-border bg-black/60 text-white hover:border-primary hover:bg-primary hover:text-primary-foreground'
+                }`}
+                title={isCasting ? `Casting to ${castDeviceName || 'TV'}` : 'Cast to TV'}
+              >
+                <Cast className={isFullscreen ? 'h-5 w-5' : 'h-4 w-4'} />
               </Button>
             )}
 

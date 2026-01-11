@@ -10,6 +10,7 @@ import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { YouTubePlayerRef } from '@/components/video/youtube-player';
 import { VideoPlayerRef } from '@/components/video/video-player';
 import { HLSPlayerRef } from '@/components/video/hls-player';
+import { useGoogleCast } from '@/hooks/use-google-cast';
 import { formatTimestamp } from '@/lib/chat-timestamps';
 import { VideoSetup } from '@/components/video/video-setup';
 import { Chat, ChatOverlay } from '@/components/chat';
@@ -57,6 +58,17 @@ export default function RoomPage() {
   const hlsPlayerRef = useRef<HLSPlayerRef>(null);
   const initialVideoAppliedRef = useRef(false);
   const autoplayTriggeredRef = useRef(false);
+
+  // Google Cast hook for Chromecast integration
+  const {
+    isCasting,
+    isAvailable: isCastAvailable,
+    deviceName: castDeviceName,
+    castPlayerRef,
+    startCasting,
+    stopCasting,
+    requestSession: requestCastSession,
+  } = useGoogleCast();
 
   // Use room hook for state and basic room operations
   const {
@@ -147,6 +159,8 @@ export default function RoomPage() {
     youtubePlayerRef,
     videoPlayerRef,
     hlsPlayerRef,
+    castPlayerRef,
+    isCasting,
   });
 
   const initialVideoUrlFromQuery = searchParams.get('videoUrl');
@@ -302,6 +316,18 @@ export default function RoomPage() {
     };
   }, [currentUser?.isHost, room?.videoUrl, startSyncCheck, stopSyncCheck]);
 
+  // Load video on Chromecast when casting becomes active
+  useEffect(() => {
+    if (!isCasting || !room?.videoUrl) return;
+
+    // Don't cast YouTube videos
+    if (room.videoType === 'youtube') return;
+
+    console.log('📺 Loading video on Chromecast:', room.videoUrl);
+    const contentType = room.videoType === 'm3u8' ? 'application/x-mpegurl' : 'video/mp4';
+    startCasting(room.videoUrl, contentType);
+  }, [isCasting, room?.videoUrl, room?.videoType, startCasting]);
+
   useEffect(() => {
     if (!room || !currentUser?.isHost) return;
     if (autoplayTriggeredRef.current) return;
@@ -448,6 +474,16 @@ export default function RoomPage() {
               youtubePlayerRef={youtubePlayerRef}
               videoPlayerRef={videoPlayerRef}
               hlsPlayerRef={hlsPlayerRef}
+              isCasting={isCasting}
+              isCastAvailable={isCastAvailable && effectiveVideoType !== 'youtube'}
+              castDeviceName={castDeviceName}
+              onCastClick={() => {
+                if (isCasting) {
+                  stopCasting();
+                } else {
+                  requestCastSession();
+                }
+              }}
             />
           ) : (
             <VideoSetup

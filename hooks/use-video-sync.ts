@@ -5,6 +5,7 @@ import { useSocket } from '@/hooks/use-socket';
 import { YouTubePlayerRef, YT_STATES } from '@/components/video/youtube-player';
 import { VideoPlayerRef } from '@/components/video/video-player';
 import { HLSPlayerRef } from '@/components/video/hls-player';
+import { CastPlayerRef } from '@/hooks/use-google-cast';
 import { calculateCurrentTime } from '@/lib/video-utils';
 import { Room, User } from '@/types';
 
@@ -15,6 +16,8 @@ interface UseVideoSyncOptions {
   youtubePlayerRef: React.RefObject<YouTubePlayerRef | null>;
   videoPlayerRef: React.RefObject<VideoPlayerRef | null>;
   hlsPlayerRef: React.RefObject<HLSPlayerRef | null>;
+  castPlayerRef?: React.RefObject<CastPlayerRef | null>;
+  isCasting?: boolean;
 }
 
 interface UseVideoSyncReturn {
@@ -36,6 +39,8 @@ export function useVideoSync({
   youtubePlayerRef,
   videoPlayerRef,
   hlsPlayerRef,
+  castPlayerRef,
+  isCasting = false,
 }: UseVideoSyncOptions): UseVideoSyncReturn {
   const { socket } = useSocket();
 
@@ -48,16 +53,21 @@ export function useVideoSync({
   const lastPlayerTimeRef = useRef<number>(0);
   const syncCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Get current player based on video type
+  // Get current player based on video type (prioritize cast player when casting)
   const getCurrentPlayer = useCallback(() => {
     if (!room) return null;
+
+    // Prioritize cast player when casting is active
+    if (isCasting && castPlayerRef?.current) {
+      return castPlayerRef.current;
+    }
 
     return room.videoType === 'youtube'
       ? youtubePlayerRef.current
       : room.videoType === 'm3u8'
         ? hlsPlayerRef.current
         : videoPlayerRef.current;
-  }, [room, youtubePlayerRef, videoPlayerRef, hlsPlayerRef]);
+  }, [room, youtubePlayerRef, videoPlayerRef, hlsPlayerRef, castPlayerRef, isCasting]);
 
   // Sync video playback
   const syncVideo = useCallback(
@@ -134,12 +144,15 @@ export function useVideoSync({
       if (!player) return;
 
       const currentTime = player.getCurrentTime();
-      const isPlaying =
-        room.videoType === 'youtube'
-          ? youtubePlayerRef.current?.getPlayerState() === YT_STATES.PLAYING
-          : room.videoType === 'm3u8'
-            ? !hlsPlayerRef.current?.isPaused()
-            : !videoPlayerRef.current?.isPaused();
+
+      let isPlaying: boolean;
+      if ('getPlayerState' in player) {
+        isPlaying = player.getPlayerState() === YT_STATES.PLAYING;
+      } else if ('isPaused' in player) {
+        isPlaying = !player.isPaused();
+      } else {
+        isPlaying = false;
+      }
 
       console.log(`🔄 Periodic sync check: ${currentTime.toFixed(2)}s, playing: ${isPlaying}`);
       socket.emit('sync-check', {
@@ -149,7 +162,7 @@ export function useVideoSync({
         timestamp: Date.now(),
       });
     }, 5000);
-  }, [room, currentUser, socket, roomId, getCurrentPlayer, youtubePlayerRef, hlsPlayerRef, videoPlayerRef]);
+  }, [room, currentUser, socket, roomId, getCurrentPlayer]);
 
   const stopSyncCheck = useCallback(() => {
     if (syncCheckIntervalRef.current) {

@@ -5,7 +5,7 @@ import { VideoPlayer, VideoPlayerRef } from '@/components/video/video-player';
 import { HLSPlayer, HLSPlayerRef } from '@/components/video/hls-player';
 import { VideoControls } from '@/components/video/video-controls';
 import { SubtitleOverlay } from '@/components/video/subtitle-overlay';
-import { Video, ExternalLink, Edit3, AlertTriangle } from 'lucide-react';
+import { Video, ExternalLink, Edit3, AlertTriangle, Cast } from 'lucide-react';
 import type { SubtitleTrack } from '@/types/schemas';
 import {
   Dialog,
@@ -46,6 +46,11 @@ interface VideoPlayerContainerProps {
   youtubePlayerRef: React.RefObject<YouTubePlayerRef | null>;
   videoPlayerRef: React.RefObject<VideoPlayerRef | null>;
   hlsPlayerRef: React.RefObject<HLSPlayerRef | null>;
+  // Cast integration
+  isCasting?: boolean;
+  isCastAvailable?: boolean;
+  castDeviceName?: string;
+  onCastClick?: () => void;
 }
 
 export function VideoPlayerContainer({
@@ -70,6 +75,10 @@ export function VideoPlayerContainer({
   youtubePlayerRef,
   videoPlayerRef,
   hlsPlayerRef,
+  isCasting = false,
+  isCastAvailable = false,
+  castDeviceName,
+  onCastClick,
 }: VideoPlayerContainerProps) {
   const { socket } = useSocket();
   const [isChangeDialogOpen, setIsChangeDialogOpen] = useState(false);
@@ -403,7 +412,22 @@ export function VideoPlayerContainer({
           } ${isFullscreen ? 'video-container-fullscreen' : ''}`}
           data-video-container
         >
-          {renderPlayer()}
+          {/* Casting overlay - show when casting is active */}
+          {isCasting && (
+            <div className="z-25 absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-zinc-900 to-black">
+              <div className="flex flex-col items-center space-y-4 text-center">
+                <div className="rounded-full bg-primary/20 p-6">
+                  <Cast className="h-12 w-12 text-primary" />
+                </div>
+                <div className="text-xl font-semibold tracking-tight text-primary-foreground">
+                  Casting to {castDeviceName || 'TV'}
+                </div>
+                <div className="text-sm text-muted-foreground">Use the controls below to control playback</div>
+              </div>
+            </div>
+          )}
+
+          {!isCasting && renderPlayer()}
 
           {playbackError ? (
             <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/70 px-4 text-center text-sm text-primary-foreground">
@@ -431,9 +455,9 @@ export function VideoPlayerContainer({
           )}
 
           {/* Unified video controls for non-YouTube videos */}
-          {videoType !== 'youtube' && videoRefReady && videoSourceValid !== false && (
+          {videoType !== 'youtube' && (videoRefReady || isCasting) && videoSourceValid !== false && (
             <VideoControls
-              videoRef={getVideoElementRef()}
+              videoRef={isCasting ? null : getVideoElementRef()}
               isHost={isHost}
               isLoading={isLoading}
               onPlay={onPlay}
@@ -454,6 +478,10 @@ export function VideoPlayerContainer({
               className="z-20"
               onControlsVisibilityChange={setControlsVisible}
               onFullscreenChange={setIsFullscreen}
+              isCasting={isCasting}
+              isCastAvailable={isCastAvailable}
+              castDeviceName={castDeviceName}
+              onCastClick={onCastClick}
             />
           )}
 
