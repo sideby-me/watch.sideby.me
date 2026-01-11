@@ -86,6 +86,23 @@ export const RoomSettingsSchema = z.object({
   isChatLocked: z.boolean().default(false),
 });
 
+export const VideoMetaSchema = z.object({
+  originalUrl: VideoUrlSchema,
+  playbackUrl: VideoUrlSchema,
+  deliveryType: z.enum(['youtube', 'file-direct', 'file-proxy', 'hls']),
+  videoType: z.enum(['youtube', 'mp4', 'm3u8']).nullable(),
+  containerHint: z.string().optional(),
+  codecWarning: z.string().optional(),
+  requiresProxy: z.boolean(),
+  decisionReasons: z.array(z.string()),
+  probe: z.object({
+    status: z.number(),
+    contentType: z.string().optional(),
+    acceptRanges: z.boolean().optional(),
+  }),
+  timestamp: z.number(),
+});
+
 export const RoomSchema = z.object({
   id: RoomIdSchema,
   hostId: z.string().uuid(),
@@ -96,25 +113,7 @@ export const RoomSchema = z.object({
   videoState: VideoStateSchema,
   users: z.array(UserSchema),
   createdAt: z.date(),
-  // New enriched video metadata
-  videoMeta: z
-    .object({
-      originalUrl: VideoUrlSchema,
-      playbackUrl: VideoUrlSchema,
-      deliveryType: z.enum(['youtube', 'file-direct', 'file-proxy', 'hls']),
-      videoType: z.enum(['youtube', 'mp4', 'm3u8']).nullable(),
-      containerHint: z.string().optional(),
-      codecWarning: z.string().optional(),
-      requiresProxy: z.boolean(),
-      decisionReasons: z.array(z.string()),
-      probe: z.object({
-        status: z.number(),
-        contentType: z.string().optional(),
-        acceptRanges: z.boolean().optional(),
-      }),
-      timestamp: z.number(),
-    })
-    .optional(),
+  videoMeta: VideoMetaSchema.optional(),
   // Room settings for host controls (lock, passcode, chat lock)
   settings: RoomSettingsSchema.optional(),
 });
@@ -491,6 +490,7 @@ export type VideoState = z.infer<typeof VideoStateSchema>;
 export type VideoType = z.infer<typeof VideoTypeSchema>;
 export type SubtitleTrack = z.infer<typeof SubtitleTrackSchema>;
 export type RoomSettings = z.infer<typeof RoomSettingsSchema>;
+export type VideoMeta = z.infer<typeof VideoMetaSchema>;
 
 // Socket event data types
 export type CreateRoomData = z.infer<typeof CreateRoomDataSchema>;

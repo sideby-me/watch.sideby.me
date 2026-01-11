@@ -3,22 +3,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSocket } from '@/hooks/use-socket';
-import { Room, User, ChatMessage, TypingUser, RoomSettings } from '@/types';
+import { Room, User, ChatMessage, TypingUser, RoomSettings, VideoMeta, VideoSetResponse } from '@/types';
 import { toast } from 'sonner';
 import { roomSessionStorage } from '@/lib/session-storage';
 
-type ClientVideoMeta = {
-  originalUrl: string;
-  playbackUrl: string;
-  deliveryType: 'youtube' | 'file-direct' | 'file-proxy' | 'hls';
-  videoType: 'youtube' | 'mp4' | 'm3u8' | null;
-  containerHint?: string;
-  codecWarning?: string;
-  requiresProxy: boolean;
-  decisionReasons: string[];
-  probe: { status: number; contentType?: string; acceptRanges?: boolean };
-  timestamp: number;
-};
+type ClientVideoMeta = VideoMeta;
 
 interface UseRoomOptions {
   roomId: string;
@@ -198,24 +187,14 @@ export function useRoom({ roomId }: UseRoomOptions): UseRoomReturn {
       });
     };
 
-    const handleVideoSet = ({
-      videoUrl,
-      videoType,
-      videoMeta,
-    }: {
-      videoUrl: string;
-      videoType: 'youtube' | 'mp4' | 'm3u8';
-      videoMeta?: unknown;
-    }) => {
+    const handleVideoSet = ({ videoUrl, videoType, videoMeta }: VideoSetResponse) => {
       setRoom(prev =>
         prev
           ? {
               ...prev,
               videoUrl,
               videoType,
-              videoMeta:
-                (videoMeta as ClientVideoMeta | undefined) ||
-                (prev as unknown as { videoMeta?: ClientVideoMeta }).videoMeta,
+              videoMeta: videoMeta ?? prev.videoMeta,
               videoState: {
                 isPlaying: false,
                 currentTime: 0,
@@ -401,7 +380,9 @@ export function useRoom({ roomId }: UseRoomOptions): UseRoomReturn {
       return;
     }
 
-    if ((socket as unknown as { rooms?: Set<string> }).rooms?.has(roomId)) {
+    // Check if socket is already in room
+    const socketWithRooms = socket as { rooms?: Set<string> };
+    if (socketWithRooms.rooms?.has(roomId)) {
       console.log('🏠 Socket already in room, skipping join');
       hasAttemptedJoinRef.current = true;
       return;

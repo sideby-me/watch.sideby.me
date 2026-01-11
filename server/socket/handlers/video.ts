@@ -5,6 +5,7 @@ import { SocketEvents, SocketData } from '../types';
 import { validateData, emitSystemMessage } from '../utils';
 import { resolveSource } from '@/server/video/resolve-source';
 import { buildProxyUrl, isProxiedUrl } from '@/lib/video-proxy-client';
+import { VIDEO_SYNC_DEBOUNCE_MS, VIDEO_ERROR_REPORT_DEBOUNCE_MS } from '@/lib/constants';
 
 // Map to store pause timeouts per room
 const lastErrorReport: Record<string, number> = {};
@@ -79,7 +80,7 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
       // AND debounce duplicate play events (client sometimes sends double)
       const now = Date.now();
       const lastEmit = lastPlayEmitTime[roomId] || 0;
-      if (!room.videoState.isPlaying && now - lastEmit > 1000) {
+      if (!room.videoState.isPlaying && now - lastEmit > VIDEO_SYNC_DEBOUNCE_MS) {
         emitSystemMessage(io, roomId, 'Video resumed', 'play', { userName: currentUser.name });
         lastPlayEmitTime[roomId] = now;
       }
@@ -141,7 +142,7 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
       // Announce pause immediately (no throttle), but debounce duplicates
       const now = Date.now();
       const lastEmit = lastPauseEmitTime[roomId] || 0;
-      if (now - lastEmit > 1000) {
+      if (now - lastEmit > VIDEO_SYNC_DEBOUNCE_MS) {
         emitSystemMessage(io, roomId, 'Video paused', 'pause', { userName: currentUser.name });
         lastPauseEmitTime[roomId] = now;
       }
@@ -231,7 +232,7 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
   socket.on('video-error-report', async ({ roomId, code, message, currentSrc, currentTime: _currentTime }) => {
     try {
       const now = Date.now();
-      if (lastErrorReport[roomId] && now - lastErrorReport[roomId] < 8000) {
+      if (lastErrorReport[roomId] && now - lastErrorReport[roomId] < VIDEO_ERROR_REPORT_DEBOUNCE_MS) {
         return; // Ignore rapid repeats
       }
       lastErrorReport[roomId] = now;
@@ -239,17 +240,7 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
       const room = await redisService.rooms.getRoom(roomId);
       if (!room) return;
 
-      const videoMeta = (room as unknown as { videoMeta?: unknown }).videoMeta as
-        | {
-            originalUrl?: string;
-            playbackUrl: string;
-            requiresProxy?: boolean;
-            deliveryType?: string;
-            videoType?: 'youtube' | 'mp4' | 'm3u8' | null;
-            decisionReasons?: string[];
-            timestamp?: number;
-          }
-        | undefined;
+      const videoMeta = room.videoMeta;
       if (!videoMeta) return;
 
       // Ignore if already proxying or report src doesn't match current playback
@@ -274,7 +265,7 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
         const fallbackMeta = {
           ...videoMeta,
           playbackUrl: proxyUrl,
-          deliveryType: legacyVideoType === 'm3u8' ? 'hls' : 'file-proxy',
+          deliveryType: (legacyVideoType === 'm3u8' ? 'hls' : 'file-proxy') as 'hls' | 'file-proxy',
           requiresProxy: true,
           decisionReasons: [...(videoMeta.decisionReasons || []), 'client-error-fallback'],
           timestamp: Date.now(),

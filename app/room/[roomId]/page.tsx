@@ -32,19 +32,6 @@ import { RoomSettingsDialog } from '@/components/room/room-settings-dialog';
 import { Spinner } from '@/components/ui/spinner';
 import { toast } from 'sonner';
 
-type ClientVideoMeta = {
-  originalUrl: string;
-  playbackUrl: string;
-  deliveryType: 'youtube' | 'file-direct' | 'file-proxy' | 'hls';
-  videoType: 'youtube' | 'mp4' | 'm3u8' | null;
-  containerHint?: string;
-  codecWarning?: string;
-  requiresProxy: boolean;
-  decisionReasons: string[];
-  probe: { status: number; contentType?: string; acceptRanges?: boolean };
-  timestamp: number;
-};
-
 export default function RoomPage() {
   const params = useParams();
   const router = useRouter();
@@ -333,7 +320,7 @@ export default function RoomPage() {
     if (autoplayTriggeredRef.current) return;
     if (autoplayParam !== '1') return;
 
-    const hasVideo = !!room.videoUrl || !!(room as unknown as { videoMeta?: ClientVideoMeta }).videoMeta?.playbackUrl;
+    const hasVideo = !!room.videoUrl || !!room.videoMeta?.playbackUrl;
     if (!hasVideo) return;
 
     const player = getActivePlayer();
@@ -398,9 +385,9 @@ export default function RoomPage() {
     return <LoadingDisplay roomId={roomId} />;
   }
 
-  const meta = (room as unknown as { videoMeta?: ClientVideoMeta }).videoMeta;
-  const effectiveVideoUrl = meta?.playbackUrl || room.videoUrl;
-  const effectiveVideoType = meta?.videoType || room.videoType;
+  const meta = room.videoMeta;
+  const effectiveVideoUrl = meta?.playbackUrl ?? room.videoUrl;
+  const effectiveVideoType = meta?.videoType ?? room.videoType;
 
   const extractYouTubeId = (url: string | undefined): string | undefined => {
     if (!url) return undefined;

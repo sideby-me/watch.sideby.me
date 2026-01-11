@@ -1,4 +1,4 @@
-import { Room, User, VideoState } from '@/types';
+import { Room, User, VideoState, VideoMeta } from '@/types';
 import { redis } from '../client';
 
 export class RoomRepository {
@@ -88,7 +88,7 @@ export class RoomRepository {
     roomId: string,
     videoUrl: string,
     videoType: 'youtube' | 'mp4' | 'm3u8',
-    videoMeta?: unknown
+    videoMeta?: VideoMeta
   ): Promise<void> {
     const room = await this.getRoom(roomId);
     if (!room) throw new Error('Room not found');
@@ -96,7 +96,7 @@ export class RoomRepository {
     room.videoUrl = videoUrl;
     room.videoType = videoType;
     if (videoMeta) {
-      (room as unknown as Record<string, unknown>).videoMeta = videoMeta; // Store enriched metadata
+      room.videoMeta = videoMeta;
     }
     // Reset video state when new video is set
     room.videoState = {

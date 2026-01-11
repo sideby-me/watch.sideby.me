@@ -6,6 +6,12 @@ import { useMediaPermissions } from '@/hooks/use-media-permissions';
 import { useWebRTC } from '@/hooks/use-webrtc';
 import { User } from '@/types';
 import { toast } from 'sonner';
+import {
+  SOLO_USER_TIMEOUT_MS,
+  VOICE_MAX_PARTICIPANTS,
+  SPEAKING_DETECTION_THRESHOLD,
+  ANALYSER_FFT_SIZE,
+} from '@/lib/constants';
 
 interface UseVoiceChatOptions {
   roomId: string;
@@ -25,9 +31,11 @@ interface UseVoiceChatReturn {
   toggleMute: () => void;
 }
 
-const SOLO_USER_TIMEOUT = 120000; // 2 minutes
-
-export function useVoiceChat({ roomId, currentUser, maxParticipants = 5 }: UseVoiceChatOptions): UseVoiceChatReturn {
+export function useVoiceChat({
+  roomId,
+  currentUser,
+  maxParticipants = VOICE_MAX_PARTICIPANTS,
+}: UseVoiceChatOptions): UseVoiceChatReturn {
   const { socket } = useSocket();
   const { requestMic } = useMediaPermissions();
   // Bridge cleanup via ref so we can pass callback before cleanupPeer is defined
@@ -106,13 +114,13 @@ export function useVoiceChat({ roomId, currentUser, maxParticipants = 5 }: UseVo
         const ctx = audioContextRef.current;
         const src = ctx.createMediaStreamSource(stream);
         const analyser = ctx.createAnalyser();
-        analyser.fftSize = 512;
+        analyser.fftSize = ANALYSER_FFT_SIZE;
         src.connect(analyser);
         const data = new Uint8Array(analyser.frequencyBinCount);
         const tick = () => {
           analyser.getByteFrequencyData(data);
           const avg = data.reduce((s, v) => s + v, 0) / data.length;
-          const speaking = avg > 20;
+          const speaking = avg > SPEAKING_DETECTION_THRESHOLD;
           setSpeakingUserIds(prev => {
             const next = new Set(prev);
             speaking ? next.add(peerId) : next.delete(peerId);
@@ -251,14 +259,14 @@ export function useVoiceChat({ roomId, currentUser, maxParticipants = 5 }: UseVo
         const ctx = audioContextRef.current;
         const source = ctx.createMediaStreamSource(stream);
         const analyser = ctx.createAnalyser();
-        analyser.fftSize = 512;
+        analyser.fftSize = ANALYSER_FFT_SIZE;
         source.connect(analyser);
         const data = new Uint8Array(analyser.frequencyBinCount);
         const uid = currentUser.id;
         const tick = () => {
           analyser.getByteFrequencyData(data);
           const avg = data.reduce((s, v) => s + v, 0) / data.length;
-          const speaking = avg > 20;
+          const speaking = avg > SPEAKING_DETECTION_THRESHOLD;
           setSpeakingUserIds(prev => {
             const next = new Set(prev);
             speaking ? next.add(uid) : next.delete(uid);
@@ -325,7 +333,7 @@ export function useVoiceChat({ roomId, currentUser, maxParticipants = 5 }: UseVo
         description: 'Noah told me to end your lonely voice session to save bandwidth.',
       });
       disable();
-    }, SOLO_USER_TIMEOUT);
+    }, SOLO_USER_TIMEOUT_MS);
   }, [disable]);
 
   // Flip enabled state of local audio tracks (ui level mute)

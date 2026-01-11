@@ -1,9 +1,11 @@
+import { TURN_CREDENTIAL_CACHE_MS } from './constants';
+
 const turnApiKey = process.env.NEXT_PUBLIC_METERED_API_KEY;
 const TURN_API_URL = `https://whonoahexe.metered.live/api/v1/turn/credentials?apiKey=${turnApiKey}`;
 
-// Cache TURN credentials for 5 minutes to avoid repeated API calls
+// Cache TURN credentials to avoid repeated API calls
 let turnCredentialsCache: { servers: RTCIceServer[]; timestamp: number } | null = null;
-const TURN_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const TURN_CACHE_DURATION = TURN_CREDENTIAL_CACHE_MS;
 
 // Pre-fetch TURN credentials in parallel to avoid blocking
 let turnCredentialsFetch: Promise<RTCIceServer[] | null> | null = null;

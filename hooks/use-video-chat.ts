@@ -6,6 +6,7 @@ import { useMediaPermissions } from '@/hooks/use-media-permissions';
 import { useWebRTC } from '@/hooks/use-webrtc';
 import { User } from '@/types';
 import { toast } from 'sonner';
+import { SOLO_USER_TIMEOUT_MS, VIDEO_CHAT_MAX_PARTICIPANTS, WEBRTC_CONNECTION_TIMEOUT_MS } from '@/lib/constants';
 
 interface UseVideoChatOptions {
   roomId: string;
@@ -32,9 +33,11 @@ interface UseVideoChatReturn {
   toggleCamera: () => void; // enable/disable local video track
 }
 
-const SOLO_USER_TIMEOUT = 120000; // 2 minutes
-
-export function useVideoChat({ roomId, currentUser, maxParticipants = 5 }: UseVideoChatOptions): UseVideoChatReturn {
+export function useVideoChat({
+  roomId,
+  currentUser,
+  maxParticipants = VIDEO_CHAT_MAX_PARTICIPANTS,
+}: UseVideoChatOptions): UseVideoChatReturn {
   const { socket } = useSocket();
   const { requestCamera } = useMediaPermissions();
   const cleanupPeerRef = useRef<(id: string) => void>(() => {});
@@ -154,7 +157,7 @@ export function useVideoChat({ roomId, currentUser, maxParticipants = 5 }: UseVi
         description: 'Noah told me to end your lonely video session to spare the upstream bits.',
       });
       disableRef.current();
-    }, SOLO_USER_TIMEOUT);
+    }, SOLO_USER_TIMEOUT_MS);
   }, [clearSoloTimeout]);
 
   // Acquire local camera stream. Video only
@@ -287,7 +290,7 @@ export function useVideoChat({ roomId, currentUser, maxParticipants = 5 }: UseVi
             const connectionTimeout = setTimeout(() => {
               console.warn('[WEBRTC] overall connection timeout for peer', { peerId: id });
               cleanupPeer(id);
-            }, 15000);
+            }, WEBRTC_CONNECTION_TIMEOUT_MS);
             connectionTimeoutsRef.current.set(id, connectionTimeout);
 
             const local = await ensureLocalCamera();
