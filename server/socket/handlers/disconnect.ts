@@ -1,7 +1,7 @@
 import { Socket } from 'socket.io';
 import { SocketEvents, SocketData } from '../types';
 import { handleLeaveRoom } from './room';
-import { Server } from 'socket.io'; // Added import for Server
+import { Server } from 'socket.io';
 
 export async function handleDisconnect(
   socket: Socket<SocketEvents, SocketEvents, object, SocketData>,

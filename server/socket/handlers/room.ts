@@ -1,10 +1,5 @@
 import { Socket, Server as IOServer } from 'socket.io';
-import { v4 as uuidv4 } from 'uuid';
-import { redisService } from '@/server/redis';
-import { generateRoomId } from '@/lib/video-utils';
 import {
-  Room,
-  User,
   CreateRoomDataSchema,
   JoinRoomDataSchema,
   RoomActionDataSchema,
@@ -14,9 +9,13 @@ import {
 } from '@/types';
 import { SocketEvents, SocketData } from '../types';
 import { validateData, emitSystemMessage } from '../utils';
+import { handleServiceError } from '../error-handler';
+import { RoomService, createSocketContext } from '@/server/services';
+import { redisService } from '@/server/redis';
+import { PasscodeRequiredError } from '@/server/errors';
 
 export function registerRoomHandlers(socket: Socket<SocketEvents, SocketEvents, object, SocketData>, io: IOServer) {
-  // Voice participant count helpers (so late joiners immediately see current voice occupancy)
+  // Voice participant count helper (so late joiners immediately see current voice occupancy)
   function computeVoiceParticipantCount(roomId: string): number {
     const voiceRoomKey = `voice:${roomId}`;
     const rawIds = Array.from(io.sockets.adapter.rooms.get(voiceRoomKey) || new Set<string>());
@@ -38,57 +37,34 @@ export function registerRoomHandlers(socket: Socket<SocketEvents, SocketEvents, 
       console.warn('Failed to emit voice participant count on room join', { roomId, err });
     }
   }
+
   // Create room
   socket.on('create-room', async data => {
     try {
       const validatedData = validateData(CreateRoomDataSchema, data, socket);
       if (!validatedData) return;
 
-      const { hostName } = validatedData;
-      const roomId = generateRoomId();
-      const userId = uuidv4();
+      const result = await RoomService.createRoom({ hostName: validatedData.hostName });
 
-      const user: User = {
-        id: userId,
-        name: hostName,
-        isHost: true,
-        joinedAt: new Date(),
-      };
+      // Set socket data
+      socket.data.userId = result.user.id;
+      socket.data.userName = result.user.name;
+      socket.data.roomId = result.room.id;
 
-      const room: Room = {
-        id: roomId,
-        hostId: userId,
-        hostName: hostName,
-        hostToken: uuidv4(),
-        videoType: null,
-        videoState: {
-          isPlaying: false,
-          currentTime: 0,
-          duration: 0,
-          lastUpdateTime: Date.now(),
-        },
-        users: [user],
-        createdAt: new Date(),
-      };
+      // Join socket room
+      await socket.join(result.room.id);
 
-      await redisService.rooms.createRoom(room);
+      // Store user-socket mapping
+      await redisService.userMapping.setUserSocket(result.user.id, socket.id);
 
-      socket.data.userId = userId;
-      socket.data.userName = hostName;
-      socket.data.roomId = roomId;
+      // Emit events
+      socket.emit('room-created', { roomId: result.room.id, room: result.room, hostToken: result.hostToken });
+      socket.emit('room-joined', { room: result.room, user: result.user });
+      emitVoiceParticipantCountToSocket(result.room.id);
 
-      await socket.join(roomId);
-
-      // Store userId -> socketId mapping in Redis for efficient lookup
-      await redisService.userMapping.setUserSocket(userId, socket.id);
-
-      socket.emit('room-created', { roomId, room, hostToken: room.hostToken });
-      socket.emit('room-joined', { room, user });
-      emitVoiceParticipantCountToSocket(roomId);
-      console.log(`Room ${roomId} created by ${hostName} with token ${room.hostToken}`);
+      console.log(`Room ${result.room.id} created by ${result.user.name} with token ${result.hostToken}`);
     } catch (error) {
-      console.error('Error creating room:', error);
-      socket.emit('room-error', { error: 'Failed to create room' });
+      handleServiceError(error, socket, 'room-error');
     }
   });
 
@@ -98,31 +74,22 @@ export function registerRoomHandlers(socket: Socket<SocketEvents, SocketEvents, 
       `🔐 Join request: roomId=${data?.roomId}, userName=${data?.userName}, hostToken=${data?.hostToken ? 'PROVIDED' : 'MISSING'}, socketId=${socket.id}`
     );
 
-    // Check if this exact socket is already in this room
+    // Check if this socket is already in this room
     if (data?.roomId && socket.rooms.has(data.roomId)) {
-      console.log(`🔄 Socket ${socket.id} already in room ${data.roomId}, checking if this is the room creator...`);
-
-      const room = await redisService.rooms.getRoom(data.roomId);
+      console.log(`🔄 Socket ${socket.id} already in room ${data.roomId}, checking if this is a known user...`);
+      const room = await RoomService.getRoom(data.roomId);
       if (room) {
         const existingUser = room.users.find(u => u.name === data?.userName?.trim());
-
         if (existingUser) {
-          if (existingUser.isHost && data?.hostToken === room.hostToken) {
-            console.log(`✅ Room creator ${data.userName} already in room, emitting join success`);
-            socket.emit('room-joined', { room, user: existingUser });
-            emitVoiceParticipantCountToSocket(data.roomId);
-            return;
-          }
-
-          if (!existingUser.isHost) {
-            console.log(`✅ Guest ${data.userName} already in room, emitting join success`);
+          const isValidHost = existingUser.isHost && data?.hostToken === room.hostToken;
+          if (isValidHost || !existingUser.isHost) {
+            console.log(`✅ User ${data.userName} already in room, emitting join success`);
             socket.emit('room-joined', { room, user: existingUser });
             emitVoiceParticipantCountToSocket(data.roomId);
             return;
           }
         }
       }
-
       console.log(`🔄 Ignoring duplicate join attempt for unknown user`);
       return;
     }
@@ -131,128 +98,45 @@ export function registerRoomHandlers(socket: Socket<SocketEvents, SocketEvents, 
       const validatedData = validateData(JoinRoomDataSchema, data, socket);
       if (!validatedData) return;
 
-      const { roomId, userName, hostToken } = validatedData;
-      const room = await redisService.rooms.getRoom(roomId);
-      if (!room) {
-        socket.emit('room-error', { error: 'Room not found' });
-        return;
-      }
-
-      // Check room lock (only affects non-host tokens)
-      const isHostWithToken = hostToken && hostToken === room.hostToken;
-      if (room.settings?.isLocked && !isHostWithToken) {
-        console.log(`🔒 Room ${roomId} is locked, rejecting ${userName}`);
-        socket.emit('room-error', { error: 'This room is currently locked. New guests cannot join.' });
-        return;
-      }
-
-      // Check passcode requirement (only affects non-host tokens)
-      if (room.settings?.passcode && !isHostWithToken) {
-        console.log(`🔑 Room ${roomId} requires passcode, prompting ${userName}`);
-        socket.emit('passcode-required', { roomId });
-        return;
-      }
-
-      // Check if this user is already in the room (by name)
-      const existingUser = room.users.find(u => u.name === userName);
-      if (existingUser) {
-        if (existingUser.isHost) {
-          if (!hostToken || hostToken !== room.hostToken) {
-            console.log(`Host impersonation attempt by ${userName} - existing user but invalid token`);
-            socket.emit('room-error', {
-              error: `We don't allow copycats. Please choose a different callsign.`,
-            });
-            return;
-          }
-          console.log(`Host ${userName} verified with valid token (existing user)`);
-
-          socket.data.userId = existingUser.id;
-          socket.data.userName = existingUser.name;
-          socket.data.roomId = roomId;
-
-          await socket.join(roomId);
-
-          // Store userId -> socketId mapping in Redis for efficient lookup
-          await redisService.userMapping.setUserSocket(existingUser.id, socket.id);
-          console.log(`${userName} rejoined room ${roomId} (existing user, isHost: ${existingUser.isHost})`);
-          socket.emit('room-joined', { room, user: existingUser });
-          emitVoiceParticipantCountToSocket(roomId);
-          return;
-        } else {
-          console.log(`Duplicate name attempt by ${userName} - name already taken by guest`);
-          socket.emit('room-error', {
-            error: `Looks like the name "${userName}" is already in use here. Could you pick another one?`,
-          });
-          return;
-        }
-      }
-
-      // Check if this user is trying to be the host
-      const isClaimingHost = room.hostName === userName;
-      let isRoomHost = false;
-
-      console.log(
-        `Join attempt: user="${userName}", isClaimingHost=${isClaimingHost}, hostToken="${hostToken}", roomHostToken="${room.hostToken}"`
+      const result = await RoomService.joinRoom(
+        {
+          roomId: validatedData.roomId,
+          userName: validatedData.userName,
+          hostToken: validatedData.hostToken,
+        },
+        { userId: socket.data.userId || '' }
       );
 
-      if (isClaimingHost) {
-        if (hostToken && hostToken === room.hostToken) {
-          isRoomHost = true;
-          console.log(`Host ${userName} verified with valid token`);
-        } else {
-          console.log(`Host impersonation attempt by ${userName} - invalid or missing token`);
-          socket.emit('room-error', {
-            error: `We don't allow copycats. Please choose a different callsign.`,
-          });
-          return;
-        }
-      } else {
-        if (room.hostName === userName) {
-          console.log(`Guest attempting to use host name: ${userName}`);
-          socket.emit('room-error', {
-            error: `We don't allow copycats. Please choose a different callsign.`,
-          });
-          return;
-        }
+      // Set socket data
+      socket.data.userId = result.user.id;
+      socket.data.userName = result.user.name;
+      socket.data.roomId = result.room.id;
+
+      // Join socket room
+      await socket.join(result.room.id);
+
+      // Store user-socket mapping
+      await redisService.userMapping.setUserSocket(result.user.id, socket.id);
+
+      // Emit events
+      socket.emit('room-joined', { room: result.room, user: result.user });
+
+      if (result.isNewUser) {
+        socket.to(result.room.id).emit('user-joined', { user: result.user });
+        emitSystemMessage(io, result.room.id, `${result.user.name} joined the room`, 'join', {
+          userId: result.user.id,
+          userName: result.user.name,
+        });
       }
 
-      // Create new user
-      const userId = uuidv4();
-      const user: User = {
-        id: userId,
-        name: userName,
-        isHost: isRoomHost,
-        joinedAt: new Date(),
-      };
-
-      // If this is the host rejoining, update the room's hostId
-      if (isRoomHost) {
-        room.hostId = userId;
-        await redisService.rooms.updateRoom(roomId, room);
-        console.log(`Host ${userName} rejoining room ${roomId} with new user ID`);
-      }
-
-      await redisService.rooms.addUserToRoom(roomId, user);
-      const updatedRoom = await redisService.rooms.getRoom(roomId);
-
-      socket.data.userId = userId;
-      socket.data.userName = userName;
-      socket.data.roomId = roomId;
-
-      await socket.join(roomId);
-
-      // Store userId -> socketId mapping in Redis for efficient lookup
-      await redisService.userMapping.setUserSocket(userId, socket.id);
-
-      socket.emit('room-joined', { room: updatedRoom!, user });
-      socket.to(roomId).emit('user-joined', { user });
-      emitVoiceParticipantCountToSocket(roomId);
-      emitSystemMessage(io, roomId, `${user.name} joined the room`, 'join', { userId, userName: user.name });
-
-      console.log(`${user.name} joined room ${roomId} as ${isRoomHost ? 'host' : 'guest'}`);
+      emitVoiceParticipantCountToSocket(result.room.id);
+      console.log(`${result.user.name} joined room ${result.room.id} as ${result.user.isHost ? 'host' : 'guest'}`);
     } catch (error) {
-      console.error('Error joining room:', error);
-      socket.emit('room-error', { error: 'Failed to join room' });
+      if (error instanceof PasscodeRequiredError) {
+        socket.emit('passcode-required', { roomId: error.roomId });
+        return;
+      }
+      handleServiceError(error, socket, 'room-error');
     }
   });
 
@@ -261,56 +145,27 @@ export function registerRoomHandlers(socket: Socket<SocketEvents, SocketEvents, 
     const validatedData = validateData(RoomActionDataSchema, data, socket);
     if (!validatedData) return;
 
-    const { roomId } = validatedData;
-    await handleLeaveRoom(socket, roomId, true, io);
+    await handleLeaveRoom(socket, validatedData.roomId, true, io);
   });
 
   // Promote user to host
   socket.on('promote-host', async ({ roomId, userId }) => {
     try {
-      if (!socket.data.userId) {
+      const ctx = createSocketContext(socket.data);
+      if (!ctx) {
         socket.emit('error', { error: 'Hmm, we lost your connection details.' });
         return;
       }
 
-      const room = await redisService.rooms.getRoom(roomId);
-      if (!room) {
-        socket.emit('room-error', { error: 'Room not found' });
-        return;
-      }
+      const result = await RoomService.promoteUser({ roomId, targetUserId: userId }, ctx);
 
-      const currentUser = room.users.find(u => u.id === socket.data.userId);
-      if (!currentUser?.isHost) {
-        socket.emit('error', { error: 'Only hosts can promote users' });
-        return;
-      }
-
-      const targetUser = room.users.find(u => u.id === userId);
-      if (!targetUser) {
-        socket.emit('error', { error: 'User not found' });
-        return;
-      }
-
-      if (targetUser.isHost) {
-        socket.emit('error', { error: 'Looks like that user is already a host!' });
-        return;
-      }
-
-      // Update user to host
-      const updatedUsers = room.users.map(u => (u.id === userId ? { ...u, isHost: true } : u));
-      const updatedRoom = { ...room, users: updatedUsers };
-      await redisService.rooms.updateRoom(roomId, updatedRoom);
-
-      io.to(roomId).emit('user-promoted', { userId, userName: targetUser.name });
-      emitSystemMessage(io, roomId, `${targetUser.name} was promoted to host`, 'promote', {
+      io.to(roomId).emit('user-promoted', { userId, userName: result.targetUser.name });
+      emitSystemMessage(io, roomId, `${result.targetUser.name} was promoted to host`, 'promote', {
         userId,
-        userName: targetUser.name,
+        userName: result.targetUser.name,
       });
-
-      console.log(`${targetUser.name} promoted to host in room ${roomId} by ${currentUser.name}`);
     } catch (error) {
-      console.error('Error promoting user:', error);
-      socket.emit('error', { error: 'Failed to promote user' });
+      handleServiceError(error, socket);
     }
   });
 
@@ -320,223 +175,132 @@ export function registerRoomHandlers(socket: Socket<SocketEvents, SocketEvents, 
       const validatedData = validateData(KickUserDataSchema, data, socket);
       if (!validatedData) return;
 
-      const { roomId, userId } = validatedData;
-
-      if (!socket.data.userId) {
+      const ctx = createSocketContext(socket.data);
+      if (!ctx) {
         socket.emit('error', { error: 'Hmm, we lost your connection details.' });
         return;
       }
 
-      const room = await redisService.rooms.getRoom(roomId);
-      if (!room) {
-        socket.emit('room-error', { error: 'Room not found' });
-        return;
-      }
+      const result = await RoomService.kickUser(
+        { roomId: validatedData.roomId, targetUserId: validatedData.userId },
+        ctx
+      );
 
-      const currentUser = room.users.find(u => u.id === socket.data.userId);
-      if (!currentUser?.isHost) {
-        socket.emit('error', { error: 'Only hosts can kick users' });
-        return;
-      }
+      const kickPayload = {
+        userId: validatedData.userId,
+        userName: result.targetUser.name,
+        kickedBy: ctx.userId,
+      };
 
-      const targetUser = room.users.find(u => u.id === userId);
-      if (!targetUser) {
-        socket.emit('error', { error: 'User not found' });
-        return;
-      }
-
-      if (targetUser.isHost) {
-        socket.emit('error', { error: "Whoa there! You can't kick another host. That's just not cool." });
-        return;
-      }
-
-      if (targetUser.id === currentUser.id) {
-        socket.emit('error', { error: "As much as you might want to, you can't kick yourself from the room." });
-        return;
-      }
-
-      // Get the target user's socket ID from Redis
-      const targetSocketId = await redisService.userMapping.getUserSocket(userId);
-
-      // Remove user from room first
-      const updatedUsers = room.users.filter(u => u.id !== userId);
-      const updatedRoom = { ...room, users: updatedUsers };
-      await redisService.rooms.updateRoom(roomId, updatedRoom);
-
-      // Remove the kicked user from Socket.IO room and notify them
-      if (targetSocketId) {
-        const targetSocket = io.sockets.sockets.get(targetSocketId);
+      // Handle the kicked user's socket
+      if (result.targetSocketId) {
+        const targetSocket = io.sockets.sockets.get(result.targetSocketId);
         if (targetSocket) {
-          // Remove them from voice room if joined
-          const voiceRoom = `voice:${roomId}`;
+          // IMPORTANT: Emit user-kicked to target BEFORE they leave the room
+          // This ensures they receive the event and can redirect
+          targetSocket.emit('user-kicked', kickPayload);
+
+          // Remove from video chat room if joined
+          const videoChatRoom = `videochat:${validatedData.roomId}`;
+          if (targetSocket.rooms.has(videoChatRoom)) {
+            targetSocket.to(videoChatRoom).emit('videochat-peer-left', { userId: validatedData.userId });
+            await targetSocket.leave(videoChatRoom);
+          }
+
+          // Remove from voice room if joined
+          const voiceRoom = `voice:${validatedData.roomId}`;
           if (targetSocket.rooms.has(voiceRoom)) {
-            targetSocket.to(voiceRoom).emit('voice-peer-left', { userId });
+            targetSocket.to(voiceRoom).emit('voice-peer-left', { userId: validatedData.userId });
             await targetSocket.leave(voiceRoom);
           }
 
-          // Remove from main room FIRST
-          await targetSocket.leave(roomId);
-
-          // Then notify them they were kicked
-          targetSocket.emit('room-error', {
-            error: `Awkward... ${currentUser.name} just kicked you out.`,
-          });
+          // Remove from main room AFTER emitting user-kicked
+          await targetSocket.leave(validatedData.roomId);
         }
-
-        // Remove userId -> socketId mapping from Redis
-        await redisService.userMapping.removeUserSocket(userId);
       }
 
-      // Send to all users in the room (including the host who initiated the kick)
-      io.to(roomId).emit('user-kicked', {
-        userId,
-        userName: targetUser.name,
-        kickedBy: currentUser.id,
+      // Notify remaining users in the room
+      io.to(validatedData.roomId).emit('user-kicked', kickPayload);
+      emitSystemMessage(io, validatedData.roomId, `${result.targetUser.name} was kicked from the room`, 'kick', {
+        userId: validatedData.userId,
+        userName: result.targetUser.name,
+        kickedBy: ctx.userId,
       });
-      emitSystemMessage(io, roomId, `${targetUser.name} was kicked from the room`, 'kick', {
-        userId,
-        userName: targetUser.name,
-        kickedBy: currentUser.id,
-      });
-
-      console.log(`${targetUser.name} was kicked from room ${roomId} by ${currentUser.name}`);
     } catch (error) {
-      console.error('Error kicking user:', error);
-      socket.emit('error', { error: 'Failed to kick user' });
+      handleServiceError(error, socket);
     }
   });
 
-  // Verify passcode and complete join
+  // Verify passcode and join
   socket.on('verify-passcode', async data => {
     try {
       const validatedData = validateData(VerifyPasscodeDataSchema, data, socket);
       if (!validatedData) return;
 
-      const { roomId, userName, passcode, hostToken } = validatedData;
-      const room = await redisService.rooms.getRoom(roomId);
-      if (!room) {
-        socket.emit('room-error', { error: 'Room not found' });
-        return;
+      const result = await RoomService.verifyPasscode(
+        {
+          roomId: validatedData.roomId,
+          userName: validatedData.userName,
+          passcode: validatedData.passcode,
+          hostToken: validatedData.hostToken,
+        },
+        { userId: socket.data.userId || '' }
+      );
+
+      // Set socket data
+      socket.data.userId = result.user.id;
+      socket.data.userName = result.user.name;
+      socket.data.roomId = result.room.id;
+
+      // Join socket room
+      await socket.join(result.room.id);
+
+      // Store user-socket mapping
+      await redisService.userMapping.setUserSocket(result.user.id, socket.id);
+
+      // Emit events
+      socket.emit('room-joined', { room: result.room, user: result.user });
+
+      if (result.isNewUser) {
+        socket.to(result.room.id).emit('user-joined', { user: result.user });
+        emitSystemMessage(io, result.room.id, `${result.user.name} joined the room`, 'join', {
+          userId: result.user.id,
+          userName: result.user.name,
+        });
       }
 
-      // Verify the passcode
-      if (room.settings?.passcode !== passcode) {
-        console.log(`🚫 Invalid passcode attempt for room ${roomId} by ${userName}`);
-        socket.emit('room-error', { error: 'Incorrect passcode. Please try again.' });
-        return;
-      }
-
-      console.log(`✅ Passcode verified for ${userName} in room ${roomId}`);
-
-      // Check if room became locked while entering passcode
-      if (room.settings?.isLocked && !(hostToken && hostToken === room.hostToken)) {
-        socket.emit('room-error', { error: 'This room is currently locked. New guests cannot join.' });
-        return;
-      }
-
-      // Check if this user is already in the room (by name)
-      const existingUser = room.users.find(u => u.name === userName);
-      if (existingUser) {
-        if (existingUser.isHost && (!hostToken || hostToken !== room.hostToken)) {
-          socket.emit('room-error', { error: `We don't allow copycats. Please choose a different callsign.` });
-          return;
-        }
-        if (!existingUser.isHost) {
-          socket.emit('room-error', {
-            error: `Looks like the name "${userName}" is already in use here. Could you pick another one?`,
-          });
-          return;
-        }
-        // Host with valid token - rejoin
-        socket.data.userId = existingUser.id;
-        socket.data.userName = existingUser.name;
-        socket.data.roomId = roomId;
-        await socket.join(roomId);
-        await redisService.userMapping.setUserSocket(existingUser.id, socket.id);
-        socket.emit('room-joined', { room, user: existingUser });
-        emitVoiceParticipantCountToSocket(roomId);
-        return;
-      }
-
-      // Create new user
-      const userId = uuidv4();
-      const isRoomHost = room.hostName === userName && hostToken === room.hostToken;
-      const user: User = {
-        id: userId,
-        name: userName,
-        isHost: isRoomHost,
-        joinedAt: new Date(),
-      };
-
-      await redisService.rooms.addUserToRoom(roomId, user);
-      const updatedRoom = await redisService.rooms.getRoom(roomId);
-
-      socket.data.userId = userId;
-      socket.data.userName = userName;
-      socket.data.roomId = roomId;
-
-      await socket.join(roomId);
-      await redisService.userMapping.setUserSocket(userId, socket.id);
-
-      socket.emit('room-joined', { room: updatedRoom!, user });
-      socket.to(roomId).emit('user-joined', { user });
-      emitVoiceParticipantCountToSocket(roomId);
-      emitSystemMessage(io, roomId, `${user.name} joined the room`, 'join', { userId, userName: user.name });
-
-      console.log(`${user.name} joined room ${roomId} after passcode verification`);
+      emitVoiceParticipantCountToSocket(result.room.id);
+      console.log(`${result.user.name} joined room ${result.room.id} after passcode verification`);
     } catch (error) {
-      console.error('Error verifying passcode:', error);
-      socket.emit('room-error', { error: 'Failed to verify passcode' });
+      handleServiceError(error, socket, 'room-error');
     }
   });
 
-  // Update room settings (host only)
+  // Update room settings
   socket.on('update-room-settings', async data => {
     try {
       const validatedData = validateData(UpdateRoomSettingsDataSchema, data, socket);
       if (!validatedData) return;
 
-      const { roomId, settings } = validatedData;
-
-      if (!socket.data.userId) {
+      const ctx = createSocketContext(socket.data);
+      if (!ctx) {
         socket.emit('error', { error: 'Hmm, we lost your connection details.' });
         return;
       }
 
-      const room = await redisService.rooms.getRoom(roomId);
-      if (!room) {
-        socket.emit('room-error', { error: 'Room not found' });
-        return;
-      }
+      const result = await RoomService.updateSettings(
+        { roomId: validatedData.roomId, settings: validatedData.settings },
+        ctx
+      );
 
-      const currentUser = room.users.find(u => u.id === socket.data.userId);
-      if (!currentUser?.isHost) {
-        socket.emit('error', { error: 'Only hosts can update room settings' });
-        return;
-      }
-
-      // Merge settings
-      const currentSettings = room.settings || { isLocked: false, passcode: null, isChatLocked: false };
-      const updatedSettings = {
-        isLocked: settings.isLocked ?? currentSettings.isLocked,
-        passcode: settings.passcode !== undefined ? settings.passcode : currentSettings.passcode,
-        isChatLocked: settings.isChatLocked ?? currentSettings.isChatLocked,
-      };
-
-      const updatedRoom = { ...room, settings: updatedSettings };
-      await redisService.rooms.updateRoom(roomId, updatedRoom);
-
-      // Broadcast to all users in the room
-      io.to(roomId).emit('room-settings-updated', { settings: updatedSettings });
-
-      console.log(`⚙️ Room ${roomId} settings updated by ${currentUser.name}:`, updatedSettings);
+      io.to(validatedData.roomId).emit('room-settings-updated', { settings: result.settings });
     } catch (error) {
-      console.error('Error updating room settings:', error);
-      socket.emit('error', { error: 'Failed to update room settings' });
+      handleServiceError(error, socket);
     }
   });
 }
 
+// Leave room helper (also used by disconnect handler)
 export async function handleLeaveRoom(
   socket: Socket<SocketEvents, SocketEvents, object, SocketData>,
   roomId: string,
@@ -544,72 +308,43 @@ export async function handleLeaveRoom(
   io: IOServer
 ) {
   try {
-    if (!socket.data.userId) return;
+    const ctx = createSocketContext(socket.data);
+    if (!ctx) return;
 
-    const room = await redisService.rooms.getRoom(roomId);
-    if (!room) return;
+    const result = await RoomService.leaveRoom({ roomId }, ctx);
+    if (!result) return;
 
-    const leavingUser = room.users.find(u => u.id === socket.data.userId);
-    if (!leavingUser) return;
-
-    // Remove the leaving user from the room
-    const updatedUsers = room.users.filter(u => u.id !== socket.data.userId);
-
-    // Check if any hosts remain after this user leaves
-    const remainingHosts = updatedUsers.filter(u => u.isHost);
-
-    if (leavingUser.isHost && remainingHosts.length === 0) {
-      // Last host is leaving, close the entire room and kick everyone out
-      console.log(
-        `🚪 Last host ${isManualLeave ? 'manually left' : 'disconnected from'} room ${roomId}, closing room and kicking all users`
-      );
-
-      // Notify all remaining users that the room is being closed
+    if (result.roomClosed) {
+      // Notify remaining users the room is closing
       socket.to(roomId).emit('room-error', {
         error: "Looks like all the hosts have left, so this room is closing. We're sending you back home.",
       });
-
-      // Delete the room entirely
-      await redisService.rooms.deleteRoom(roomId);
-
-      console.log(`Room ${roomId} has been closed`);
     } else {
-      // Update room with remaining users
-      if (updatedUsers.length === 0) {
-        // No users left at all, delete the room
-        await redisService.rooms.deleteRoom(roomId);
-      } else {
-        // Update room with remaining users
-        const updatedRoom = { ...room, users: updatedUsers };
-        await redisService.rooms.updateRoom(roomId, updatedRoom);
-
-        // Notify remaining users that this user left
-        socket.to(roomId).emit('user-left', { userId: socket.data.userId });
-        if (leavingUser && isManualLeave) {
-          if (isManualLeave) {
-            emitSystemMessage(io, roomId, `${leavingUser.name} left the room`, 'leave', {
-              userId: socket.data.userId,
-              userName: leavingUser.name,
-            });
-          }
-        }
+      // Notify remaining users
+      socket.to(roomId).emit('user-left', { userId: ctx.userId });
+      if (isManualLeave) {
+        emitSystemMessage(io, roomId, `${result.leavingUser.name} left the room`, 'leave', {
+          userId: ctx.userId,
+          userName: result.leavingUser.name,
+        });
       }
     }
 
-    // Also leave voice room if joined and notify peers
+    // Leave voice room if joined
     const voiceRoom = `voice:${roomId}`;
     if (socket.rooms.has(voiceRoom)) {
-      socket.to(voiceRoom).emit('voice-peer-left', { userId: socket.data.userId });
+      socket.to(voiceRoom).emit('voice-peer-left', { userId: ctx.userId });
       await socket.leave(voiceRoom);
-      console.log(`Voice: ${socket.data.userName || 'User'} left ${voiceRoom}`);
+      console.log(`Voice: ${ctx.userName || 'User'} left ${voiceRoom}`);
     }
 
+    // Leave main room
     await socket.leave(roomId);
 
-    // Remove userId -> socketId mapping from Redis
-    await redisService.userMapping.removeUserSocket(socket.data.userId);
+    // Clean up user mapping
+    await redisService.userMapping.removeUserSocket(ctx.userId);
 
-    console.log(`${socket.data.userName || 'User'} left room ${roomId}`);
+    console.log(`${ctx.userName || 'User'} left room ${roomId}`);
   } catch (error) {
     console.error('Error leaving room:', error);
   }

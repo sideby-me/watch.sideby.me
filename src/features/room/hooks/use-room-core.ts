@@ -148,13 +148,22 @@ export function useRoomCore({ roomId, socket, isConnected }: UseRoomCoreOptions)
       console.log(`👑 ${userName} has been promoted to host`);
     };
 
-    const handleUserKicked = ({ userId }: { userId: string; userName: string; kickedBy?: string }) => {
+    const handleUserKicked = ({ userId, userName }: { userId: string; userName: string; kickedBy?: string }) => {
+      // Check if WE are the one being kicked
+      if (currentUser && userId === currentUser.id) {
+        console.log('🚪 You have been kicked from the room!');
+        onUserKickedRef.current?.();
+        return; // Don't update room state - we're being redirected
+      }
+
+      // Otherwise just remove the user from room state
       setRoom(prev => {
         if (!prev) return null;
 
         const userExists = prev.users.some(u => u.id === userId);
         if (!userExists) return prev;
 
+        console.log(`👢 ${userName} was kicked from the room`);
         const updatedUsers = prev.users.filter(u => u.id !== userId);
         return {
           ...prev,

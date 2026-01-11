@@ -1,16 +1,9 @@
 import { Socket, Server as IOServer } from 'socket.io';
-import { redisService } from '@/server/redis';
 import { SetVideoDataSchema, VideoControlDataSchema, SyncCheckDataSchema } from '@/types';
 import { SocketEvents, SocketData } from '../types';
 import { validateData, emitSystemMessage } from '../utils';
-import { resolveSource } from '@/server/video/resolve-source';
-import { buildProxyUrl, isProxiedUrl } from '@/lib/video-proxy-client';
-import { VIDEO_SYNC_DEBOUNCE_MS, VIDEO_ERROR_REPORT_DEBOUNCE_MS } from '@/lib/constants';
-
-// Map to store pause timeouts per room
-const lastErrorReport: Record<string, number> = {};
-const lastPlayEmitTime: Record<string, number> = {};
-const lastPauseEmitTime: Record<string, number> = {};
+import { handleServiceError } from '../error-handler';
+import { VideoService, createSocketContext } from '@/server/services';
 
 export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents, object, SocketData>, io: IOServer) {
   // Set video URL
@@ -19,41 +12,33 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
       const validatedData = validateData(SetVideoDataSchema, data, socket);
       if (!validatedData) return;
 
-      const { roomId, videoUrl } = validatedData;
-      const room = await redisService.rooms.getRoom(roomId);
-      if (!room) {
-        socket.emit('room-error', { error: `Hmm, we couldn't find a room with that code. Maybe a typo?` });
+      const ctx = createSocketContext(socket.data);
+      if (!ctx) {
+        socket.emit('error', { error: 'Hmm, we lost your connection details.' });
         return;
       }
 
-      const currentUser = room.users.find(u => u.id === socket.data.userId);
-      if (!currentUser?.isHost) {
-        socket.emit('error', { error: 'Only hosts can set the video' });
-        return;
-      }
+      const result = await VideoService.setVideo(
+        { roomId: validatedData.roomId, videoUrl: validatedData.videoUrl },
+        ctx
+      );
 
-      // Resolve source centrally
-      const meta = await resolveSource(videoUrl);
-      // Map delivery types to legacy videoType for backward compatibility
-      let legacyVideoType: 'youtube' | 'mp4' | 'm3u8' = 'mp4';
-      if (meta.videoType === 'youtube') legacyVideoType = 'youtube';
-      else if (meta.videoType === 'm3u8') legacyVideoType = 'm3u8';
-      else legacyVideoType = 'mp4';
-
-      await redisService.rooms.setVideoUrl(roomId, meta.playbackUrl, legacyVideoType, meta);
-
-      io.to(roomId).emit('video-set', { videoUrl: meta.playbackUrl, videoType: legacyVideoType, videoMeta: meta });
-      emitSystemMessage(io, roomId, `Video source changed`, 'video-change', {
-        videoUrl: meta.playbackUrl,
+      io.to(validatedData.roomId).emit('video-set', {
+        videoUrl: result.playbackUrl,
+        videoType: result.videoType,
+        videoMeta: result.videoMeta,
       });
-      console.log(`Video set in room ${roomId}: ${videoUrl} -> playback: ${meta.playbackUrl} (${meta.deliveryType})`);
+      emitSystemMessage(io, validatedData.roomId, 'Video source changed', 'video-change', {
+        videoUrl: result.playbackUrl,
+      });
     } catch (error) {
-      console.error('Error setting video:', error);
       const message =
-        (error as Error)?.message === 'Unsupported protocol'
-          ? 'Only http/https video links are supported'
-          : 'Failed to set video';
-      socket.emit('error', { error: message });
+        (error as Error)?.message === 'Unsupported protocol' ? 'Only http/https video links are supported' : undefined;
+      if (message) {
+        socket.emit('error', { error: message });
+      } else {
+        handleServiceError(error, socket);
+      }
     }
   });
 
@@ -63,46 +48,29 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
       const validatedData = validateData(VideoControlDataSchema, data, socket);
       if (!validatedData) return;
 
-      const { roomId, currentTime } = validatedData;
-      const room = await redisService.rooms.getRoom(roomId);
-      if (!room) {
-        socket.emit('room-error', { error: `Hmm, we couldn't find a room with that code. Maybe a typo?` });
+      const ctx = createSocketContext(socket.data);
+      if (!ctx) {
+        socket.emit('error', { error: 'Hmm, we lost your connection details.' });
         return;
       }
 
-      const currentUser = room.users.find(u => u.id === socket.data.userId);
-      if (!currentUser?.isHost) {
-        socket.emit('error', { error: 'Only hosts can control the video' });
-        return;
+      const result = await VideoService.playVideo(
+        { roomId: validatedData.roomId, currentTime: validatedData.currentTime },
+        ctx
+      );
+
+      if (result.shouldEmitSystemMessage) {
+        const room = await import('@/server/redis').then(m => m.redisService.rooms.getRoom(validatedData.roomId));
+        const currentUser = room?.users.find(u => u.id === ctx.userId);
+        emitSystemMessage(io, validatedData.roomId, 'Video resumed', 'play', { userName: currentUser?.name });
       }
 
-      // Only announce resume if we were actually paused
-      // AND debounce duplicate play events (client sometimes sends double)
-      const now = Date.now();
-      const lastEmit = lastPlayEmitTime[roomId] || 0;
-      if (!room.videoState.isPlaying && now - lastEmit > VIDEO_SYNC_DEBOUNCE_MS) {
-        emitSystemMessage(io, roomId, 'Video resumed', 'play', { userName: currentUser.name });
-        lastPlayEmitTime[roomId] = now;
-      }
-
-      const videoState = {
-        isPlaying: true,
-        currentTime,
-        duration: room.videoState.duration,
-        lastUpdateTime: Date.now(),
-      };
-
-      await redisService.rooms.updateVideoState(roomId, videoState);
-
-      socket.to(roomId).emit('video-played', {
-        currentTime,
-        timestamp: videoState.lastUpdateTime,
+      socket.to(validatedData.roomId).emit('video-played', {
+        currentTime: result.videoState.currentTime,
+        timestamp: result.videoState.lastUpdateTime,
       });
-
-      console.log(`Video played in room ${roomId} at ${currentTime}s`);
     } catch (error) {
-      console.error('Error playing video:', error);
-      socket.emit('error', { error: 'Failed to play video' });
+      handleServiceError(error, socket);
     }
   });
 
@@ -112,45 +80,29 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
       const validatedData = validateData(VideoControlDataSchema, data, socket);
       if (!validatedData) return;
 
-      const { roomId, currentTime } = validatedData;
-      const room = await redisService.rooms.getRoom(roomId);
-      if (!room) {
-        socket.emit('room-error', { error: `Hmm, we couldn't find a room with that code. Maybe a typo?` });
+      const ctx = createSocketContext(socket.data);
+      if (!ctx) {
+        socket.emit('error', { error: 'Hmm, we lost your connection details.' });
         return;
       }
 
-      const currentUser = room.users.find(u => u.id === socket.data.userId);
-      if (!currentUser?.isHost) {
-        socket.emit('error', { error: 'Only hosts can control the video' });
-        return;
-      }
+      const result = await VideoService.pauseVideo(
+        { roomId: validatedData.roomId, currentTime: validatedData.currentTime },
+        ctx
+      );
 
-      const videoState = {
-        isPlaying: false,
-        currentTime,
-        duration: room.videoState.duration,
-        lastUpdateTime: Date.now(),
-      };
-
-      await redisService.rooms.updateVideoState(roomId, videoState);
-
-      socket.to(roomId).emit('video-paused', {
-        currentTime,
-        timestamp: videoState.lastUpdateTime,
+      socket.to(validatedData.roomId).emit('video-paused', {
+        currentTime: result.videoState.currentTime,
+        timestamp: result.videoState.lastUpdateTime,
       });
 
-      // Announce pause immediately (no throttle), but debounce duplicates
-      const now = Date.now();
-      const lastEmit = lastPauseEmitTime[roomId] || 0;
-      if (now - lastEmit > VIDEO_SYNC_DEBOUNCE_MS) {
-        emitSystemMessage(io, roomId, 'Video paused', 'pause', { userName: currentUser.name });
-        lastPauseEmitTime[roomId] = now;
+      if (result.shouldEmitSystemMessage) {
+        const room = await import('@/server/redis').then(m => m.redisService.rooms.getRoom(validatedData.roomId));
+        const currentUser = room?.users.find(u => u.id === ctx.userId);
+        emitSystemMessage(io, validatedData.roomId, 'Video paused', 'pause', { userName: currentUser?.name });
       }
-
-      console.log(`Video paused in room ${roomId} at ${currentTime}s`);
     } catch (error) {
-      console.error('Error pausing video:', error);
-      socket.emit('error', { error: 'Failed to pause video' });
+      handleServiceError(error, socket);
     }
   });
 
@@ -160,137 +112,78 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
       const validatedData = validateData(VideoControlDataSchema, data, socket);
       if (!validatedData) return;
 
-      const { roomId, currentTime } = validatedData;
-      const room = await redisService.rooms.getRoom(roomId);
-      if (!room) {
-        socket.emit('room-error', { error: `Hmm, we couldn't find a room with that code. Maybe a typo?` });
+      const ctx = createSocketContext(socket.data);
+      if (!ctx) {
+        socket.emit('error', { error: 'Hmm, we lost your connection details.' });
         return;
       }
 
-      const currentUser = room.users.find(u => u.id === socket.data.userId);
-      if (!currentUser?.isHost) {
-        socket.emit('error', { error: 'Only hosts can control the video' });
-        return;
-      }
+      const result = await VideoService.seekVideo(
+        { roomId: validatedData.roomId, currentTime: validatedData.currentTime },
+        ctx
+      );
 
-      const videoState = {
-        ...room.videoState,
-        currentTime,
-        lastUpdateTime: Date.now(),
-      };
-
-      await redisService.rooms.updateVideoState(roomId, videoState);
-
-      socket.to(roomId).emit('video-seeked', {
-        currentTime,
-        timestamp: videoState.lastUpdateTime,
+      socket.to(validatedData.roomId).emit('video-seeked', {
+        currentTime: result.videoState.currentTime,
+        timestamp: result.videoState.lastUpdateTime,
       });
-
-      console.log(`Video seeked in room ${roomId} to ${currentTime}s`);
     } catch (error) {
-      console.error('Error seeking video:', error);
-      socket.emit('error', { error: 'Failed to seek video' });
+      handleServiceError(error, socket);
     }
   });
 
-  // Sync check for hosts
+  // Sync check (host broadcasts to guests)
   socket.on('sync-check', async data => {
     try {
       const validatedData = validateData(SyncCheckDataSchema, data, socket);
       if (!validatedData) return;
 
-      const { roomId, currentTime, isPlaying, timestamp } = validatedData;
-
-      if (!socket.data.userId) {
-        socket.emit('error', { error: `Hmm, we lost your connection details.` });
+      const ctx = createSocketContext(socket.data);
+      if (!ctx) {
+        socket.emit('error', { error: 'Hmm, we lost your connection details.' });
         return;
       }
 
-      const room = await redisService.rooms.getRoom(roomId);
-      if (!room) {
-        socket.emit('room-error', { error: `Hmm, we couldn't find a room with that code. Maybe a typo?` });
-        return;
-      }
+      const result = await VideoService.handleSyncCheck(
+        {
+          roomId: validatedData.roomId,
+          currentTime: validatedData.currentTime,
+          isPlaying: validatedData.isPlaying,
+          timestamp: validatedData.timestamp,
+        },
+        ctx
+      );
 
-      const currentUser = room.users.find(u => u.id === socket.data.userId);
-      if (!currentUser?.isHost) {
-        socket.emit('error', { error: 'Only hosts can send sync checks' });
-        return;
-      }
-
-      // Broadcast sync update to all other users
-      socket.to(roomId).emit('sync-update', { currentTime, isPlaying, timestamp });
-
-      console.log(`Sync check sent in room ${roomId}: ${currentTime.toFixed(2)}s, playing: ${isPlaying}`);
+      socket.to(validatedData.roomId).emit('sync-update', {
+        currentTime: result.currentTime,
+        isPlaying: result.isPlaying,
+        timestamp: result.timestamp,
+      });
     } catch (error) {
-      console.error('Error sending sync check:', error);
-      socket.emit('error', { error: 'Failed to send sync check' });
+      handleServiceError(error, socket);
     }
   });
 
-  // Late failure error report (client indicates playback failure mid-session)
-  socket.on('video-error-report', async ({ roomId, code, message, currentSrc, currentTime: _currentTime }) => {
+  // Video error report (client reports playback failure)
+  socket.on('video-error-report', async ({ roomId, code, message, currentSrc, currentTime }) => {
     try {
-      const now = Date.now();
-      if (lastErrorReport[roomId] && now - lastErrorReport[roomId] < VIDEO_ERROR_REPORT_DEBOUNCE_MS) {
-        return; // Ignore rapid repeats
-      }
-      lastErrorReport[roomId] = now;
+      const result = await VideoService.handleErrorReport({
+        roomId,
+        code,
+        message,
+        currentSrc,
+        currentTime,
+      });
 
-      const room = await redisService.rooms.getRoom(roomId);
-      if (!room) return;
-
-      const videoMeta = room.videoMeta;
-      if (!videoMeta) return;
-
-      // Ignore if already proxying or report src doesn't match current playback
-      if (videoMeta.requiresProxy) return;
-      if (currentSrc && currentSrc !== videoMeta.playbackUrl) {
-        return;
-      }
-
-      const originalUrl = videoMeta.originalUrl || currentSrc;
-      if (!originalUrl) return;
-
-      let legacyVideoType: 'youtube' | 'mp4' | 'm3u8' = 'mp4';
-      if (videoMeta.videoType === 'youtube') legacyVideoType = 'youtube';
-      else if (videoMeta.videoType === 'm3u8') legacyVideoType = 'm3u8';
-
-      const proxyDisallowed =
-        legacyVideoType === 'youtube' || videoMeta.decisionReasons?.includes('direct-required-cdn');
-
-      // If a client reports failure and we're not already proxying, force a proxy fallback for the room.
-      if (!proxyDisallowed && !isProxiedUrl(videoMeta.playbackUrl)) {
-        const proxyUrl = buildProxyUrl(originalUrl);
-        const fallbackMeta = {
-          ...videoMeta,
-          playbackUrl: proxyUrl,
-          deliveryType: (legacyVideoType === 'm3u8' ? 'hls' : 'file-proxy') as 'hls' | 'file-proxy',
-          requiresProxy: true,
-          decisionReasons: [...(videoMeta.decisionReasons || []), 'client-error-fallback'],
-          timestamp: Date.now(),
-        };
-
-        await redisService.rooms.setVideoUrl(roomId, proxyUrl, legacyVideoType, fallbackMeta);
-        io.to(roomId).emit('video-set', { videoUrl: proxyUrl, videoType: legacyVideoType, videoMeta: fallbackMeta });
-        emitSystemMessage(io, roomId, `Video source changed`, 'video-change', { videoUrl: proxyUrl });
-        console.log(`Forced proxy fallback for room ${roomId} after client error (code ${code})`);
-        return;
-      }
-
-      console.log(`Late video error reported in room ${roomId}: code=${code} msg=${message}`);
-
-      // Re-resolve using originalUrl (not the playbackUrl) to see if we now need proxy
-      const meta = await resolveSource(originalUrl);
-      if (meta.playbackUrl !== videoMeta.playbackUrl) {
-        // Update stored room video url & meta
-        let resolvedVideoType: 'youtube' | 'mp4' | 'm3u8' = 'mp4';
-        if (meta.videoType === 'youtube') resolvedVideoType = 'youtube';
-        else if (meta.videoType === 'm3u8') resolvedVideoType = 'm3u8';
-        await redisService.rooms.setVideoUrl(roomId, meta.playbackUrl, resolvedVideoType, meta);
-        io.to(roomId).emit('video-set', { videoUrl: meta.playbackUrl, videoType: resolvedVideoType, videoMeta: meta });
-        emitSystemMessage(io, roomId, `Video source changed`, 'video-change', { videoUrl: meta.playbackUrl });
-        console.log(`Re-resolved video source for room ${roomId} -> ${meta.deliveryType}`);
+      if (result.fallbackApplied && result.newPlaybackUrl && result.videoMeta) {
+        io.to(roomId).emit('video-set', {
+          videoUrl: result.newPlaybackUrl,
+          videoType: result.videoType!,
+          videoMeta: result.videoMeta,
+        });
+        emitSystemMessage(io, roomId, 'Video source changed', 'video-change', {
+          videoUrl: result.newPlaybackUrl,
+        });
       }
     } catch (err) {
       console.error('Error handling video-error-report:', err);
