@@ -6,7 +6,6 @@ import { NotFoundError, PermissionError, CapacityError } from '../errors';
 import type { SocketEvents, SocketData } from '../socket/types';
 
 // Request Types
-
 export interface VideoChatJoinRequest {
   roomId: string;
 }

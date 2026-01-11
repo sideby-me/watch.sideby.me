@@ -1,5 +1,3 @@
-// ChatService - Business logic for chat operations.
-
 import { v4 as uuidv4 } from 'uuid';
 import { redisService } from '@/server/redis';
 import type { ChatMessage } from '@/types';

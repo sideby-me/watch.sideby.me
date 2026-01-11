@@ -1,5 +1,3 @@
-// RoomService - Business logic for room operations.
-// Handles room creation, join/leave flows, permissions, and settings.
 import { v4 as uuidv4 } from 'uuid';
 import { redisService } from '@/server/redis';
 import { generateRoomId } from '@/lib/video-utils';
