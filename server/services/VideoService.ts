@@ -79,7 +79,10 @@ class VideoServiceImpl {
     // Resolve source centrally
     const meta = await resolveSource(videoUrl);
 
-    // Map delivery types to legacy videoType for backward compatibility
+    // Bridge pattern: VideoMeta provides rich delivery semantics (direct, file-proxy, hls, youtube),
+    // but client player components only need to know which player to render: 'youtube' | 'mp4' | 'm3u8'.
+    // This mapping converts VideoMeta.videoType to the simplified player-selection format.
+    // See: VideoPlayerContainer.tsx, use-video-sync.ts, RoomShell.getActivePlayer()
     let legacyVideoType: 'youtube' | 'mp4' | 'm3u8' = 'mp4';
     if (meta.videoType === 'youtube') legacyVideoType = 'youtube';
     else if (meta.videoType === 'm3u8') legacyVideoType = 'm3u8';
@@ -214,7 +217,12 @@ class VideoServiceImpl {
     return { currentTime, isPlaying, timestamp };
   }
 
-  // Handle video error report from client, may trigger proxy fallback if appropriate.
+  /**
+   * Handle video error report from client. Uses two-tier fallback:
+   * 1. Proxy fallback: If not already proxying, wrap originalUrl in proxy (handles 403/CORS)
+   * 2. Re-resolve fallback: If proxy won't help or already proxied, re-resolve originalUrl
+   *    (handles expired URLs or changed CDN endpoints)
+   */
   async handleErrorReport(request: VideoErrorReportRequest): Promise<VideoErrorReportResult> {
     const { roomId, code, message, currentSrc } = request;
 

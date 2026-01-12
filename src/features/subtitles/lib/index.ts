@@ -9,3 +9,4 @@ export {
   SYNC_OFFSET_MIN,
   SYNC_OFFSET_MAX,
 } from './subtitle-settings-store';
+export { getVideoIdForStorage } from './video-id';

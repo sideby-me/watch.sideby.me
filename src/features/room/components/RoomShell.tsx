@@ -7,10 +7,12 @@ import { useRoomCore } from '@/src/features/room/hooks/use-room-core';
 import { useRoomUiState } from '@/src/features/room/hooks/use-room-ui-state';
 import { useChat } from '@/src/features/chat/hooks/use-chat';
 import { useVideoSync } from '@/src/features/video-sync/hooks';
+import { extractYouTubeId } from '@/src/features/video-sync/lib';
 import { useSubtitles } from '@/src/features/subtitles/hooks';
+import { getVideoIdForStorage } from '@/src/features/subtitles/lib';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { useFullscreenChatOverlay } from '@/src/features/chat/hooks';
-import { useFullscreenPortalContainer } from '@/src/features/room/hooks';
+import { useFullscreenPortalContainer, useRoomInitialization } from '@/src/features/room/hooks';
 import { useVoiceChat } from '@/src/features/media/voice';
 import { useVideoChat } from '@/src/features/media/videochat';
 import { useGoogleCast } from '@/src/features/media/cast';
@@ -18,7 +20,6 @@ import { YouTubePlayerRef } from '@/components/video/youtube-player';
 import { VideoPlayerRef } from '@/components/video/video-player';
 import { HLSPlayerRef } from '@/components/video/hls-player';
 import { formatTimestamp } from '@/lib/chat-timestamps';
-import { roomSessionStorage } from '@/lib/session-storage';
 import { VOICE_MAX_PARTICIPANTS } from '@/lib/constants';
 
 import { RoomHeader } from './RoomHeader';
@@ -54,7 +55,6 @@ export function RoomShell({ roomId }: RoomShellProps) {
 
   // Pending user name state for passcode flow
   const [pendingUserName, setPendingUserName] = useState('');
-  const [lastJoinAttempt, setLastJoinAttempt] = useState<number>(0);
 
   // Google Cast hook
   const {
@@ -144,31 +144,6 @@ export function RoomShell({ roomId }: RoomShellProps) {
     });
   }, [core, ui, chat, router]);
 
-  // Helper function to extract video ID from URL for subtitle storage
-  const getVideoIdForStorage = (videoUrl?: string): string | undefined => {
-    if (!videoUrl) return undefined;
-
-    try {
-      const urlObj = new URL(videoUrl);
-
-      // YouTube URLs
-      if (urlObj.hostname.includes('youtube.com') || urlObj.hostname.includes('youtu.be')) {
-        if (urlObj.hostname.includes('youtu.be')) {
-          return urlObj.pathname.slice(1);
-        } else if (urlObj.hostname.includes('youtube.com')) {
-          return urlObj.searchParams.get('v') || undefined;
-        }
-      }
-
-      // For other video types, use the full URL as the ID (hashed for localStorage key)
-      return btoa(videoUrl)
-        .replace(/[^a-zA-Z0-9]/g, '')
-        .substring(0, 16);
-    } catch {
-      return undefined;
-    }
-  };
-
   // Use local subtitle hook for subtitle management (no socket sync)
   const {
     subtitleTracks,
@@ -201,9 +176,6 @@ export function RoomShell({ roomId }: RoomShellProps) {
     castPlayerRef,
     isCasting,
   });
-
-  const initialVideoUrlFromQuery = searchParams.get('videoUrl');
-  const autoplayParam = searchParams.get('autoplay');
 
   // Voice chat hook
   const voice = useVoiceChat({ roomId, currentUser: core.currentUser });
@@ -330,64 +302,27 @@ export function RoomShell({ roomId }: RoomShellProps) {
     onControlAttempt: handleVideoControlAttempt,
   });
 
-  // Auto-join logic
-  useEffect(() => {
-    if (!socket || !isConnected || !roomId) {
-      return;
-    }
-
-    if (core.room && core.currentUser) {
-      return;
-    }
-
-    if (core.isJoining || core.hasAttemptedJoinRef.current) {
-      return;
-    }
-
-    const now = Date.now();
-    if (now - lastJoinAttempt < 2000) {
-      return;
-    }
-
-    console.log('🚀 Starting room join process...');
-    core.setIsJoining(true);
-    setLastJoinAttempt(now);
-    core.hasAttemptedJoinRef.current = true;
-
-    // Check if this user is the room creator first
-    const creatorData = roomSessionStorage.getRoomCreator(roomId);
-    if (creatorData) {
-      console.log('👑 Room creator detected, joining as host:', creatorData.hostName);
-      roomSessionStorage.clearRoomCreator();
-      core.emitJoinRoom(creatorData.hostName, undefined, creatorData.hostToken);
-      return;
-    }
-
-    // Check if user came from join page
-    const joinData = roomSessionStorage.getJoinData(roomId);
-    if (joinData) {
-      setPendingUserName(joinData.userName);
-      roomSessionStorage.clearJoinData();
-      console.log('👤 Joining with stored data:', joinData.userName);
-      core.emitJoinRoom(joinData.userName);
-      return;
-    }
-
-    // Show dialog for name if no stored data
-    console.log('❓ No stored user data, showing join dialog');
-    ui.setShowJoinDialog(true);
-  }, [socket, isConnected, roomId, core, ui, lastJoinAttempt]);
-
-  // Apply initial video from query params
-  useEffect(() => {
-    if (!core.room || !core.currentUser?.isHost) return;
-    if (!initialVideoUrlFromQuery || initialVideoAppliedRef.current) return;
-
-    if (!core.room.videoUrl) {
-      handleSetVideo(initialVideoUrlFromQuery);
-      initialVideoAppliedRef.current = true;
-    }
-  }, [core.room, core.currentUser, initialVideoUrlFromQuery, handleSetVideo]);
+  // Room initialization: auto-join, initial video from query, autoplay
+  useRoomInitialization({
+    roomId,
+    socket,
+    isConnected,
+    room: core.room,
+    currentUser: core.currentUser,
+    isJoining: core.isJoining,
+    hasAttemptedJoinRef: core.hasAttemptedJoinRef,
+    emitJoinRoom: core.emitJoinRoom,
+    setIsJoining: core.setIsJoining,
+    setShowJoinDialog: ui.setShowJoinDialog,
+    setPendingUserName,
+    initialVideoUrl: searchParams.get('videoUrl'),
+    autoplayParam: searchParams.get('autoplay'),
+    initialVideoAppliedRef,
+    autoplayTriggeredRef,
+    handleSetVideo,
+    getActivePlayer,
+    handleVideoPlay,
+  });
 
   // Handle video sync events from socket
   useEffect(() => {
@@ -460,38 +395,6 @@ export function RoomShell({ roomId }: RoomShellProps) {
     startCasting(core.room.videoUrl, contentType);
   }, [isCasting, core.room?.videoUrl, core.room?.videoType, startCasting]);
 
-  // Autoplay effect
-  useEffect(() => {
-    if (!core.room || !core.currentUser?.isHost) return;
-    if (autoplayTriggeredRef.current) return;
-    if (autoplayParam !== '1') return;
-
-    const hasVideo = !!core.room.videoUrl || !!core.room.videoMeta?.playbackUrl;
-    if (!hasVideo) return;
-
-    const player = getActivePlayer();
-    if (!player) return;
-
-    autoplayTriggeredRef.current = true;
-
-    try {
-      const maybePromise = (player as YouTubePlayerRef | VideoPlayerRef | HLSPlayerRef).play?.();
-      if (maybePromise && typeof maybePromise.then === 'function') {
-        maybePromise
-          .then(() => {
-            handleVideoPlay();
-          })
-          .catch(() => {
-            // Autoplay blocked
-          });
-      } else {
-        handleVideoPlay();
-      }
-    } catch {
-      // Ignore autoplay errors
-    }
-  }, [core.room, core.currentUser, autoplayParam, getActivePlayer, handleVideoPlay]);
-
   // Handle errors
   if (core.error) {
     return <ErrorDisplay error={core.error} onRetry={() => router.push('/join')} />;
@@ -534,24 +437,6 @@ export function RoomShell({ roomId }: RoomShellProps) {
   const effectiveVideoUrl = meta?.playbackUrl ?? core.room.videoUrl;
   const effectiveVideoType = meta?.videoType ?? core.room.videoType ?? undefined;
 
-  const extractYouTubeId = (url: string | undefined): string | undefined => {
-    if (!url) return undefined;
-    try {
-      if (/^[a-zA-Z0-9_-]{11}$/.test(url)) return url;
-      const u = new URL(url);
-      if (u.hostname.includes('youtu.be')) {
-        const id = u.pathname.slice(1);
-        return id || undefined;
-      }
-      const v = u.searchParams.get('v');
-      if (v) return v;
-      const embedMatch = u.pathname.match(/\/embed\/([a-zA-Z0-9_-]{11})/);
-      if (embedMatch) return embedMatch[1];
-      return undefined;
-    } catch {
-      return undefined;
-    }
-  };
   const youTubeId = effectiveVideoType === 'youtube' ? extractYouTubeId(effectiveVideoUrl) : undefined;
 
   return (

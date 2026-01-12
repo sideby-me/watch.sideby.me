@@ -6,10 +6,6 @@ import type { SubtitleTrack } from '@/types/schemas';
 interface UseSubtitlesOptions {
   roomId: string;
   videoId?: string;
-  // Legacy props kept for compatibility (no longer used)
-  isHost?: boolean;
-  currentSubtitleTracks?: SubtitleTrack[];
-  currentActiveTrack?: string;
 }
 
 interface UseSubtitlesReturn {

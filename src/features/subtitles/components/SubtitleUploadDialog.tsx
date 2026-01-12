@@ -7,7 +7,7 @@ import { Dialog, DialogHeader, DialogTitle, DialogPortal, DialogOverlay } from '
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Upload, FileText, CheckCircle, X, XIcon, Search } from 'lucide-react';
-import { SubtitleParser } from '@/lib/subtitle-utils';
+import { SubtitleParser } from '../lib';
 import { useFullscreenPortalContainer } from '@/src/features/room/hooks';
 import { cn } from '@/lib/utils';
 import { SubtitleSearchTab } from './SubtitleSearchTab';

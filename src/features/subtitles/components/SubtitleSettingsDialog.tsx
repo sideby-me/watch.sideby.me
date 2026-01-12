@@ -20,7 +20,7 @@ import {
   SYNC_OFFSET_MIN,
   SYNC_OFFSET_MAX,
   SYNC_OFFSET_STEP,
-} from '@/lib/subtitle-settings-store';
+} from '../lib';
 
 interface SubtitleSettingsDialogProps {
   open: boolean;

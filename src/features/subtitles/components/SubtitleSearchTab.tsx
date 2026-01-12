@@ -249,7 +249,7 @@ function SubtitleResultItem({
       const data = await response.json();
 
       // Import SubtitleParser dynamically to avoid SSR issues
-      const { SubtitleParser } = await import('@/lib/subtitle-utils');
+      const { SubtitleParser } = await import('../lib');
 
       // Parse the subtitle content based on format
       let cues;

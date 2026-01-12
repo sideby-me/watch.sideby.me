@@ -196,23 +196,4 @@ export function registerVoiceHandlers(socket: Socket<SocketEvents, SocketEvents,
       // Ignore disconnect errors
     }
   });
-
-  // Debug endpoint
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (socket as any).on('voice-debug', async (data: { roomId: string }) => {
-    const validated = validateData(VoiceJoinDataSchema, data, socket);
-    if (!validated) return;
-
-    const { roomId } = validated;
-    const { sockets: participants, staleSocketIds } = VoiceService.computeValidParticipants(io, roomId);
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (socket as any).emit('voice-debug-response', {
-      roomId,
-      count: participants.length,
-      userIds: participants.map(s => s.data.userId),
-      staleSocketIds,
-      max: VoiceService.getMaxParticipants(),
-    });
-  });
 }

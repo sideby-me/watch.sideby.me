@@ -4,7 +4,7 @@ import { YouTubePlayer, YouTubePlayerRef } from '@/components/video/youtube-play
 import { VideoPlayer, VideoPlayerRef } from '@/components/video/video-player';
 import { HLSPlayer, HLSPlayerRef } from '@/components/video/hls-player';
 import { VideoControls } from '@/components/video/video-controls';
-import { SubtitleOverlay } from '@/components/video/subtitle-overlay';
+import { SubtitleOverlay } from '@/src/features/subtitles/components';
 import { Video, ExternalLink, Edit3, AlertTriangle, Cast } from 'lucide-react';
 import type { SubtitleTrack } from '@/types/schemas';
 import {

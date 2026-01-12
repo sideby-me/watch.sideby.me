@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import type { SubtitleTrack } from '@/types/schemas';
-import { SubtitleParser, type SubtitleCue as ParsedSubtitleCue } from '@/lib/subtitle-utils';
-import { useSubtitleSettings } from '@/lib/subtitle-settings-store';
+import { SubtitleParser, type SubtitleCue as ParsedSubtitleCue } from '../lib';
+import { useSubtitleSettings } from '../lib';
 
 interface SubtitleCue {
   text: string;
