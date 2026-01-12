@@ -1,7 +1,7 @@
 'use client';
 
 import { memo } from 'react';
-import { Chat, ChatOverlay } from '@/components/chat';
+import { Chat, ChatOverlay } from '@/src/features/chat';
 import { ChatMessage, TypingUser, User } from '@/types';
 
 interface VoiceChatProps {

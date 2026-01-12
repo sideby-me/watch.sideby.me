@@ -2,10 +2,10 @@
 
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { useSocket } from '@/hooks/use-socket';
+import { useSocket } from '@/src/core/socket';
 import { CreateRoomDataSchema } from '@/types';
 import { z } from 'zod';
-import { roomSessionStorage } from '@/lib/session-storage';
+import { roomSessionStorage } from '@/src/lib/session-storage';
 
 interface UseCreateRoomReturn {
   hostName: string;

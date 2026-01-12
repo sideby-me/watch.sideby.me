@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import type { Socket } from 'socket.io-client';
 import type { Room, User } from '@/types';
-import { roomSessionStorage } from '@/lib/session-storage';
+import { roomSessionStorage } from '@/src/lib/session-storage';
 import { logDebug, logClient } from '@/src/core/logger';
 
 export interface UseRoomInitializationOptions {

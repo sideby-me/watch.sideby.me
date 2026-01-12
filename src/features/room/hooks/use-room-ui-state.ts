@@ -3,7 +3,7 @@
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Socket } from 'socket.io-client';
-import { roomSessionStorage } from '@/lib/session-storage';
+import { roomSessionStorage } from '@/src/lib/session-storage';
 import { logDebug } from '@/src/core/logger';
 
 interface UseRoomUiStateOptions {

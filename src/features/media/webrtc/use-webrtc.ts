@@ -5,7 +5,7 @@ import {
   createStunOnlyRTCConfiguration,
   createRTCConfiguration,
   createTurnOnlyRTCConfiguration,
-} from '@/lib/ice-server';
+} from '@/src/lib/ice-server';
 import { logDebug } from '@/src/core/logger';
 
 export interface PeerMapEntry {

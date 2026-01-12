@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useSocket } from '@/hooks/use-socket';
+import { useSocket } from '@/src/core/socket';
 import { useMediaPermissions } from '@/src/features/media/hooks';
 import { useWebRTC } from '@/src/features/media/webrtc';
 import { User } from '@/types';
@@ -12,7 +12,7 @@ import {
   VOICE_MAX_PARTICIPANTS,
   SPEAKING_DETECTION_THRESHOLD,
   ANALYSER_FFT_SIZE,
-} from '@/lib/constants';
+} from '@/src/lib/constants';
 
 export interface VoiceChatProps {
   roomId: string;

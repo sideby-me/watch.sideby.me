@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useSocket } from '@/hooks/use-socket';
+import { useSocket } from '@/src/core/socket';
 import { useRoomCore } from '@/src/features/room/hooks/use-room-core';
 import { useRoomUiState } from '@/src/features/room/hooks/use-room-ui-state';
 import { useChat } from '@/src/features/chat/hooks/use-chat';
@@ -10,17 +10,17 @@ import { useVideoSync } from '@/src/features/video-sync/hooks';
 import { extractYouTubeId } from '@/src/features/video-sync/lib';
 import { useSubtitles } from '@/src/features/subtitles/hooks';
 import { getVideoIdForStorage } from '@/src/features/subtitles/lib';
-import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
+import { useKeyboardShortcuts } from '@/src/core/input';
 import { useFullscreenChatOverlay } from '@/src/features/chat/hooks';
 import { useFullscreenPortalContainer, useRoomInitialization } from '@/src/features/room/hooks';
 import { useVoiceChat } from '@/src/features/media/voice';
 import { useVideoChat } from '@/src/features/media/videochat';
 import { useGoogleCast } from '@/src/features/media/cast';
-import { YouTubePlayerRef } from '@/components/video/youtube-player';
-import { VideoPlayerRef } from '@/components/video/video-player';
-import { HLSPlayerRef } from '@/components/video/hls-player';
-import { formatTimestamp } from '@/lib/chat-timestamps';
-import { VOICE_MAX_PARTICIPANTS } from '@/lib/constants';
+import { YouTubePlayerRef } from '@/src/core/video/youtube-player';
+import { VideoPlayerRef } from '@/src/features/video-sync/components/VideoPlayer';
+import { HLSPlayerRef } from '@/src/core/video/hls-player';
+import { formatTimestamp } from '@/src/lib/chat-timestamps';
+import { VOICE_MAX_PARTICIPANTS } from '@/src/lib/constants';
 
 import { RoomHeader } from './RoomHeader';
 import { RoomVideoSection } from './RoomVideoSection';
@@ -31,9 +31,9 @@ import { ErrorDisplay, LoadingDisplay, SyncError, GuestInfoBanner } from './Room
 import { UserList } from './UserList';
 import { VideoChatGrid } from './VideoChatGrid';
 import { VideoChatOverlay } from './VideoChatOverlay';
-import { LeaveRoomGuard } from '@/components/room/leave-room-guard';
-import { JoinRoomDialog } from '@/components/room/join-room-dialog';
-import { PasscodeDialog } from '@/components/room/passcode-dialog';
+import { LeaveRoomGuard } from './leave-room-guard';
+import { JoinRoomDialog } from './join-room-dialog';
+import { PasscodeDialog } from './passcode-dialog';
 import { Spinner } from '@/components/ui/spinner';
 import { toast } from 'sonner';
 import { logDebug } from '@/src/core/logger';

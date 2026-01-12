@@ -1,10 +1,10 @@
 'use client';
 
 import { memo } from 'react';
-import { HostControlDialog } from '@/components/room/host-control-dialog';
-import { JoinRoomDialog } from '@/components/room/join-room-dialog';
-import { PasscodeDialog } from '@/components/room/passcode-dialog';
-import { RoomSettingsDialog } from '@/components/room/room-settings-dialog';
+import { HostControlDialog } from './host-control-dialog';
+import { JoinRoomDialog } from './join-room-dialog';
+import { PasscodeDialog } from './passcode-dialog';
+import { RoomSettingsDialog } from './room-settings-dialog';
 import { RoomSettings } from '@/types';
 
 interface RoomDialogsProps {

@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
 
-import { cn } from '@/lib/utils';
+import { cn } from '@/src/lib/utils';
 
 const iconVariants = cva('inline-flex items-center justify-center rounded-full outline-none', {
   variants: {

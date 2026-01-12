@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { RemoteVideoStream } from '@/src/features/media/videochat';
 import { User } from '@/types';
-import { cn } from '@/lib/utils';
+import { cn } from '@/src/lib/utils';
 import { X, Video, VideoOff, GripVertical, Minimize2, Maximize2 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 

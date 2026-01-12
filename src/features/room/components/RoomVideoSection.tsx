@@ -2,10 +2,10 @@
 
 import { RefObject, memo } from 'react';
 import { VideoPlayerContainer } from './VideoPlayerContainer';
-import { VideoSetup } from '@/components/video/video-setup';
-import { YouTubePlayerRef } from '@/components/video/youtube-player';
-import { VideoPlayerRef } from '@/components/video/video-player';
-import { HLSPlayerRef } from '@/components/video/hls-player';
+import { VideoSetup } from './VideoSetup';
+import { YouTubePlayerRef } from '@/src/core/video/youtube-player';
+import { VideoPlayerRef } from '@/src/features/video-sync/components/VideoPlayer';
+import { HLSPlayerRef } from '@/src/core/video/hls-player';
 import type { SubtitleTrack } from '@/types/schemas';
 
 interface RoomVideoSectionProps {

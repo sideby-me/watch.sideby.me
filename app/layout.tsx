@@ -3,9 +3,9 @@ import NextTopLoader from 'nextjs-toploader';
 import { Space_Grotesk, Space_Mono } from 'next/font/google';
 import { Navigation } from '@/components/layout/navigation';
 import { Footer } from '@/components/layout/footer';
-import { SocketProvider } from '@/contexts/socket-provider';
+import { SocketProvider } from '@/src/core/socket';
 import { Toaster } from '@/components/ui/sonner';
-import { ThemeProvider } from '@/contexts/theme-provider';
+import { ThemeProvider } from '@/src/core/config';
 import './globals.css';
 
 const spaceGrotesk = Space_Grotesk({

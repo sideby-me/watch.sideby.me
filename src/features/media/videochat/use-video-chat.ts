@@ -1,13 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useSocket } from '@/hooks/use-socket';
+import { useSocket } from '@/src/core/socket';
 import { useMediaPermissions } from '@/src/features/media/hooks';
 import { useWebRTC } from '@/src/features/media/webrtc';
 import { logDebug } from '@/src/core/logger';
 import { User } from '@/types';
 import { toast } from 'sonner';
-import { SOLO_USER_TIMEOUT_MS, VIDEO_CHAT_MAX_PARTICIPANTS, WEBRTC_CONNECTION_TIMEOUT_MS } from '@/lib/constants';
+import { SOLO_USER_TIMEOUT_MS, VIDEO_CHAT_MAX_PARTICIPANTS, WEBRTC_CONNECTION_TIMEOUT_MS } from '@/src/lib/constants';
 
 export interface VideoChatProps {
   roomId: string;

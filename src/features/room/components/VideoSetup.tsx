@@ -13,7 +13,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { parseVideoUrl } from '@/lib/video-utils';
+import { parseVideoUrl } from '@/src/lib/video-utils';
 import { Video, Youtube, FileVideo, ExternalLink, ArrowRight, Link } from 'lucide-react';
 
 interface VideoSetupProps {

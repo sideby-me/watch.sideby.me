@@ -42,6 +42,7 @@ export function useNotificationSound(options: UseNotificationSoundOptions = {}):
 
     try {
       // Use Web Audio API for better control and reliability
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioContextClass) {
         isSupported.current = false;

@@ -1,6 +1,6 @@
 import { Server as IOServer, Socket } from 'socket.io';
 import { redisService } from '@/server/redis';
-import { VOICE_MAX_PARTICIPANTS } from '@/lib/constants';
+import { VOICE_MAX_PARTICIPANTS } from '@/src/lib/constants';
 import { logEvent } from '@/server/logger';
 import type { SocketContext } from './SocketContext';
 import { NotFoundError, PermissionError, CapacityError } from '../errors';

@@ -1,9 +1,9 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { YouTubePlayer, YouTubePlayerRef } from '@/components/video/youtube-player';
-import { VideoPlayer, VideoPlayerRef } from '@/components/video/video-player';
-import { HLSPlayer, HLSPlayerRef } from '@/components/video/hls-player';
-import { VideoControls } from '@/components/video/video-controls';
+import { YouTubePlayer, YouTubePlayerRef } from '@/src/core/video/youtube-player';
+import { VideoPlayer, VideoPlayerRef } from '@/src/features/video-sync/components/VideoPlayer';
+import { HLSPlayer, HLSPlayerRef } from '@/src/core/video/hls-player';
+import { VideoControls } from '@/src/features/video-sync/components/VideoControls';
 import { SubtitleOverlay } from '@/src/features/subtitles/components';
 import { Video, ExternalLink, Edit3, AlertTriangle, Cast } from 'lucide-react';
 import type { SubtitleTrack } from '@/types/schemas';
@@ -19,10 +19,10 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useState, useEffect, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { parseVideoUrl, getSupportedVideoFormats } from '@/lib/video-utils';
-import { isProxiedUrl, buildProxyUrl } from '@/lib/video-proxy-client';
+import { parseVideoUrl, getSupportedVideoFormats } from '@/src/lib/video-utils';
+import { isProxiedUrl, buildProxyUrl } from '@/src/lib/video-proxy-client';
 import { toast } from 'sonner';
-import { useSocket } from '@/hooks/use-socket';
+import { useSocket } from '@/src/core/socket';
 import { logClient, logDebug } from '@/src/core/logger';
 
 interface VideoPlayerContainerProps {

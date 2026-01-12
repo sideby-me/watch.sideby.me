@@ -1,7 +1,7 @@
 import { redisService } from '@/server/redis';
 import { resolveSource } from '@/server/video/resolve-source';
-import { buildProxyUrl, isProxiedUrl } from '@/lib/video-proxy-client';
-import { VIDEO_SYNC_DEBOUNCE_MS, VIDEO_ERROR_REPORT_DEBOUNCE_MS } from '@/lib/constants';
+import { buildProxyUrl, isProxiedUrl } from '@/src/lib/video-proxy-client';
+import { VIDEO_SYNC_DEBOUNCE_MS, VIDEO_ERROR_REPORT_DEBOUNCE_MS } from '@/src/lib/constants';
 import { logEvent } from '@/server/logger';
 import type { VideoState, VideoMeta } from '@/types';
 import type { SocketContext } from './SocketContext';

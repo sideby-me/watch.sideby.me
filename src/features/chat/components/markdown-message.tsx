@@ -7,8 +7,8 @@ import {
   AUTO_LINK_REGEX,
   trimAutolink,
   type Node,
-} from '@/lib/chat-markdown';
-import { CHAT_TIMESTAMP_PATTERN, findNextTimestamp } from '@/lib/chat-timestamps';
+} from '@/src/lib/chat-markdown';
+import { CHAT_TIMESTAMP_PATTERN, findNextTimestamp } from '@/src/lib/chat-timestamps';
 
 export interface MarkdownMessageProps {
   content: string;

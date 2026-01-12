@@ -1,5 +1,5 @@
 // Main chat components
-export { Chat } from './chat';
+export { ChatShell as Chat } from './ChatShell';
 export { ChatOverlay } from './chat-overlay';
 
 // Sub-components (for potential custom usage)
@@ -9,4 +9,4 @@ export { ChatInput } from './chat-input';
 export { TypingIndicator } from './typing-indicator';
 
 // Types
-export type { ChatProps } from './chat';
+export type { ChatProps } from './ChatShell';

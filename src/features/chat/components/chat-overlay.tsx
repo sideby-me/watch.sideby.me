@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { MessageCircle } from 'lucide-react';
 import { ChatMessage, TypingUser } from '@/types';
-import { Chat } from '@/components/chat/chat';
+import { ChatShell } from './ChatShell';
 import { useFullscreenPortalContainer } from '@/src/features/room/hooks';
 
 interface VoiceConfig {
@@ -125,7 +125,7 @@ export function ChatOverlay({
           </Button>
         </div>
       ) : (
-        <Chat
+        <ChatShell
           mode="overlay"
           messages={messages}
           currentUserId={currentUserId}

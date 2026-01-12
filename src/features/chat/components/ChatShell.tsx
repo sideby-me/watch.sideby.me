@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { MessageCircle } from 'lucide-react';
 import { ChatMessage, TypingUser } from '@/types';
-import { useNotificationSound } from '@/hooks/use-notification-sound';
+import { useNotificationSound } from '@/src/core/notifications';
 import { ChatHeader } from './chat-header';
 import { ChatMessageItem } from './chat-message';
 import { ChatInput } from './chat-input';
@@ -57,7 +57,7 @@ export interface ChatProps {
   isHost?: boolean;
 }
 
-export function Chat({
+export function ChatShell({
   messages,
   currentUserId,
   users = [],

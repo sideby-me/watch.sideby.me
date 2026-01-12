@@ -1,11 +1,11 @@
 'use client';
 
 import { useRef, useCallback } from 'react';
-import { useSocket } from '@/hooks/use-socket';
-import { YouTubePlayerRef, YT_STATES } from '@/components/video/youtube-player';
-import { HLSPlayerRef } from '@/components/video/hls-player';
+import { useSocket } from '@/src/core/socket';
+import { YouTubePlayerRef, YT_STATES } from '@/src/core/video/youtube-player';
+import { HLSPlayerRef } from '@/src/core/video/hls-player';
 import { CastPlayerRef } from '@/src/features/media/cast';
-import { calculateCurrentTime } from '@/lib/video-utils';
+import { calculateCurrentTime } from '@/src/lib/video-utils';
 import { Room, User } from '@/types';
 import { logDebug } from '@/src/core/logger';
 

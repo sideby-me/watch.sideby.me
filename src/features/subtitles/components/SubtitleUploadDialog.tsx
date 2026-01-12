@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Upload, FileText, CheckCircle, X, XIcon, Search } from 'lucide-react';
 import { SubtitleParser } from '../lib';
 import { useFullscreenPortalContainer } from '@/src/features/room/hooks';
-import { cn } from '@/lib/utils';
+import { cn } from '@/src/lib/utils';
 import { SubtitleSearchTab } from './SubtitleSearchTab';
 import type { SubtitleTrack } from '@/types/schemas';
 

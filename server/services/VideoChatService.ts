@@ -1,6 +1,6 @@
 import { Server as IOServer, Socket } from 'socket.io';
 import { redisService } from '@/server/redis';
-import { VIDEO_CHAT_MAX_PARTICIPANTS } from '@/lib/constants';
+import { VIDEO_CHAT_MAX_PARTICIPANTS } from '@/src/lib/constants';
 import type { SocketContext } from './SocketContext';
 import { NotFoundError, PermissionError, CapacityError } from '../errors';
 import type { SocketEvents, SocketData } from '../socket/types';

@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { redisService } from '@/server/redis';
-import { generateRoomId } from '@/lib/video-utils';
+import { generateRoomId } from '@/src/lib/video-utils';
 import { logEvent } from '@/server/logger';
 import type { Room, User, RoomSettings } from '@/types';
 import type { SocketContext } from './SocketContext';

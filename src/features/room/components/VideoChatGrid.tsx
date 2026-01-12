@@ -1,6 +1,6 @@
 'use client';
 import React, { useEffect, useRef, useMemo } from 'react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/src/lib/utils';
 import { RemoteVideoStream } from '@/src/features/media/videochat';
 import { User } from '@/types';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
