@@ -1,7 +1,7 @@
 'use client';
 
 import { RefObject, memo } from 'react';
-import { VideoPlayerContainer } from '@/components/room/video-player-container';
+import { VideoPlayerContainer } from './VideoPlayerContainer';
 import { VideoSetup } from '@/components/video/video-setup';
 import { YouTubePlayerRef } from '@/components/video/youtube-player';
 import { VideoPlayerRef } from '@/components/video/video-player';

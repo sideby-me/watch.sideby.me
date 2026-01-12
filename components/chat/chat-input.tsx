@@ -7,7 +7,7 @@ import { Send, Mic, MicOff, Phone, Smile, X, Reply, Video, Camera, CameraOff } f
 import { toast } from 'sonner';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { EmojiPicker, EmojiPickerSearch, EmojiPickerContent, EmojiPickerFooter } from '@/components/ui/emoji-picker';
-import { useFullscreenPortalContainer } from '@/hooks/use-fullscreen-portal-container';
+import { useFullscreenPortalContainer } from '@/src/features/room/hooks';
 
 interface VoiceConfig {
   isEnabled: boolean;

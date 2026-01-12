@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useJoinRoom } from '@/hooks/use-join-room';
+import { useJoinRoom } from '@/src/features/room/hooks';
 import { Icon } from '@/components/ui/icon';
 import HowItWorks from '@/components/pages/how-it-works';
 import { generateQuirkyName } from '@/lib/name-generator';

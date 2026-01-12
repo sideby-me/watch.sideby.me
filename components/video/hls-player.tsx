@@ -2,7 +2,7 @@
 
 import React, { useRef, useEffect, useImperativeHandle, forwardRef, useState } from 'react';
 import { isProxiedUrl, buildProxyUrl } from '@/lib/video-proxy-client';
-import { useVideoSubtitleTracks } from '@/hooks/use-video-subtitle-tracks';
+import { useVideoSubtitleTracks } from '@/src/features/subtitles/hooks';
 import type { SubtitleTrack } from '@/types/schemas';
 
 export interface HLSPlayerRef {

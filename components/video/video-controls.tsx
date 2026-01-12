@@ -14,7 +14,7 @@ import {
   MessageCircle,
   Cast,
 } from 'lucide-react';
-import { SubtitleManager } from './subtitle-manager';
+import { SubtitleManager } from '@/src/features/subtitles/components';
 import type { SubtitleTrack } from '@/types/schemas';
 
 interface VideoControlsProps {

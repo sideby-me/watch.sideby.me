@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { MessageCircle } from 'lucide-react';
 import { ChatMessage, TypingUser } from '@/types';
 import { Chat } from '@/components/chat/chat';
-import { useFullscreenPortalContainer } from '@/hooks/use-fullscreen-portal-container';
+import { useFullscreenPortalContainer } from '@/src/features/room/hooks';
 
 interface VoiceConfig {
   isEnabled: boolean;

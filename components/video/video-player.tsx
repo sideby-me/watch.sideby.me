@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
-import { useVideoSubtitleTracks } from '@/hooks/use-video-subtitle-tracks';
+import { useVideoSubtitleTracks } from '@/src/features/subtitles/hooks';
 import type { SubtitleTrack } from '@/types/schemas';
 
 interface VideoPlayerProps {

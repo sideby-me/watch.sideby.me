@@ -7,7 +7,7 @@ import { MarkdownMessage } from './markdown-message';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { EmojiPicker, EmojiPickerSearch, EmojiPickerContent, EmojiPickerFooter } from '@/components/ui/emoji-picker';
 import { SmilePlus, Reply, MessageCircle, UserPlus, UserMinus, UserX, Shield, Film, Play, Pause } from 'lucide-react';
-import { useFullscreenPortalContainer } from '@/hooks/use-fullscreen-portal-container';
+import { useFullscreenPortalContainer } from '@/src/features/room/hooks';
 
 interface ChatMessageItemProps {
   message: ChatMessage;
