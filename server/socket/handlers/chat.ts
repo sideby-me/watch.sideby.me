@@ -1,12 +1,13 @@
 import { Socket, Server as IOServer } from 'socket.io';
-import { v4 as uuidv4 } from 'uuid';
-import { redisService } from '@/server/redis';
-import { ChatMessage, SendMessageDataSchema, RoomActionDataSchema, MessageReactionDataSchema } from '@/types';
+import { SendMessageDataSchema, RoomActionDataSchema, MessageReactionDataSchema } from '@/types';
 import { SocketEvents, SocketData } from '../types';
 import { validateData } from '../utils';
+import { handleServiceError } from '../error-handler';
+import { ChatService, createSocketContext } from '@/server/services';
+import { logEvent } from '@/server/logger';
 
 export function registerChatHandlers(socket: Socket<SocketEvents, SocketEvents, object, SocketData>, io: IOServer) {
-  // Typing indicators
+  // Typing indicators (stateless relay - no service needed)
   socket.on('typing-start', async data => {
     try {
       const validatedData = validateData(RoomActionDataSchema, data, socket);
@@ -19,16 +20,29 @@ export function registerChatHandlers(socket: Socket<SocketEvents, SocketEvents, 
         return;
       }
 
-      // Broadcast to all other users in the room that this user is typing
       socket.to(roomId).emit('user-typing', {
         userId: socket.data.userId,
         userName: socket.data.userName,
       });
 
-      console.log(`${socket.data.userName} started typing in room ${roomId}`);
+      logEvent({
+        level: 'info',
+        domain: 'chat',
+        event: 'typing_start',
+        message: `chat.typing: ${socket.data.userName} is composing`,
+        roomId,
+        userId: socket.data.userId,
+      });
     } catch (error) {
-      console.error('Error handling typing start:', error);
-      socket.emit('error', { error: `Just a heads-up: your 'typing...' indicator might not be working right now.` });
+      logEvent({
+        level: 'error',
+        domain: 'chat',
+        event: 'typing_error',
+        message: 'chat.typing: error handling typing start',
+        roomId: data?.roomId,
+        meta: { error: String(error) },
+      });
+      socket.emit('error', { error: "Just a heads-up: your 'typing...' indicator might not be working right now." });
     }
   });
 
@@ -44,16 +58,29 @@ export function registerChatHandlers(socket: Socket<SocketEvents, SocketEvents, 
         return;
       }
 
-      // Broadcast to all other users in the room that this user stopped typing
       socket.to(roomId).emit('user-stopped-typing', {
         userId: socket.data.userId,
       });
 
-      console.log(`${socket.data.userName} stopped typing in room ${roomId}`);
+      logEvent({
+        level: 'info',
+        domain: 'chat',
+        event: 'typing_stop',
+        message: `chat.typing: ${socket.data.userName} stopped composing`,
+        roomId,
+        userId: socket.data.userId,
+      });
     } catch (error) {
-      console.error('Error handling typing stop:', error);
+      logEvent({
+        level: 'error',
+        domain: 'chat',
+        event: 'typing_error',
+        message: 'chat.typing: error handling typing stop',
+        roomId: data?.roomId,
+        meta: { error: String(error) },
+      });
       socket.emit('error', {
-        error: `We're having a little trouble with the typing notifications. Your messages should still send fine!`,
+        error: "We're having a little trouble with the typing notifications. Your messages should still send fine!",
       });
     }
   });
@@ -64,46 +91,24 @@ export function registerChatHandlers(socket: Socket<SocketEvents, SocketEvents, 
       const validatedData = validateData(SendMessageDataSchema, data, socket);
       if (!validatedData) return;
 
-      const { roomId, message, replyTo } = validatedData;
-
-      if (!socket.data.userId || !socket.data.userName) {
+      const ctx = createSocketContext(socket.data);
+      if (!ctx || !socket.data.userName) {
         socket.emit('error', { error: 'Hmm, we lost your connection details.' });
         return;
       }
 
-      // Check if chat is locked for non-hosts
-      const room = await redisService.rooms.getRoom(roomId);
-      if (room?.settings?.isChatLocked) {
-        const user = room.users.find(u => u.id === socket.data.userId);
-        if (!user?.isHost) {
-          socket.emit('error', { error: 'Chat is currently locked. Only hosts can send messages.' });
-          return;
-        }
-      }
+      const result = await ChatService.sendMessage(
+        {
+          roomId: validatedData.roomId,
+          message: validatedData.message,
+          replyTo: validatedData.replyTo,
+        },
+        { ...ctx, userName: socket.data.userName }
+      );
 
-      const chatMessage: ChatMessage = {
-        id: uuidv4(),
-        userId: socket.data.userId,
-        userName: socket.data.userName,
-        message: message.trim(),
-        timestamp: new Date(),
-        roomId,
-        isRead: false,
-        type: 'user',
-        reactions: {},
-        replyTo,
-      };
-
-      await redisService.chat.addChatMessage(roomId, chatMessage);
-
-      io.to(roomId).emit('new-message', { message: chatMessage });
-
-      console.log(`Message sent in room ${roomId} by ${socket.data.userName}${replyTo ? ' (reply)' : ''}`);
+      io.to(validatedData.roomId).emit('new-message', { message: result.message });
     } catch (error) {
-      console.error('Error sending message:', error);
-      socket.emit('error', {
-        error: 'Your message got lost in the void! Sorry about that. Please try sending it one more time.',
-      });
+      handleServiceError(error, socket);
     }
   });
 
@@ -112,47 +117,27 @@ export function registerChatHandlers(socket: Socket<SocketEvents, SocketEvents, 
     try {
       const validatedData = validateData(MessageReactionDataSchema, data, socket);
       if (!validatedData) return;
-      const { roomId, messageId, emoji } = validatedData;
 
-      if (!socket.data.userId || !socket.data.userName) {
+      const ctx = createSocketContext(socket.data);
+      if (!ctx) {
         socket.emit('error', { error: 'Lost your identity; cannot react right now.' });
         return;
       }
 
-      const updated = await redisService.chat.updateMessageReactions(roomId, messageId, message => {
-        const reactions = { ...(message.reactions || {}) } as Record<string, string[]>;
-        const users = new Set(reactions[emoji] || []);
-        let action: 'added' | 'removed' = 'added';
-        if (users.has(socket.data.userId!)) {
-          users.delete(socket.data.userId!);
-          action = 'removed';
-        } else {
-          users.add(socket.data.userId!);
-        }
-        const newUsers = Array.from(users);
-        if (newUsers.length === 0) {
-          delete reactions[emoji];
-        } else {
-          reactions[emoji] = newUsers;
-        }
-        const newMessage: ChatMessage = { ...message, reactions };
-        // Emit from here (after update) because we need action
-        io.to(roomId).emit('reaction-updated', {
-          messageId: newMessage.id,
-          emoji,
-          userId: socket.data.userId,
-          reactions,
-          action,
-        });
-        return newMessage;
-      });
+      const result = await ChatService.toggleReaction(
+        {
+          roomId: validatedData.roomId,
+          messageId: validatedData.messageId,
+          emoji: validatedData.emoji,
+        },
+        ctx
+      );
 
-      if (!updated) {
-        socket.emit('error', { error: 'Message not found for reaction.' });
+      if (result) {
+        io.to(validatedData.roomId).emit('reaction-updated', result);
       }
     } catch (error) {
-      console.error('Error toggling reaction:', error);
-      socket.emit('error', { error: 'Could not update reaction.' });
+      handleServiceError(error, socket);
     }
   });
 }

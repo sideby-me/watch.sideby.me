@@ -1,4 +1,4 @@
-import { buildProxyUrl } from '@/lib/video-proxy-client';
+import { buildProxyUrl } from '@/src/lib/video-proxy-client';
 
 export interface RoomVideoMeta {
   originalUrl: string;

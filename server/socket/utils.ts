@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
 import { SocketEvents, SocketData } from './types';
 import { ChatMessage } from '@/types';
+import { logEvent } from '@/server/logger';
 
 // Helper function for validating data with Zod schemas
 export function validateData<T>(
@@ -14,12 +15,24 @@ export function validateData<T>(
     return schema.parse(data);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      console.error('❌ Validation error:', error.issues);
+      logEvent({
+        level: 'error',
+        domain: 'other',
+        event: 'validation_error',
+        message: `socket.validate: schema check failed - ${error.issues.map(i => i.message).join(', ')}`,
+        meta: { issues: error.issues },
+      });
       socket.emit('room-error', {
         error: `Invalid data: ${error.issues.map(issue => issue.message).join(', ')}`,
       });
     } else {
-      console.error('❌ Unexpected validation error:', error);
+      logEvent({
+        level: 'error',
+        domain: 'other',
+        event: 'validation_unexpected',
+        message: 'socket.validate: unexpected error during validation',
+        meta: { error: String(error) },
+      });
       socket.emit('room-error', { error: 'Invalid data provided' });
     }
     return null;

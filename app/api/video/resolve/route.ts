@@ -24,15 +24,19 @@ export async function POST(req: NextRequest) {
 
     // Log preflight resolution result
     logVideoEvent({
-      source: 'preflight',
-      testedUrl: url,
-      playbackUrl: meta.playbackUrl,
-      deliveryType: meta.deliveryType,
-      requiresProxy: meta.requiresProxy,
-      confidence: meta.confidence,
-      confidenceReason: meta.confidenceReason,
-      decisionReasons: meta.decisionReasons,
-      probe: meta.probe,
+      level: 'info',
+      event: 'preflight-resolve',
+      message: `Resolved ${url} -> ${meta.deliveryType}`,
+      meta: {
+        testedUrl: url,
+        playbackUrl: meta.playbackUrl,
+        deliveryType: meta.deliveryType,
+        requiresProxy: meta.requiresProxy,
+        confidence: meta.confidence,
+        confidenceReason: meta.confidenceReason,
+        decisionReasons: meta.decisionReasons,
+        probe: meta.probe,
+      },
     });
 
     const response = NextResponse.json({ meta });
@@ -48,12 +52,11 @@ export async function POST(req: NextRequest) {
 
     // Log playback error
     logVideoEvent({
-      source: 'playback-error',
-      testedUrl: url,
-      error: error instanceof Error ? error.message : 'Unknown',
+      level: 'error',
+      event: 'preflight-error',
+      message: error instanceof Error ? error.message : 'Unknown resolve error',
+      meta: { testedUrl: url, error },
     });
-
-    console.error('Video resolve error:', error);
     return NextResponse.json(
       { error: 'Failed to resolve video source' },
       { status: 500, headers: { 'Access-Control-Allow-Origin': '*' } }

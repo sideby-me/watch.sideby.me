@@ -10,8 +10,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Icon } from '@/components/ui/icon';
 import HowItWorks from '@/components/pages/how-it-works';
-import { useCreateRoom } from '@/hooks/use-create-room';
-import { generateQuirkyName } from '@/lib/name-generator';
+import { useCreateRoom } from '@/src/features/room/hooks';
+import { generateQuirkyName } from '@/src/lib/name-generator';
 
 const HOST_FEATURES = [
   {

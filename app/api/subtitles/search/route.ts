@@ -5,6 +5,7 @@ import {
   OpenSubtitlesResult,
   SubtitleSearchResponse,
 } from '@/types';
+import { logEvent } from '@/server/logger';
 
 const OPENSUBTITLES_API_URL = 'https://api.opensubtitles.com/api/v1';
 
@@ -148,7 +149,13 @@ export async function GET(req: NextRequest) {
     // Validate and parse the API response
     const parseResult = OpenSubtitlesAPIResponseSchema.safeParse(data);
     if (!parseResult.success) {
-      console.error('OpenSubtitles API response validation failed:', parseResult.error);
+      logEvent({
+        level: 'error',
+        domain: 'subtitles',
+        event: 'validation_failed',
+        message: 'OpenSubtitles API response validation failed',
+        meta: { error: parseResult.error },
+      });
       return NextResponse.json({ error: 'Subtitle service unavailable' }, { status: 502 });
     }
 
@@ -166,7 +173,13 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(searchResponse);
   } catch (error) {
-    console.error('OpenSubtitles API error:', error);
+    logEvent({
+      level: 'error',
+      domain: 'subtitles',
+      event: 'api_error',
+      message: 'OpenSubtitles API error',
+      meta: { error },
+    });
     return NextResponse.json({ error: 'Subtitle service unavailable' }, { status: 502 });
   }
 }

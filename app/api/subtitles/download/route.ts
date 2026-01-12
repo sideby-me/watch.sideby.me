@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { SubtitleDownloadResponse } from '@/types';
+import { logEvent } from '@/server/logger';
 
 const OPENSUBTITLES_API_URL = 'https://api.opensubtitles.com/api/v1';
 
@@ -64,7 +65,13 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(response);
   } catch (error) {
-    console.error('OpenSubtitles download error:', error);
+    logEvent({
+      level: 'error',
+      domain: 'subtitles',
+      event: 'download_error',
+      message: 'OpenSubtitles download error',
+      meta: { error },
+    });
     return NextResponse.json({ error: 'Subtitle service unavailable' }, { status: 502 });
   }
 }
