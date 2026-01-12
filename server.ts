@@ -2,6 +2,7 @@ import { createServer } from 'http';
 import { parse } from 'url';
 import next from 'next';
 import { initSocketIO } from './server/socket';
+import { logEvent } from './server/logger';
 
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = 'localhost';
@@ -24,7 +25,13 @@ app.prepare().then(() => {
       const parsedUrl = parse(req.url!, true);
       await handle(req, res, parsedUrl);
     } catch (err) {
-      console.error('Error occurred handling', req.url, err);
+      logEvent({
+        level: 'error',
+        domain: 'other',
+        event: 'request_error',
+        message: 'Error handling request',
+        meta: { url: req.url, error: err },
+      });
       res.statusCode = 500;
       res.end('internal server error');
     }
@@ -39,7 +46,17 @@ app.prepare().then(() => {
       process.exit(1);
     })
     .listen(port, () => {
-      console.log(`> Ready on http://${hostname}:${port}`);
-      console.log(`> Socket.IO server running on path: /api/socket/io`);
+      logEvent({
+        level: 'info',
+        domain: 'other',
+        event: 'server_start',
+        message: `Ready on http://${hostname}:${port}`,
+      });
+      logEvent({
+        level: 'info',
+        domain: 'other',
+        event: 'socket_start',
+        message: `Socket.IO server running on path: /api/socket/io`,
+      });
     });
 });

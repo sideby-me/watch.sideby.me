@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { LogOut } from 'lucide-react';
+import { logRoom } from '@/src/core/logger/client-logger';
 
 interface LeaveRoomGuardProps {
   roomId: string;
@@ -77,7 +78,7 @@ export function LeaveRoomGuard({ roomId, room, socket }: LeaveRoomGuardProps) {
       try {
         window.history.pushState({ ...window.history.state, __roomGuard: true }, '', window.location.href);
       } catch (error) {
-        console.warn('Unable to push history guard state', error);
+        logRoom('history_push_failed', 'Unable to push history guard state', { error });
       }
     };
 

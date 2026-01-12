@@ -1,4 +1,5 @@
 import { VideoType } from '@/types';
+import { logVideo } from '@/src/core/logger/client-logger';
 
 type ParsedVideo = { type: VideoType | 'unknown'; embedUrl: string };
 
@@ -73,7 +74,7 @@ export function parseVideoUrl(url: string): ParsedVideo | null {
 
     return null;
   } catch (error) {
-    console.error('Error parsing video URL:', error);
+    logVideo('parse_error', 'Error parsing video URL', { error: error instanceof Error ? error.message : error });
     return null;
   }
 }

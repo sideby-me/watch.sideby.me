@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { SubtitleManager } from '@/src/features/subtitles/components';
 import type { SubtitleTrack } from '@/types/schemas';
+import { logVideo } from '@/src/core/logger/client-logger';
 
 interface VideoControlsProps {
   videoRef: React.RefObject<HTMLVideoElement> | null;
@@ -285,20 +286,20 @@ export function VideoControls({
       // Check if video has supported sources before attempting to play
       const video = videoRef.current;
       if (!video.src && video.children.length === 0) {
-        console.error('❌ No video source available');
+        logVideo('controls_no_source', 'No video source available');
         return;
       }
 
       video.play().catch(error => {
-        console.error('❌ Video play failed:', error);
+        logVideo('controls_play_failed', 'Video play failed', { error });
 
         // Handle specific error types
         if (error.name === 'NotSupportedError') {
-          console.error('Video format not supported or source unavailable');
+          logVideo('controls_error_detail', 'Video format not supported or source unavailable');
         } else if (error.name === 'NotAllowedError') {
-          console.error('Video play blocked by browser policy');
+          logVideo('controls_error_detail', 'Video play blocked by browser policy');
         } else if (error.name === 'AbortError') {
-          console.error('Video play aborted');
+          logVideo('controls_error_detail', 'Video play aborted');
         }
       });
       onPlay?.();

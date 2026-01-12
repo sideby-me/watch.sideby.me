@@ -3,6 +3,7 @@
 import { useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
 import { useVideoSubtitleTracks } from '@/src/features/subtitles/hooks';
 import type { SubtitleTrack } from '@/types/schemas';
+import { logVideo } from '@/src/core/logger/client-logger';
 
 interface VideoPlayerProps {
   src: string;
@@ -60,7 +61,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(
       play: () => {
         if (videoRef.current) {
           programmaticActionRef.current = true;
-          videoRef.current.play().catch(console.error);
+          videoRef.current.play().catch(error => logVideo('play_error', 'Video play failed', { error }));
         }
       },
       pause: () => {
@@ -95,12 +96,12 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(
       if (!video) return;
 
       const handleLoadedMetadata = () => {
-        console.log('Video metadata loaded:', video.duration);
+        logVideo('video_metadata_loaded', 'Video metadata loaded', { duration: video.duration });
         onReady?.();
       };
 
       const handlePlay = () => {
-        console.log('Video play event', { programmatic: programmaticActionRef.current, isHost });
+        logVideo('video_play', 'Video play event', { programmatic: programmaticActionRef.current, isHost });
         // Only emit if this is a user action (not programmatic) and user is host
         if (!programmaticActionRef.current && isHost) {
           onPlay?.();
@@ -109,7 +110,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(
       };
 
       const handlePause = () => {
-        console.log('Video pause event', { programmatic: programmaticActionRef.current, isHost });
+        logVideo('video_pause', 'Video pause event', { programmatic: programmaticActionRef.current, isHost });
         // Only emit if this is a user action (not programmatic) and user is host
         if (!programmaticActionRef.current && isHost) {
           onPause?.();
@@ -124,7 +125,11 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(
       };
 
       const handleSeeked = () => {
-        console.log('Video seeked to:', video.currentTime, { programmatic: programmaticActionRef.current, isHost });
+        logVideo('video_seeked', 'Video seeked', {
+          time: video.currentTime,
+          programmatic: programmaticActionRef.current,
+          isHost,
+        });
         // Only emit if this is a user action (not programmatic) and user is host
         if (!programmaticActionRef.current && isHost) {
           onSeeked?.();
@@ -134,7 +139,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(
 
       const handleError = () => {
         const error = video.error;
-        console.error('❌ Video error:', error);
+        logVideo('video_error', 'Video error', { error });
 
         if (error) {
           const errorMessages = {
@@ -146,7 +151,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(
 
           const errorMessage = errorMessages[error.code as keyof typeof errorMessages] || 'Unknown video error';
 
-          console.error('Error details:', {
+          logVideo('video_error_details', 'Video error details', {
             code: error.code,
             message: error.message || errorMessage,
             src: video.src,
@@ -154,26 +159,17 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(
             readyState: video.readyState,
           });
 
-          // Log additional context for unsupported sources
-          if (error.code === 4) {
-            console.error('🔍 Possible causes:');
-            console.error('- Video URL is incorrect or inaccessible');
-            console.error('- Video format is not supported by this browser');
-            console.error('- CORS issues preventing video access');
-            console.error('- Server is not responding or video has been removed');
-          }
-
           // Notify container for potential fallback like proxy
           onError?.({ code: error.code, message: error.message || errorMessage, src: video.src });
         }
       };
 
       const handleCanPlay = () => {
-        console.log('Video can start playing');
+        logVideo('video_canplay', 'Video can start playing');
       };
 
       const handleLoadStart = () => {
-        console.log('Video load started for:', video.src);
+        logVideo('video_load_start', 'Video load started', { src: video.src });
       };
 
       video.addEventListener('loadedmetadata', handleLoadedMetadata);

@@ -1,4 +1,5 @@
 // Utility functions for managing session storage data
+import { logRoom } from '@/src/core/logger/client-logger';
 interface RoomCreatorData {
   roomId: string;
   hostName: string;
@@ -46,7 +47,7 @@ export const roomSessionStorage = {
       window.sessionStorage.removeItem('room-creator');
       return null;
     } catch (error) {
-      console.error('Error parsing room creator data:', error);
+      logRoom('session_storage_error', 'Error parsing room creator data', { error });
       window.sessionStorage.removeItem('room-creator');
       return null;
     }
@@ -83,7 +84,7 @@ export const roomSessionStorage = {
       window.sessionStorage.removeItem('join-data');
       return null;
     } catch (error) {
-      console.error('Error parsing join data:', error);
+      logRoom('session_storage_error', 'Error parsing join data', { error });
       window.sessionStorage.removeItem('join-data');
       return null;
     }

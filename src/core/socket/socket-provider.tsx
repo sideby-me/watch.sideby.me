@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { SocketEvents } from '@/types';
+import { logRoom } from '@/src/core/logger/client-logger';
 
 interface SocketContextType {
   socket: Socket<SocketEvents, SocketEvents> | null;
@@ -37,7 +38,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     // Only run on client side
     if (typeof window === 'undefined') return;
 
-    console.log('🚀 Initializing socket...');
+    logRoom('socket_init', 'Initializing socket...');
 
     const socketUrl = process.env.NODE_ENV === 'production' ? undefined : 'http://localhost:3000';
 
@@ -49,18 +50,18 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     setSocket(socketInstance);
 
     const handleConnect = () => {
-      console.log('✅ Socket connected:', socketInstance.id);
+      logRoom('socket_connected', 'Socket connected', { socketId: socketInstance.id });
       setIsConnected(true);
       setIsInitialized(true);
     };
 
     const handleDisconnect = (reason: string) => {
-      console.log('❌ Socket disconnected:', reason);
+      logRoom('socket_disconnected', 'Socket disconnected', { reason });
       setIsConnected(false);
     };
 
     const handleConnectError = (error: Error) => {
-      console.error('🚨 Socket connection error:', error);
+      logRoom('socket_error', 'Socket connection error', { error });
       setIsConnected(false);
     };
 
@@ -70,7 +71,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     socketInstance.on('connect_error', handleConnectError);
 
     return () => {
-      console.log('🧹 Cleaning up socket...');
+      logRoom('socket_cleanup', 'Cleaning up socket...');
       socketInstance.off('connect', handleConnect);
       socketInstance.off('disconnect', handleDisconnect);
       socketInstance.off('connect_error', handleConnectError);

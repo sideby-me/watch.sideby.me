@@ -1,4 +1,5 @@
 import { TURN_CREDENTIAL_CACHE_MS } from './constants';
+import { logClient, logDebug } from '@/src/core/logger/client-logger';
 
 const turnApiKey = process.env.NEXT_PUBLIC_METERED_API_KEY;
 const TURN_API_URL = `https://whonoahexe.metered.live/api/v1/turn/credentials?apiKey=${turnApiKey}`;
@@ -30,16 +31,19 @@ const STUN_SERVERS: RTCIceServer[] = [
 // Fetches TURN credentials from the Metered API with caching
 export async function fetchTurnCredentials(): Promise<RTCIceServer[] | null> {
   if (!turnApiKey) {
-    console.warn('[TURN] NEXT_PUBLIC_METERED_API_KEY not found in environment variables');
+    logClient({
+      level: 'warn',
+      domain: 'webrtc',
+      event: 'config_missing',
+      message: 'NEXT_PUBLIC_METERED_API_KEY not found in environment variables',
+    });
     return null;
   }
 
   // Check cache first
   const now = Date.now();
   if (turnCredentialsCache && now - turnCredentialsCache.timestamp < TURN_CACHE_DURATION) {
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[TURN] Using cached credentials');
-    }
+    logDebug('webrtc', 'credentials_cached', 'Using cached credentials');
     return turnCredentialsCache.servers;
   }
 
@@ -64,16 +68,27 @@ export async function fetchTurnCredentials(): Promise<RTCIceServer[] | null> {
     });
 
     if (!response.ok) {
-      console.warn('[TURN] Failed to fetch TURN credentials:', response.status, response.statusText);
+      logClient({
+        level: 'warn',
+        domain: 'webrtc',
+        event: 'fetch_failed',
+        message: 'Failed to fetch TURN credentials',
+        meta: { status: response.status, statusText: response.statusText },
+      });
       return null;
     }
 
     const raw = await response.json();
-    console.log('[TURN] Raw API Response:', raw);
+    logDebug('webrtc', 'fetch_raw_response', 'Raw API Response', { raw });
 
     const candidate = Array.isArray(raw) ? raw : Array.isArray(raw?.iceServers) ? raw.iceServers : null;
     if (!candidate) {
-      console.warn('[TURN] Unexpected credential payload format. Expected array or { iceServers: [...] }');
+      logClient({
+        level: 'warn',
+        domain: 'webrtc',
+        event: 'invalid_payload',
+        message: 'Unexpected credential payload format. Expected array or { iceServers: [...] }',
+      });
       return null;
     }
     // Basic validation: ensure at least one TURN (relay) server present
@@ -83,7 +98,12 @@ export async function fetchTurnCredentials(): Promise<RTCIceServer[] | null> {
         : typeof s.urls === 'string' && (s.urls.startsWith('turn:') || s.urls.startsWith('turns:'))
     );
     if (!hasTurn) {
-      console.warn('[TURN] No TURN relay URLs found in response. Will still return servers for STUN usage.');
+      logClient({
+        level: 'warn',
+        domain: 'webrtc',
+        event: 'no_relay_urls',
+        message: 'No TURN relay URLs found in response. Will still return servers for STUN usage.',
+      });
     }
 
     const servers = candidate as RTCIceServer[];
@@ -93,12 +113,29 @@ export async function fetchTurnCredentials(): Promise<RTCIceServer[] | null> {
   } catch (error) {
     if (error instanceof Error) {
       if (error.name === 'TimeoutError') {
-        console.warn('[TURN] Request timeout when fetching TURN credentials');
+        logClient({
+          level: 'warn',
+          domain: 'webrtc',
+          event: 'fetch_timeout',
+          message: 'Request timeout when fetching TURN credentials',
+        });
       } else {
-        console.warn('[TURN] Error fetching TURN credentials:', error.message);
+        logClient({
+          level: 'warn',
+          domain: 'webrtc',
+          event: 'fetch_error',
+          message: 'Error fetching TURN credentials',
+          meta: { error: error.message },
+        });
       }
     } else {
-      console.warn('[TURN] Unknown error fetching TURN credentials:', error);
+      logClient({
+        level: 'warn',
+        domain: 'webrtc',
+        event: 'fetch_error_unknown',
+        message: 'Unknown error fetching TURN credentials',
+        meta: { error },
+      });
     }
     return null;
   }
@@ -115,12 +152,28 @@ export async function createIceServerConfig(): Promise<RTCIceServer[]> {
 
     if (turnServers && turnServers.length > 0) {
       iceServers.push(...turnServers);
-      console.log('[TURN] Successfully configured TURN servers as fallback');
+      logClient({
+        level: 'info',
+        domain: 'webrtc',
+        event: 'turn_configured',
+        message: 'Successfully configured TURN servers as fallback',
+      });
     } else {
-      console.log('[TURN] No TURN credentials available, using STUN-only configuration');
+      logClient({
+        level: 'info',
+        domain: 'webrtc',
+        event: 'turn_unavailable',
+        message: 'No TURN credentials available, using STUN-only configuration',
+      });
     }
   } catch (error) {
-    console.warn('[TURN] Failed to configure TURN servers, falling back to STUN-only:', error);
+    logClient({
+      level: 'warn',
+      domain: 'webrtc',
+      event: 'config_failed',
+      message: 'Failed to configure TURN servers, falling back to STUN-only',
+      meta: { error },
+    });
   }
 
   return iceServers;
@@ -147,7 +200,12 @@ export async function createRTCConfiguration(): Promise<RTCConfiguration> {
 export async function createTurnOnlyRTCConfiguration(): Promise<RTCConfiguration> {
   const turnServers = await fetchTurnCredentials();
   if (!turnServers || turnServers.length === 0) {
-    console.warn('[TURN] No TURN servers available for turn-only configuration. Falling back to STUN config.');
+    logClient({
+      level: 'warn',
+      domain: 'webrtc',
+      event: 'turn_only_failed',
+      message: 'No TURN servers available for turn-only configuration. Falling back to STUN config.',
+    });
     return createRTCConfiguration();
   }
   return {

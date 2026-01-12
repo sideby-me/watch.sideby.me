@@ -6,10 +6,10 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { MessageCircle } from 'lucide-react';
 import { ChatMessage, TypingUser } from '@/types';
 import { useNotificationSound } from '@/src/core/notifications';
-import { ChatHeader } from './chat-header';
-import { ChatMessageItem } from './chat-message';
-import { ChatInput } from './chat-input';
-import { TypingIndicator } from './typing-indicator';
+import { ChatHeader } from './ChatHeader';
+import { ChatMessageItem } from './ChatMessage';
+import { ChatInput } from './ChatInput';
+import { TypingIndicator } from './TypingIndicator';
 import { MessageSquareLock } from 'lucide-react';
 
 interface VoiceConfig {

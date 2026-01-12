@@ -3,7 +3,7 @@
 import React, { useState, memo } from 'react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { ChatMessage } from '@/types';
-import { MarkdownMessage } from './markdown-message';
+import { MarkdownMessage } from './MarkdownMessage';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { EmojiPicker, EmojiPickerSearch, EmojiPickerContent, EmojiPickerFooter } from '@/components/ui/emoji-picker';
 import { SmilePlus, Reply, MessageCircle, UserPlus, UserMinus, UserX, Shield, Film, Play, Pause } from 'lucide-react';

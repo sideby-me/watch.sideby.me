@@ -2,6 +2,7 @@
 
 import React, { useRef, useEffect, useImperativeHandle, forwardRef, useState } from 'react';
 import { isProxiedUrl, buildProxyUrl } from '@/src/lib/video-proxy-client';
+import { logVideo } from '@/src/core/logger/client-logger';
 import { useVideoSubtitleTracks } from '@/src/features/subtitles/hooks';
 import type { SubtitleTrack } from '@/types/schemas';
 
@@ -68,7 +69,7 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
             programmaticActionRef.current = true;
             await videoRef.current.play();
           } catch (error) {
-            console.error('Error playing HLS video:', error);
+            logVideo('play_error', 'Error playing HLS video', { error });
           }
         }
       },
@@ -159,7 +160,7 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
             hls.attachMedia(video);
 
             hls.on(Hls.Events.MANIFEST_PARSED, () => {
-              console.log('📺 HLS manifest loaded');
+              logVideo('hls_manifest_parsed', 'HLS manifest loaded');
             });
 
             hls.on(Hls.Events.ERROR, (_event: unknown, data: unknown) => {
@@ -202,7 +203,7 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
                 return;
               }
 
-              console.error('HLS error:', data);
+              logVideo('hls_error', 'HLS error', { data });
 
               if (errorData.fatal) {
                 onError?.({
@@ -218,12 +219,12 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
             });
           } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
             video.src = shouldProxy ? toProxyUrl(src) : src;
-            console.log('📺 Using native HLS support', { proxied: shouldProxy });
+            logVideo('hls_native', 'Using native HLS support', { proxied: shouldProxy });
           } else {
-            console.error('HLS is not supported in this browser');
+            logVideo('hls_unsupported', 'HLS is not supported in this browser');
           }
         } catch (error) {
-          console.error('Failed to load HLS.js:', error);
+          logVideo('hls_load_failed', 'Failed to load HLS.js', { error });
           // Fallback to trying native support
           if (video.canPlayType('application/vnd.apple.mpegurl')) {
             video.src = src;
@@ -242,7 +243,7 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
     }, [src, shouldProxy]);
 
     const handlePlay = () => {
-      console.log('🎬 HLS video started playing', { programmatic: programmaticActionRef.current, isHost });
+      logVideo('hls_play', 'HLS video started playing', { programmatic: programmaticActionRef.current, isHost });
       // Only emit if this is a user action (not programmatic) and user is host
       if (!programmaticActionRef.current && isHost) {
         onPlay?.();
@@ -251,7 +252,7 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
     };
 
     const handlePause = () => {
-      console.log('⏸️ HLS video paused', { programmatic: programmaticActionRef.current, isHost });
+      logVideo('hls_pause', 'HLS video paused', { programmatic: programmaticActionRef.current, isHost });
       // Only emit if this is a user action (not programmatic) and user is host
       if (!programmaticActionRef.current && isHost) {
         onPause?.();
@@ -260,7 +261,8 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
     };
 
     const handleSeeked = () => {
-      console.log('🎯 HLS video seeked to:', videoRef.current?.currentTime, {
+      logVideo('hls_seeked', 'HLS video seeked', {
+        time: videoRef.current?.currentTime,
         programmatic: programmaticActionRef.current,
         isHost,
       });
@@ -272,7 +274,7 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
     };
 
     const handleLoadedMetadata = () => {
-      console.log('📊 HLS video metadata loaded');
+      logVideo('hls_metadata_loaded', 'HLS video metadata loaded');
       onLoadedMetadata?.();
     };
 

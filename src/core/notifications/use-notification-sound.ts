@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { logChat } from '@/src/core/logger/client-logger';
 
 interface UseNotificationSoundOptions {
   enabled?: boolean;
@@ -50,7 +51,7 @@ export function useNotificationSound(options: UseNotificationSoundOptions = {}):
       }
       audioContextRef.current = new AudioContextClass();
     } catch (error) {
-      console.warn('Audio context not supported:', error);
+      logChat('audio_context_unsupported', 'Audio context not supported', { error });
       isSupported.current = false;
     }
 
@@ -105,7 +106,7 @@ export function useNotificationSound(options: UseNotificationSoundOptions = {}):
               oscillator.start(audioContext.currentTime);
               oscillator.stop(audioContext.currentTime + 0.1);
             } catch (error) {
-              console.warn('Failed to play confirmation sound:', error);
+              logChat('sound_play_failed', 'Failed to play confirmation sound', { error });
             }
           }
         }, 100);
@@ -161,7 +162,7 @@ export function useNotificationSound(options: UseNotificationSoundOptions = {}):
       oscillator2.start(audioContext.currentTime + 0.05);
       oscillator2.stop(audioContext.currentTime + 0.25);
     } catch (error) {
-      console.warn('Failed to play notification sound:', error);
+      logChat('sound_play_failed', 'Failed to play notification sound', { error });
     }
   }, [enabled, volume]);
 

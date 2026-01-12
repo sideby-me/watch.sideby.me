@@ -55,10 +55,8 @@ export async function POST(req: NextRequest) {
       level: 'error',
       event: 'preflight-error',
       message: error instanceof Error ? error.message : 'Unknown resolve error',
-      meta: { testedUrl: url },
+      meta: { testedUrl: url, error },
     });
-
-    console.error('Video resolve error:', error);
     return NextResponse.json(
       { error: 'Failed to resolve video source' },
       { status: 500, headers: { 'Access-Control-Allow-Origin': '*' } }

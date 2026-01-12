@@ -31,9 +31,9 @@ import { ErrorDisplay, LoadingDisplay, SyncError, GuestInfoBanner } from './Room
 import { UserList } from './UserList';
 import { VideoChatGrid } from './VideoChatGrid';
 import { VideoChatOverlay } from './VideoChatOverlay';
-import { LeaveRoomGuard } from './leave-room-guard';
-import { JoinRoomDialog } from './join-room-dialog';
-import { PasscodeDialog } from './passcode-dialog';
+import { LeaveRoomGuard } from './LeaveRoomGuard';
+import { JoinRoomDialog } from './JoinRoomDialog';
+import { PasscodeDialog } from './PasscodeDialog';
 import { Spinner } from '@/components/ui/spinner';
 import { toast } from 'sonner';
 import { logDebug } from '@/src/core/logger';
