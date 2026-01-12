@@ -8,6 +8,7 @@ import {
   CapacityError,
 } from '../errors';
 import { SocketEvents, SocketData } from './types';
+import { logEvent } from '@/server/logger';
 
 type TypedSocket = Socket<SocketEvents, SocketEvents, object, SocketData>;
 
@@ -60,6 +61,12 @@ export function handleServiceError(
   }
 
   // Unexpected errors - log and return generic message
-  console.error('Unexpected service error:', err);
+  logEvent({
+    level: 'error',
+    domain: 'other',
+    event: 'unexpected_error',
+    message: 'socket.error: unexpected service error',
+    meta: { error: String(err), errorType: (err as Error)?.constructor?.name },
+  });
   socket.emit(defaultEvent, { error: 'Something tripped over the cables. Try again in a sec.' });
 }

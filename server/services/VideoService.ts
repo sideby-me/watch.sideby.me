@@ -2,6 +2,7 @@ import { redisService } from '@/server/redis';
 import { resolveSource } from '@/server/video/resolve-source';
 import { buildProxyUrl, isProxiedUrl } from '@/lib/video-proxy-client';
 import { VIDEO_SYNC_DEBOUNCE_MS, VIDEO_ERROR_REPORT_DEBOUNCE_MS } from '@/lib/constants';
+import { logEvent } from '@/server/logger';
 import type { VideoState, VideoMeta } from '@/types';
 import type { SocketContext } from './SocketContext';
 import { NotFoundError, PermissionError } from '../errors';
@@ -79,17 +80,20 @@ class VideoServiceImpl {
     // Resolve source centrally
     const meta = await resolveSource(videoUrl);
 
-    // Bridge pattern: VideoMeta provides rich delivery semantics (direct, file-proxy, hls, youtube),
-    // but client player components only need to know which player to render: 'youtube' | 'mp4' | 'm3u8'.
-    // This mapping converts VideoMeta.videoType to the simplified player-selection format.
-    // See: VideoPlayerContainer.tsx, use-video-sync.ts, RoomShell.getActivePlayer()
     let legacyVideoType: 'youtube' | 'mp4' | 'm3u8' = 'mp4';
     if (meta.videoType === 'youtube') legacyVideoType = 'youtube';
     else if (meta.videoType === 'm3u8') legacyVideoType = 'm3u8';
 
     await redisService.rooms.setVideoUrl(roomId, meta.playbackUrl, legacyVideoType, meta);
 
-    console.log(`Video set in room ${roomId}: ${videoUrl} -> playback: ${meta.playbackUrl} (${meta.deliveryType})`);
+    logEvent({
+      level: 'info',
+      domain: 'video',
+      event: 'video_set',
+      message: `video.set: new source queued up (${meta.deliveryType})`,
+      roomId,
+      meta: { originalUrl: videoUrl, playbackUrl: meta.playbackUrl, deliveryType: meta.deliveryType },
+    });
 
     return {
       playbackUrl: meta.playbackUrl,
@@ -130,7 +134,13 @@ class VideoServiceImpl {
 
     await redisService.rooms.updateVideoState(roomId, videoState);
 
-    console.log(`Video played in room ${roomId} at ${currentTime}s`);
+    logEvent({
+      level: 'info',
+      domain: 'video',
+      event: 'video_play',
+      message: `video.play: rolling at ${currentTime.toFixed(1)}s`,
+      roomId,
+    });
 
     return { videoState, shouldEmitSystemMessage };
   }
@@ -166,7 +176,13 @@ class VideoServiceImpl {
 
     await redisService.rooms.updateVideoState(roomId, videoState);
 
-    console.log(`Video paused in room ${roomId} at ${currentTime}s`);
+    logEvent({
+      level: 'info',
+      domain: 'video',
+      event: 'video_pause',
+      message: `video.pause: holding at ${currentTime.toFixed(1)}s`,
+      roomId,
+    });
 
     return { videoState, shouldEmitSystemMessage };
   }
@@ -193,7 +209,13 @@ class VideoServiceImpl {
 
     await redisService.rooms.updateVideoState(roomId, videoState);
 
-    console.log(`Video seeked in room ${roomId} to ${currentTime}s`);
+    logEvent({
+      level: 'info',
+      domain: 'video',
+      event: 'video_seek',
+      message: `video.seek: jumped to ${currentTime.toFixed(1)}s`,
+      roomId,
+    });
 
     return { videoState, shouldEmitSystemMessage: false };
   }
@@ -212,7 +234,14 @@ class VideoServiceImpl {
       throw new PermissionError('Only hosts can send sync checks');
     }
 
-    console.log(`Sync check sent in room ${roomId}: ${currentTime.toFixed(2)}s, playing: ${isPlaying}`);
+    logEvent({
+      level: 'info',
+      domain: 'video',
+      event: 'sync_check',
+      message: `video.sync: host nudged everyone to ${currentTime.toFixed(1)}s`,
+      roomId,
+      meta: { currentTime, isPlaying },
+    });
 
     return { currentTime, isPlaying, timestamp };
   }
@@ -275,7 +304,14 @@ class VideoServiceImpl {
       };
 
       await redisService.rooms.setVideoUrl(roomId, proxyUrl, legacyVideoType, fallbackMeta);
-      console.log(`Forced proxy fallback for room ${roomId} after client error (code ${code})`);
+      logEvent({
+        level: 'warn',
+        domain: 'video',
+        event: 'proxy_fallback',
+        message: 'video.fallback: forced proxy after client error',
+        roomId,
+        meta: { code, proxyUrl },
+      });
 
       return {
         fallbackApplied: true,
@@ -285,7 +321,14 @@ class VideoServiceImpl {
       };
     }
 
-    console.log(`Late video error reported in room ${roomId}: code=${code} msg=${message}`);
+    logEvent({
+      level: 'warn',
+      domain: 'video',
+      event: 'late_error',
+      message: 'video.error: late failure reported by client',
+      roomId,
+      meta: { code, message },
+    });
 
     // Re-resolve using originalUrl
     const meta = await resolveSource(originalUrl);
@@ -295,7 +338,14 @@ class VideoServiceImpl {
       else if (meta.videoType === 'm3u8') resolvedVideoType = 'm3u8';
 
       await redisService.rooms.setVideoUrl(roomId, meta.playbackUrl, resolvedVideoType, meta);
-      console.log(`Re-resolved video source for room ${roomId} -> ${meta.deliveryType}`);
+      logEvent({
+        level: 'info',
+        domain: 'video',
+        event: 're_resolved',
+        message: `video.resolve: re-resolved source -> ${meta.deliveryType}`,
+        roomId,
+        meta: { playbackUrl: meta.playbackUrl, deliveryType: meta.deliveryType },
+      });
 
       return {
         fallbackApplied: true,

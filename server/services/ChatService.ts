@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { redisService } from '@/server/redis';
+import { logEvent } from '@/server/logger';
 import type { ChatMessage } from '@/types';
 import type { SocketContext } from './SocketContext';
 import { NotFoundError, PermissionError } from '../errors';
@@ -68,7 +69,14 @@ class ChatServiceImpl {
 
     await redisService.chat.addChatMessage(roomId, chatMessage);
 
-    console.log(`Message sent in room ${roomId} by ${ctx.userName}${replyTo ? ' (reply)' : ''}`);
+    logEvent({
+      level: 'info',
+      domain: 'chat',
+      event: 'message_sent',
+      message: `chat.send: ${ctx.userName} dropped a message${replyTo ? ' (reply)' : ''}`,
+      roomId,
+      userId: ctx.userId,
+    });
 
     return { message: chatMessage };
   }

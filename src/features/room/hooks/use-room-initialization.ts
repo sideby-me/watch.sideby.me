@@ -4,10 +4,8 @@ import { useEffect, useState } from 'react';
 import type { Socket } from 'socket.io-client';
 import type { Room, User } from '@/types';
 import { roomSessionStorage } from '@/lib/session-storage';
+import { logDebug, logClient } from '@/src/core/logger';
 
-/**
- * Options for the room initialization hook.
- */
 export interface UseRoomInitializationOptions {
   roomId: string;
   socket: Socket | null;
@@ -31,15 +29,6 @@ export interface UseRoomInitializationOptions {
   handleVideoPlay: () => void;
 }
 
-/**
- * Hook that handles room initialization logic:
- * 1. Auto-join from session storage (creator data or join page data)
- * 2. Show join dialog if no stored data
- * 3. Apply initial video from query params (host only)
- * 4. Trigger autoplay if autoplay=1 param (host only)
- *
- * Internalizes join cooldown to prevent rapid re-attempts.
- */
 export function useRoomInitialization(options: UseRoomInitializationOptions): void {
   const {
     roomId,
@@ -65,9 +54,7 @@ export function useRoomInitialization(options: UseRoomInitializationOptions): vo
   // Internal join cooldown state
   const [lastJoinAttempt, setLastJoinAttempt] = useState<number>(0);
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Effect 1: Auto-join logic
-  // ─────────────────────────────────────────────────────────────────────────────
+  // Auto-join logic
   useEffect(() => {
     if (!socket || !isConnected || !roomId) {
       return;
@@ -89,7 +76,7 @@ export function useRoomInitialization(options: UseRoomInitializationOptions): vo
       return;
     }
 
-    console.log('🚀 Starting room join process...');
+    logClient({ level: 'info', domain: 'room', event: 'join_start', message: 'Starting room join process' });
     setIsJoining(true);
     setLastJoinAttempt(now);
     hasAttemptedJoinRef.current = true;
@@ -97,7 +84,12 @@ export function useRoomInitialization(options: UseRoomInitializationOptions): vo
     // Check if this user is the room creator first
     const creatorData = roomSessionStorage.getRoomCreator(roomId);
     if (creatorData) {
-      console.log('👑 Room creator detected, joining as host:', creatorData.hostName);
+      logClient({
+        level: 'info',
+        domain: 'room',
+        event: 'join_creator',
+        message: `Room creator detected, joining as host: ${creatorData.hostName}`,
+      });
       roomSessionStorage.clearRoomCreator();
       emitJoinRoom(creatorData.hostName, undefined, creatorData.hostToken);
       return;
@@ -108,13 +100,18 @@ export function useRoomInitialization(options: UseRoomInitializationOptions): vo
     if (joinData) {
       setPendingUserName(joinData.userName);
       roomSessionStorage.clearJoinData();
-      console.log('👤 Joining with stored data:', joinData.userName);
+      logClient({
+        level: 'info',
+        domain: 'room',
+        event: 'join_stored',
+        message: `Joining with stored data: ${joinData.userName}`,
+      });
       emitJoinRoom(joinData.userName);
       return;
     }
 
     // Show dialog for name if no stored data
-    console.log('❓ No stored user data, showing join dialog');
+    logDebug('room', 'join_dialog', 'No stored user data, showing join dialog');
     setShowJoinDialog(true);
   }, [
     socket,
@@ -131,9 +128,7 @@ export function useRoomInitialization(options: UseRoomInitializationOptions): vo
     setShowJoinDialog,
   ]);
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Effect 2: Apply initial video from query params (host only)
-  // ─────────────────────────────────────────────────────────────────────────────
+  // Apply initial video from query params (host only)
   useEffect(() => {
     if (!room || !currentUser?.isHost) return;
     if (!initialVideoUrl || initialVideoAppliedRef.current) return;
@@ -145,9 +140,7 @@ export function useRoomInitialization(options: UseRoomInitializationOptions): vo
     }
   }, [room, currentUser, initialVideoUrl, initialVideoAppliedRef, handleSetVideo]);
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Effect 3: Autoplay if autoplay=1 query param (host only)
-  // ─────────────────────────────────────────────────────────────────────────────
+  // Autoplay if autoplay=1 query param (host only)
   useEffect(() => {
     if (!room || !currentUser?.isHost) return;
     if (autoplayTriggeredRef.current) return;

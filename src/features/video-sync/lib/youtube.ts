@@ -1,10 +1,4 @@
-/**
- * Extract YouTube video ID from various URL formats:
- * - youtu.be/ID
- * - youtube.com/watch?v=ID
- * - youtube.com/embed/ID
- * - bare 11-char ID string
- */
+// Extract YouTube video ID from various URL formats
 export function extractYouTubeId(url: string | undefined): string | undefined {
   if (!url) return undefined;
 

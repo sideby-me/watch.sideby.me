@@ -1,14 +1,20 @@
 import Redis from 'ioredis';
+import { logEvent } from '@/server/logger';
 
 // Redis client setup with Upstash support
 const createRedisClient = () => {
   const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
 
-  console.log('Initializing Redis connection...');
+  logEvent({ level: 'info', domain: 'other', event: 'redis_init', message: 'redis.init: spinning up connection...' });
 
   // For Upstash Redis, we need to configure TLS properly
   if (redisUrl.includes('upstash.io')) {
-    console.log('Detected Upstash Redis, configuring TLS...');
+    logEvent({
+      level: 'info',
+      domain: 'other',
+      event: 'redis_upstash',
+      message: 'redis.init: detected Upstash, configuring TLS',
+    });
     const url = new URL(redisUrl);
     return new Redis({
       host: url.hostname,
@@ -28,7 +34,7 @@ const createRedisClient = () => {
   }
 
   // For local Redis
-  console.log('Using local Redis configuration...');
+  logEvent({ level: 'info', domain: 'other', event: 'redis_local', message: 'redis.init: using local configuration' });
   return new Redis(redisUrl, {
     lazyConnect: true,
     keepAlive: 30000,
@@ -39,23 +45,39 @@ const redis = createRedisClient();
 
 // Add error handling for connection issues
 redis.on('error', error => {
-  console.error('Redis connection error:', error);
+  logEvent({
+    level: 'error',
+    domain: 'other',
+    event: 'redis_error',
+    message: 'redis.error: connection issue',
+    meta: { error: String(error) },
+  });
 });
 
 redis.on('connect', () => {
-  console.log('Redis connected successfully');
+  logEvent({
+    level: 'info',
+    domain: 'other',
+    event: 'redis_connected',
+    message: 'redis.connect: connected successfully',
+  });
 });
 
 redis.on('ready', () => {
-  console.log('Redis ready for commands');
+  logEvent({ level: 'info', domain: 'other', event: 'redis_ready', message: 'redis.ready: ready for commands' });
 });
 
 redis.on('close', () => {
-  console.log('Redis connection closed');
+  logEvent({ level: 'info', domain: 'other', event: 'redis_closed', message: 'redis.close: connection closed' });
 });
 
 redis.on('reconnecting', () => {
-  console.log('Redis reconnecting...');
+  logEvent({
+    level: 'info',
+    domain: 'other',
+    event: 'redis_reconnecting',
+    message: 'redis.reconnect: attempting reconnection...',
+  });
 });
 
 export { redis };

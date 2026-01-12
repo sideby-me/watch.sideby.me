@@ -5,6 +5,7 @@ import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogHeader, DialogTitle, DialogPortal, DialogOverlay } from '@/components/ui/dialog';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { logSubtitles } from '@/src/core/logger';
 import { Badge } from '@/components/ui/badge';
 import { Upload, FileText, CheckCircle, X, XIcon, Search } from 'lucide-react';
 import { SubtitleParser } from '../lib';
@@ -57,7 +58,7 @@ export function SubtitleUploadDialog({ open, onOpenChange, onSubtitleSelected }:
     try {
       for (const file of uploadedFiles) {
         const extension = file.name.split('.').pop()?.toLowerCase();
-        console.log(`Processing ${extension?.toUpperCase()} subtitle file:`, file.name);
+        logSubtitles('file_process', `Processing ${extension?.toUpperCase()} subtitle file`, { fileName: file.name });
 
         let url: string;
 
@@ -67,7 +68,7 @@ export function SubtitleUploadDialog({ open, onOpenChange, onSubtitleSelected }:
         } else {
           // Parse and convert SRT/ASS files to VTT
           const cues = await SubtitleParser.parseSubtitleFile(file);
-          console.log(`Parsed ${cues.length} subtitle cues`);
+          logSubtitles('file_parsed', `Parsed ${cues.length} subtitle cues`);
 
           // Convert to VTT format and create blob URL
           url = SubtitleParser.createBlobUrl(cues);
@@ -100,9 +101,9 @@ export function SubtitleUploadDialog({ open, onOpenChange, onSubtitleSelected }:
       }
 
       setProcessedTracks(tracks);
-      console.log('Successfully processed subtitle files:', tracks);
+      logSubtitles('process_success', 'Successfully processed subtitle files', { count: tracks.length });
     } catch (error) {
-      console.error('Error processing subtitle files:', error);
+      logSubtitles('process_fail', 'Error processing subtitle files', { error: String(error) });
       alert(
         'Oof, we hit our head trying to process one of your files. It might be corrupted. Could you check it and try again?'
       );

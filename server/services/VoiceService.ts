@@ -1,6 +1,7 @@
 import { Server as IOServer, Socket } from 'socket.io';
 import { redisService } from '@/server/redis';
 import { VOICE_MAX_PARTICIPANTS } from '@/lib/constants';
+import { logEvent } from '@/server/logger';
 import type { SocketContext } from './SocketContext';
 import { NotFoundError, PermissionError, CapacityError } from '../errors';
 import type { SocketEvents, SocketData } from '../socket/types';
@@ -110,7 +111,13 @@ class VoiceServiceImpl {
 
       return undefined;
     } catch (error) {
-      console.error('Error finding socket by userId:', error);
+      logEvent({
+        level: 'error',
+        domain: 'voice',
+        event: 'socket_lookup_error',
+        message: 'voice.error: failed to find socket by userId',
+        meta: { error: String(error), userId },
+      });
       return undefined;
     }
   }

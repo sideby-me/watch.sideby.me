@@ -6,12 +6,17 @@ import {
   createRTCConfiguration,
   createTurnOnlyRTCConfiguration,
 } from '@/lib/ice-server';
+import { logDebug } from '@/src/core/logger';
 
 export interface PeerMapEntry {
   pc: RTCPeerConnection;
   isUsingTurn: boolean;
   connectionAttempt: number;
   useOptimizedStrategy?: boolean;
+}
+
+interface DebugWindow extends Window {
+  __peers?: Record<string, RTCPeerConnection>;
 }
 
 export interface UseWebRTCOptions {
@@ -84,6 +89,8 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
   const attemptCountsRef = useRef<Map<string, number>>(new Map());
   // Track negotiation timeouts to auto-escalate if remoteDescription never arrives
   const negotiationTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  // Store flush functions for queued candidates to avoid monkey-patching PC
+  const flushCandidatesMapRef = useRef<Map<string, () => Promise<void>>>(new Map());
 
   // Keep latest callbacks without re-binding existing peer listeners
   useEffect(() => {
@@ -121,6 +128,7 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
     peersRef.current.delete(id);
     setPeerIds(prev => prev.filter(p => p !== id));
     appliedRemoteAnswersRef.current.delete(id);
+    flushCandidatesMapRef.current.delete(id);
   }, []);
 
   const closeAll = useCallback(() => {
@@ -175,13 +183,12 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
       const prevT = negotiationTimeoutsRef.current.get(id);
       if (prevT) clearTimeout(prevT);
       if (process.env.NODE_ENV !== 'production') {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (window as any).__peers = (window as any).__peers || {};
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (window as any).__peers[id] = pc;
+        const win = window as unknown as DebugWindow;
+        win.__peers = win.__peers || {};
+        win.__peers[id] = pc;
       }
       if (debugEnabled.current) {
-        console.log('[WEBRTC] createPeer', {
+        logDebug('webrtc', 'create_peer', 'Creating peer', {
           peerId: id,
           attempt: nextAttempt,
           usingTurn,
@@ -199,12 +206,11 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
       };
 
       // Queue remote candidates until remoteDescription is set
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (pc as any)._applyQueuedCandidates = async () => {
+      const flushQueuedCandidates = async () => {
         const queued = remoteCandidateQueueRef.current.get(id);
         if (!queued || !queued.length) return;
         if (debugEnabled.current)
-          console.log('[WEBRTC] applying queued candidates', { peerId: id, count: queued.length });
+          logDebug('webrtc', 'apply_queued', 'applying queued candidates', { peerId: id, count: queued.length });
 
         let applied = 0;
         for (const c of queued) {
@@ -212,12 +218,16 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
             await pc.addIceCandidate(new RTCIceCandidate(c));
             applied++;
           } catch (e) {
-            if (debugEnabled.current) console.warn('[WEBRTC] queued candidate failed', e);
+            if (debugEnabled.current) logDebug('webrtc', 'queue_fail', 'queued candidate failed', { error: String(e) });
           }
         }
 
         if (debugEnabled.current && applied > 0) {
-          console.log('[WEBRTC] successfully applied candidates', { peerId: id, applied, total: queued.length });
+          logDebug('webrtc', 'apply_success', 'successfully applied candidates', {
+            peerId: id,
+            applied,
+            total: queued.length,
+          });
         }
 
         remoteCandidateQueueRef.current.delete(id);
@@ -229,6 +239,7 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
           negotiationTimeoutsRef.current.delete(id);
         }
       };
+      flushCandidatesMapRef.current.set(id, flushQueuedCandidates);
 
       // Set negotiation timeout for faster escalation in production
       if (nextAttempt < 3) {
@@ -236,7 +247,10 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
           () => {
             if (!pc.remoteDescription || pc.connectionState === 'failed') {
               if (debugEnabled.current)
-                console.warn('[WEBRTC] negotiation timeout - escalating', { peerId: id, attempt: nextAttempt });
+                logDebug('webrtc', 'neg_timeout', 'negotiation timeout - escalating', {
+                  peerId: id,
+                  attempt: nextAttempt,
+                });
               forceTurnReconnect(id, initiator).catch(() => {});
             }
           },
@@ -247,7 +261,7 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
 
       pc.onconnectionstatechange = () => {
         if (debugEnabled.current) {
-          console.log('[WEBRTC] connectionState', {
+          logDebug('webrtc', 'conn_state', 'connectionState', {
             peerId: id,
             state: pc.connectionState,
             attempt: entry.connectionAttempt,
@@ -281,7 +295,7 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
           // Skip restartIce for optimized strategy - go straight to TURN
           if (!entry.useOptimizedStrategy && !restartedRef.current.has(id) && entry.connectionAttempt === 1) {
             try {
-              if (debugEnabled.current) console.log('[WEBRTC] restartIce()', { peerId: id });
+              if (debugEnabled.current) logDebug('webrtc', 'restart_ice', 'restartIce()', { peerId: id });
               restartedRef.current.add(id);
               pc.restartIce();
               setTimeout(() => {
@@ -302,7 +316,7 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
 
       pc.ontrack = ev => {
         if (debugEnabled.current) {
-          console.log('[WEBRTC] ontrack', { peerId: id, streams: ev.streams.length });
+          logDebug('webrtc', 'on_track', 'ontrack', { peerId: id, streams: ev.streams.length });
         }
         if (trackHandlerRef.current) {
           try {
@@ -315,7 +329,7 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
       };
       pc.oniceconnectionstatechange = () => {
         if (debugEnabled.current) {
-          console.log('[WEBRTC] iceConnectionState', { peerId: id, state: pc.iceConnectionState });
+          logDebug('webrtc', 'ice_state', 'iceConnectionState', { peerId: id, state: pc.iceConnectionState });
         }
       };
 
@@ -339,13 +353,15 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
       const q = remoteCandidateQueueRef.current.get(peerId) || [];
       q.push(candidate);
       remoteCandidateQueueRef.current.set(peerId, q);
-      if (debugEnabled.current) console.log('[WEBRTC] queued candidate (remoteDescription not set)', { peerId });
+      if (debugEnabled.current)
+        logDebug('webrtc', 'queue_candidate', 'queued candidate (remoteDescription not set)', { peerId });
       return;
     }
     try {
       await pc.addIceCandidate(new RTCIceCandidate(candidate));
     } catch (e) {
-      if (debugEnabled.current) console.warn('[WEBRTC] addIceCandidate error', { peerId, e });
+      if (debugEnabled.current)
+        logDebug('webrtc', 'add_candidate_error', 'addIceCandidate error', { peerId, error: String(e) });
     }
   }, []);
 
@@ -381,14 +397,17 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
       trackKinds: ('audio' | 'video')[] = ['audio', 'video']
     ) => {
       const pc = await getOrCreatePeer(peerId, true);
+      // getOrCreatePeer handles reuse, so pc is guaranteed
+      const connection = pc as RTCPeerConnection;
       if (stream) await attachStreamTracks(peerId, stream, trackKinds);
       try {
-        const offer = await pc.createOffer(offerOptions);
-        await pc.setLocalDescription(offer);
+        const offer = await connection.createOffer(offerOptions);
+        await connection.setLocalDescription(offer);
         offerHandlerRef.current?.(peerId, offer);
         return offer;
       } catch (e) {
-        if (debugEnabled.current) console.warn('[WEBRTC] createOffer error', { peerId, e });
+        if (debugEnabled.current)
+          logDebug('webrtc', 'create_offer_error', 'createOffer error', { peerId, error: String(e) });
         return null;
       }
     },
@@ -404,19 +423,21 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
       trackKinds: ('audio' | 'video')[] = ['audio', 'video']
     ) => {
       const pc = await getOrCreatePeer(peerId, false);
-      if (pc.signalingState !== 'stable') return null; // guard double offers
+      // getOrCreatePeer handles reuse, so pc is guaranteed
+      const connection = pc as RTCPeerConnection;
+      if (connection.signalingState !== 'stable') return null; // guard double offers
       try {
-        await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+        await connection.setRemoteDescription(new RTCSessionDescription(sdp));
         // Flush queued candidates
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (pc as any)._applyQueuedCandidates?.();
+        await flushCandidatesMapRef.current.get(peerId)?.();
         if (stream) await attachStreamTracks(peerId, stream, trackKinds);
-        const answer = await pc.createAnswer(answerOptions);
-        await pc.setLocalDescription(answer);
+        const answer = await connection.createAnswer(answerOptions);
+        await connection.setLocalDescription(answer);
         answerHandlerRef.current?.(peerId, answer);
         return answer;
       } catch (e) {
-        if (debugEnabled.current) console.warn('[WEBRTC] acceptOffer error', { peerId, e });
+        if (debugEnabled.current)
+          logDebug('webrtc', 'accept_offer_error', 'acceptOffer error', { peerId, error: String(e) });
         return null;
       }
     },
@@ -432,12 +453,12 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
     try {
       await pc.setRemoteDescription(new RTCSessionDescription(sdp));
       // Flush queued ICE
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (pc as any)._applyQueuedCandidates?.();
+      await flushCandidatesMapRef.current.get(peerId)?.();
       appliedRemoteAnswersRef.current.add(peerId);
       return true;
     } catch (e) {
-      if (debugEnabled.current) console.warn('[WEBRTC] acceptAnswer error', { peerId, e });
+      if (debugEnabled.current)
+        logDebug('webrtc', 'accept_answer_error', 'acceptAnswer error', { peerId, error: String(e) });
       return false;
     }
   }, []);

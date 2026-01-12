@@ -23,6 +23,7 @@ import { parseVideoUrl, getSupportedVideoFormats } from '@/lib/video-utils';
 import { isProxiedUrl, buildProxyUrl } from '@/lib/video-proxy-client';
 import { toast } from 'sonner';
 import { useSocket } from '@/hooks/use-socket';
+import { logClient, logDebug } from '@/src/core/logger';
 
 interface VideoPlayerContainerProps {
   roomId?: string;
@@ -127,7 +128,7 @@ export function VideoPlayerContainer({
     }
     const supportedFormats = getSupportedVideoFormats();
     if (videoType === 'm3u8' && !supportedFormats.hls) {
-      console.warn('⚠️ HLS not natively supported; using HLS.js');
+      logDebug('video', 'hls_fallback', 'HLS not natively supported; using HLS.js');
     }
     setVideoSourceValid(true);
     setPlaybackError(null);
@@ -180,11 +181,17 @@ export function VideoPlayerContainer({
 
     // For non-YouTube videos, validate the source
     if (parsed.type !== 'youtube') {
-      console.log('🔍 Validating new video source...');
+      logDebug('video', 'validate_source', 'Validating new video source');
       try {
         // Server-side validation now
       } catch (error) {
-        console.error('Validation error:', error);
+        logClient({
+          level: 'error',
+          domain: 'video',
+          event: 'validation_error',
+          message: 'Video validation failed',
+          meta: { error: String(error) },
+        });
         setError(
           "Umm, we couldn't connect to that video. The link might be broken, private, or blocked. Maybe double-check it?"
         );
@@ -218,11 +225,17 @@ export function VideoPlayerContainer({
 
     // For non-YouTube videos, validate the source
     if (parsed.type !== 'youtube') {
-      console.log('🔍 Validating new video source...');
+      logDebug('video', 'validate_source', 'Validating new video source', { url: newUrl });
       try {
         // Server-side validation now
       } catch (error) {
-        console.error('Validation error:', error);
+        logClient({
+          level: 'error',
+          domain: 'video',
+          event: 'validation_error',
+          message: 'Video validation failed',
+          meta: { error: String(error) },
+        });
         setError(
           "Umm, we couldn't connect to that video. The link might be broken, private, or blocked. Maybe double-check it?"
         );
@@ -338,7 +351,13 @@ export function VideoPlayerContainer({
               setIsLoading(false);
               setVideoSourceValid(false);
               setUsingProxy(isProxiedUrl(videoUrl));
-              console.log('🎯 HLS reported fatal error:', err);
+              logClient({
+                level: 'error',
+                domain: 'video',
+                event: 'hls_error',
+                message: 'HLS reported fatal error',
+                meta: { err },
+              });
             }}
             isHost={isHost}
             subtitleTracks={subtitleTracks}
@@ -359,7 +378,13 @@ export function VideoPlayerContainer({
             activeSubtitleTrack={activeSubtitleTrack}
             className="h-full w-full"
             onError={err => {
-              console.log('🎯 VideoPlayer reported error:', err);
+              logClient({
+                level: 'error',
+                domain: 'video',
+                event: 'player_error',
+                message: 'VideoPlayer reported error',
+                meta: { code: err.code, message: err.message },
+              });
               const now = Date.now();
               if (socket && now - lastErrorReportRef.current > ERROR_REPORT_DEBOUNCE_MS) {
                 lastErrorReportRef.current = now;
@@ -377,12 +402,23 @@ export function VideoPlayerContainer({
                     });
                   }
                 } catch (e) {
-                  console.warn('Failed to emit video-error-report', e);
+                  logClient({
+                    level: 'warn',
+                    domain: 'video',
+                    event: 'error_report_fail',
+                    message: 'Failed to emit video-error-report',
+                    meta: { error: String(e) },
+                  });
                 }
               }
               const alreadyProxy = isProxiedUrl(videoUrl);
               if (err.code === 4 && !usingProxy && !alreadyProxy && onVideoChange) {
-                console.log('🔁 Switching to proxy due to player error code 4');
+                logClient({
+                  level: 'info',
+                  domain: 'video',
+                  event: 'proxy_switch',
+                  message: 'Switching to proxy due to player error code 4',
+                });
                 const proxyUrl = buildProxyUrl(
                   videoUrl,
                   typeof window !== 'undefined' ? window.location.href : undefined

@@ -36,6 +36,7 @@ import { JoinRoomDialog } from '@/components/room/join-room-dialog';
 import { PasscodeDialog } from '@/components/room/passcode-dialog';
 import { Spinner } from '@/components/ui/spinner';
 import { toast } from 'sonner';
+import { logDebug } from '@/src/core/logger';
 
 interface RoomShellProps {
   roomId: string;
@@ -352,7 +353,7 @@ export function RoomShell({ roomId }: RoomShellProps) {
       if (core.currentUser?.isHost) {
         return;
       }
-      console.log('📡 Received sync update from host');
+      logDebug('video', 'sync_update', 'Received sync update from host');
       syncVideo(currentTime, isPlaying, timestamp);
     };
 
@@ -372,10 +373,10 @@ export function RoomShell({ roomId }: RoomShellProps) {
   // Start/stop sync check based on host status
   useEffect(() => {
     if (core.currentUser?.isHost && core.room?.videoUrl) {
-      console.log('🎯 Starting sync check - user is host');
+      logDebug('video', 'sync_start', 'Starting sync check - user is host');
       startSyncCheck();
     } else {
-      console.log('🛑 Stopping sync check - user is not host or no video');
+      logDebug('video', 'sync_stop', 'Stopping sync check - user is not host or no video');
       stopSyncCheck();
     }
 
@@ -390,7 +391,7 @@ export function RoomShell({ roomId }: RoomShellProps) {
 
     if (core.room.videoType === 'youtube') return;
 
-    console.log('📺 Loading video on Chromecast:', core.room.videoUrl);
+    logDebug('cast', 'load_video', `Loading video on Chromecast: ${core.room.videoUrl}`);
     const contentType = core.room.videoType === 'm3u8' ? 'application/x-mpegurl' : 'video/mp4';
     startCasting(core.room.videoUrl, contentType);
   }, [isCasting, core.room?.videoUrl, core.room?.videoType, startCasting]);

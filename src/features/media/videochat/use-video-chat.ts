@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSocket } from '@/hooks/use-socket';
 import { useMediaPermissions } from '@/src/features/media/hooks';
 import { useWebRTC } from '@/src/features/media/webrtc';
+import { logDebug } from '@/src/core/logger';
 import { User } from '@/types';
 import { toast } from 'sonner';
 import { SOLO_USER_TIMEOUT_MS, VIDEO_CHAT_MAX_PARTICIPANTS, WEBRTC_CONNECTION_TIMEOUT_MS } from '@/lib/constants';
@@ -56,10 +57,22 @@ export function useVideoChat({
     acceptAnswerFromPeer,
   } = useWebRTC({
     onIceCandidate: (peerId, candidate) => {
-      socket?.emit('videochat-ice-candidate', { roomId, targetUserId: peerId, candidate });
+      if (candidate) {
+        socket?.emit('videochat-ice-candidate', { roomId, targetUserId: peerId, candidate });
+      }
     },
-    onOffer: (peerId, sdp) => socket?.emit('videochat-offer', { roomId, targetUserId: peerId, sdp }),
-    onAnswer: (peerId, sdp) => socket?.emit('videochat-answer', { roomId, targetUserId: peerId, sdp }),
+    onOffer: (peerId, sdp) =>
+      socket?.emit('videochat-offer', {
+        roomId,
+        targetUserId: peerId,
+        sdp: { type: sdp.type as 'offer' | 'answer', sdp: sdp.sdp || '' },
+      }),
+    onAnswer: (peerId, sdp) =>
+      socket?.emit('videochat-answer', {
+        roomId,
+        targetUserId: peerId,
+        sdp: { type: sdp.type as 'offer' | 'answer', sdp: sdp.sdp || '' },
+      }),
     onConnectionStateChange: (peerId, state, _pc, meta) => {
       if (state === 'connected') {
         // Clear any fallback attempts on successful connection
@@ -70,7 +83,7 @@ export function useVideoChat({
           clearTimeout(timeout);
           connectionTimeoutsRef.current.delete(peerId);
         }
-        console.log('[WEBRTC] peer connected successfully', {
+        logDebug('videochat', 'peer_connected', 'peer connected successfully', {
           peerId,
           attempt: meta.attempt,
           usingTurn: meta.usingTurn,
@@ -79,7 +92,10 @@ export function useVideoChat({
       if (state === 'failed') {
         // Attempt TURN escalation instead of immediate cleanup
         if (meta.attempt < 3 && !fallbackInProgressRef.current.has(peerId)) {
-          console.log('[WEBRTC] connection failed, attempting fallback', { peerId, attempt: meta.attempt });
+          logDebug('videochat', 'conn_failed', 'connection failed, attempting fallback', {
+            peerId,
+            attempt: meta.attempt,
+          });
           fallbackInProgressRef.current.add(peerId);
           (async () => {
             try {
@@ -100,7 +116,7 @@ export function useVideoChat({
               }
               if (newPc) await createOfferForPeer(peerId, local, { offerToReceiveVideo: true }, ['video']);
             } catch (error) {
-              console.error('[WEBRTC] fallback failed', { peerId, error });
+              logDebug('videochat', 'fallback_fail', 'fallback failed', { peerId, error: String(error) });
               // If fallback negotiation fails, cleanup
               cleanupPeerRef.current(peerId);
             } finally {
@@ -109,7 +125,10 @@ export function useVideoChat({
           })();
           return;
         }
-        console.log('[WEBRTC] exhausted fallback attempts, cleaning up', { peerId, attempt: meta.attempt });
+        logDebug('videochat', 'fallback_exhausted', 'exhausted fallback attempts, cleaning up', {
+          peerId,
+          attempt: meta.attempt,
+        });
         cleanupPeerRef.current(peerId);
         return;
       }
@@ -288,7 +307,7 @@ export function useVideoChat({
         if (!activePeerIds.includes(id)) {
           try {
             const connectionTimeout = setTimeout(() => {
-              console.warn('[WEBRTC] overall connection timeout for peer', { peerId: id });
+              logDebug('videochat', 'conn_timeout', 'overall connection timeout for peer', { peerId: id });
               cleanupPeer(id);
             }, WEBRTC_CONNECTION_TIMEOUT_MS);
             connectionTimeoutsRef.current.set(id, connectionTimeout);
@@ -297,7 +316,10 @@ export function useVideoChat({
             await createOfferForPeer(id, local, { offerToReceiveVideo: true }, ['video']);
             setActivePeerIds(prev => (prev.includes(id) ? prev : [...prev, id]));
           } catch (error) {
-            console.error('[WEBRTC] error creating initial offer', { targetUserId: id, error });
+            logDebug('videochat', 'offer_error', 'error creating initial offer', {
+              targetUserId: id,
+              error: String(error),
+            });
             cleanupPeer(id);
           }
         }
@@ -312,7 +334,7 @@ export function useVideoChat({
         const answer = await acceptOfferFromPeer(fromUserId, sdp, local, undefined, ['video']);
         if (answer) setActivePeerIds(prev => (prev.includes(fromUserId) ? prev : [...prev, fromUserId]));
       } catch (error) {
-        console.error('[WEBRTC] error handling offer', { fromUserId, error });
+        logDebug('videochat', 'handle_offer_error', 'error handling offer', { fromUserId, error: String(error) });
       }
     };
 
@@ -323,13 +345,21 @@ export function useVideoChat({
         const ok = await acceptAnswerFromPeer(fromUserId, sdp);
         if (ok) appliedRemoteAnswerRef.current.add(fromUserId);
       } catch (error) {
-        console.error('[WEBRTC] error handling answer', { fromUserId, error });
+        logDebug('videochat', 'handle_answer_error', 'error handling answer', { fromUserId, error: String(error) });
       }
     };
 
     // Remote ICE candidate -> add to peer
-    const handleIce = async ({ fromUserId, candidate }: { fromUserId: string; candidate: RTCIceCandidateInit }) => {
-      await safeAddRemoteCandidate(fromUserId, candidate);
+    const handleIce = async ({
+      fromUserId,
+      candidate,
+    }: {
+      fromUserId: string;
+      candidate: RTCIceCandidateInit | null;
+    }) => {
+      if (candidate) {
+        await safeAddRemoteCandidate(fromUserId, candidate);
+      }
     };
 
     // Peer left -> cleanup and maybe schedule patrol timeout

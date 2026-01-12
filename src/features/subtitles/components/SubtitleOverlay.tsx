@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import type { SubtitleTrack } from '@/types/schemas';
 import { SubtitleParser, type SubtitleCue as ParsedSubtitleCue } from '../lib';
 import { useSubtitleSettings } from '../lib';
+import { logClient } from '@/src/core/logger';
 
 interface SubtitleCue {
   text: string;
@@ -61,7 +62,13 @@ export function SubtitleOverlay({
         setParsedCues(cues);
       })
       .catch(error => {
-        console.error('Error loading subtitle file:', error);
+        logClient({
+          level: 'error',
+          domain: 'subtitles',
+          event: 'load_fail',
+          message: 'Error loading subtitle file',
+          meta: { error: String(error) },
+        });
         setParsedCues([]);
       });
   }, [activeSubtitleTrack, subtitleTracks]);

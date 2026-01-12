@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Socket } from 'socket.io-client';
 import { roomSessionStorage } from '@/lib/session-storage';
+import { logDebug } from '@/src/core/logger';
 
 interface UseRoomUiStateOptions {
   roomId: string;
@@ -85,7 +86,7 @@ export function useRoomUiState({
     (userName: string) => {
       if (!socket || !isConnected) return;
 
-      console.log('📝 Joining room with dialog name:', userName);
+      logDebug('room', 'join_with_name', `Joining with dialog name: ${userName}`);
       setPendingUserName(userName);
       setShowJoinDialog(false);
       onJoinEmit(userName);
@@ -95,7 +96,7 @@ export function useRoomUiState({
 
   // Handle cancel join from dialog
   const handleCancelJoin = useCallback(() => {
-    console.log('❌ Join cancelled, redirecting to join page');
+    logDebug('room', 'join_cancel', 'Join cancelled, redirecting to join page');
     setShowJoinDialog(false);
     router.push('/join');
   }, [router]);
@@ -105,7 +106,7 @@ export function useRoomUiState({
     (passcode: string) => {
       if (!socket || !isConnected) return;
 
-      console.log('🔐 Verifying passcode for room:', roomId);
+      logDebug('room', 'passcode_verify', `Verifying passcode for room: ${roomId}`);
       setPasscodeError('');
       setIsVerifyingPasscode(true);
 
@@ -125,7 +126,7 @@ export function useRoomUiState({
   );
 
   const handleCancelPasscode = useCallback(() => {
-    console.log('❌ Passcode entry cancelled');
+    logDebug('room', 'passcode_cancel', 'Passcode entry cancelled');
     setShowPasscodeDialog(false);
     setPasscodeError('');
     setIsVerifyingPasscode(false);

@@ -8,6 +8,7 @@ import { registerChatHandlers } from './handlers/chat';
 import { registerVoiceHandlers } from './handlers/voice';
 import { registerVideoChatHandlers } from './handlers/videochat';
 import { handleDisconnect } from './handlers/disconnect';
+import { logEvent } from '@/server/logger';
 
 let io: IOServer | undefined;
 
@@ -29,7 +30,13 @@ export function initSocketIO(httpServer: HTTPServer): IOServer {
   });
 
   io.on('connection', (socket: Socket<SocketEvents, SocketEvents, object, SocketData>) => {
-    console.log('User connected:', socket.id);
+    logEvent({
+      level: 'info',
+      domain: 'room',
+      event: 'user_connected',
+      message: 'socket.connect: new connection established',
+      meta: { socketId: socket.id },
+    });
 
     // Register all handlers - io is guaranteed to be defined here
     registerRoomHandlers(socket, io!);

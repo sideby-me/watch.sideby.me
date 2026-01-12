@@ -5,6 +5,7 @@ import { useSocket } from '@/hooks/use-socket';
 import { useMediaPermissions } from '@/src/features/media/hooks';
 import { useWebRTC } from '@/src/features/media/webrtc';
 import { User } from '@/types';
+import { logDebug } from '@/src/core/logger';
 import { toast } from 'sonner';
 import {
   SOLO_USER_TIMEOUT_MS,
@@ -56,10 +57,18 @@ export function useVoiceChat({
       socket?.emit('voice-ice-candidate', { roomId, targetUserId: peerId, candidate });
     },
     onOffer: (peerId, sdp) => {
-      socket?.emit('voice-offer', { roomId, targetUserId: peerId, sdp });
+      socket?.emit('voice-offer', {
+        roomId,
+        targetUserId: peerId,
+        sdp: { type: sdp.type as 'offer' | 'answer', sdp: sdp.sdp || '' },
+      });
     },
     onAnswer: (peerId, sdp) => {
-      socket?.emit('voice-answer', { roomId, targetUserId: peerId, sdp });
+      socket?.emit('voice-answer', {
+        roomId,
+        targetUserId: peerId,
+        sdp: { type: sdp.type as 'offer' | 'answer', sdp: sdp.sdp || '' },
+      });
     },
     onConnectionStateChange: (peerId, state, _pc, meta) => {
       if (state === 'failed') {
@@ -155,7 +164,7 @@ export function useVoiceChat({
   const remoteAudioElsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
 
   const dlog = (...args: unknown[]) => {
-    if (process.env.NODE_ENV !== 'production') console.log('[VOICE]', ...args);
+    logDebug('voice', 'debug', args.map(String).join(' '), { args });
   };
 
   // Attempt autoplay
@@ -253,8 +262,9 @@ export function useVoiceChat({
     // Basic speaking detection (local)
     try {
       if (!audioContextRef.current) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const AudioContextClass =
+          window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        audioContextRef.current = new AudioContextClass();
       }
       if (audioContextRef.current && currentUser?.id) {
         const ctx = audioContextRef.current;
@@ -387,8 +397,16 @@ export function useVoiceChat({
     };
 
     // Remote ICE candidate -> apply to existing peer connection
-    const handleIce = async ({ fromUserId, candidate }: { fromUserId: string; candidate: RTCIceCandidateInit }) => {
-      await safeAddRemoteCandidate(fromUserId, candidate);
+    const handleIce = async ({
+      fromUserId,
+      candidate,
+    }: {
+      fromUserId: string;
+      candidate: RTCIceCandidateInit | null;
+    }) => {
+      if (candidate) {
+        await safeAddRemoteCandidate(fromUserId, candidate);
+      }
     };
 
     // Peer left -> cleanup and possibly start solo timeout

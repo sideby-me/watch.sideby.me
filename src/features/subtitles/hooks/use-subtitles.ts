@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import type { SubtitleTrack } from '@/types/schemas';
+import { logSubtitles } from '@/src/core/logger';
 
 interface UseSubtitlesOptions {
   roomId: string;
@@ -49,7 +50,7 @@ export function useSubtitles({ roomId, videoId }: UseSubtitlesOptions): UseSubti
         setActiveTrackId(undefined);
       }
     } catch (error) {
-      console.error('Failed to load subtitles from localStorage:', error);
+      logSubtitles('load_fail', 'Failed to load subtitles from localStorage', { error: String(error) });
       setSubtitleTracks([]);
       setActiveTrackId(undefined);
     }
@@ -64,7 +65,7 @@ export function useSubtitles({ roomId, videoId }: UseSubtitlesOptions): UseSubti
           localStorage.setItem(activeTrackKey, activeId || '');
         }
       } catch (error) {
-        console.error('Failed to save subtitles to localStorage:', error);
+        logSubtitles('save_fail', 'Failed to save subtitles to localStorage', { error: String(error) });
       }
     },
     [storageKey, activeTrackKey]

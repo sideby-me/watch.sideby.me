@@ -1,6 +1,7 @@
 'use client';
 
 import { useSyncExternalStore, useCallback } from 'react';
+import { logSubtitles } from '@/src/core/logger';
 
 // Snap points for sliders
 export const FONT_SIZE_SNAPS = [50, 75, 100, 125, 150, 175];
@@ -42,7 +43,7 @@ if (typeof window !== 'undefined') {
       settings = { ...DEFAULT_SETTINGS, ...parsed };
     }
   } catch (error) {
-    console.error('Failed to load subtitle settings from localStorage:', error);
+    logSubtitles('store_load_fail', 'Failed to load subtitle settings from localStorage', { error: String(error) });
   }
 }
 
@@ -57,7 +58,7 @@ function persist() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
   } catch (error) {
-    console.error('Failed to save subtitle settings to localStorage:', error);
+    logSubtitles('store_save_fail', 'Failed to save subtitle settings to localStorage', { error: String(error) });
   }
 }
 

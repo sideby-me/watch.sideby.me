@@ -6,6 +6,7 @@ import { useSocket } from '@/hooks/use-socket';
 import { JoinRoomDataSchema, RoomIdSchema, UserNameSchema } from '@/types';
 import { z } from 'zod';
 import { roomSessionStorage } from '@/lib/session-storage';
+import { logClient } from '@/src/core/logger';
 
 interface UseJoinRoomReturn {
   roomId: string;
@@ -80,7 +81,12 @@ export function useJoinRoom(): UseJoinRoomReturn {
 
         // Handle passcode required - redirect to room page where passcode dialog is shown
         socket.once('passcode-required', ({ roomId: reqRoomId }) => {
-          console.log(`🔑 Passcode required for room ${reqRoomId}, redirecting to room page`);
+          logClient({
+            level: 'info',
+            domain: 'room',
+            event: 'passcode_redirect',
+            message: `Passcode required for room ${reqRoomId}, redirecting`,
+          });
           setIsLoading(false);
           // Store the join data so room page can use it for passcode verification
           roomSessionStorage.setJoinData({

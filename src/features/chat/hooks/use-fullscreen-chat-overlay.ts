@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { logDebug } from '@/src/core/logger';
 
 export function useFullscreenChatOverlay() {
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -16,16 +17,16 @@ export function useFullscreenChatOverlay() {
         (document as Document & { msFullscreenElement?: Element }).msFullscreenElement
       );
 
-      console.log('Fullscreen state changed:', isCurrentlyFullscreen);
+      logDebug('chat', 'fullscreen_change', 'Fullscreen state changed', { isCurrentlyFullscreen });
       setIsFullscreen(isCurrentlyFullscreen);
 
       // Show chat overlay when entering fullscreen
       if (isCurrentlyFullscreen) {
-        console.log('Entering fullscreen - showing chat overlay');
+        logDebug('chat', 'fullscreen_enter', 'Entering fullscreen - showing chat overlay');
         setShowChatOverlay(true);
         setIsChatMinimized(false);
       } else {
-        console.log('Exiting fullscreen - hiding chat overlay');
+        logDebug('chat', 'fullscreen_exit', 'Exiting fullscreen - hiding chat overlay');
         // Hide chat overlay when exiting fullscreen
         setShowChatOverlay(false);
         setIsChatMinimized(false);
@@ -55,7 +56,7 @@ export function useFullscreenChatOverlay() {
   };
 
   const showChatOverlayManually = () => {
-    console.log('showChatOverlayManually called, isFullscreen:', isFullscreen);
+    logDebug('chat', 'overlay_manual', 'showChatOverlayManually called', { isFullscreen });
     // Always show chat overlay when manually triggered (e.g., via chat button)
     setShowChatOverlay(true);
     setIsChatMinimized(false);

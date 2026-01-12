@@ -13,6 +13,7 @@ import { handleServiceError } from '../error-handler';
 import { RoomService, createSocketContext } from '@/server/services';
 import { redisService } from '@/server/redis';
 import { PasscodeRequiredError } from '@/server/errors';
+import { logEvent } from '@/server/logger';
 
 export function registerRoomHandlers(socket: Socket<SocketEvents, SocketEvents, object, SocketData>, io: IOServer) {
   // Voice participant count helper (so late joiners immediately see current voice occupancy)
@@ -34,7 +35,14 @@ export function registerRoomHandlers(socket: Socket<SocketEvents, SocketEvents, 
         socket.emit('voice-participant-count', { roomId, count, max: 5 });
       }
     } catch (err) {
-      console.warn('Failed to emit voice participant count on room join', { roomId, err });
+      logEvent({
+        level: 'warn',
+        domain: 'room',
+        event: 'voice_count_error',
+        message: 'room.join: failed to emit voice participant count',
+        roomId,
+        meta: { error: String(err) },
+      });
     }
   }
 
@@ -62,7 +70,14 @@ export function registerRoomHandlers(socket: Socket<SocketEvents, SocketEvents, 
       socket.emit('room-joined', { room: result.room, user: result.user });
       emitVoiceParticipantCountToSocket(result.room.id);
 
-      console.log(`Room ${result.room.id} created by ${result.user.name} with token ${result.hostToken}`);
+      logEvent({
+        level: 'info',
+        domain: 'room',
+        event: 'room_created',
+        message: `room.create: ${result.user.name} spun up a new room`,
+        roomId: result.room.id,
+        userId: result.user.id,
+      });
     } catch (error) {
       handleServiceError(error, socket, 'room-error');
     }
@@ -70,27 +85,51 @@ export function registerRoomHandlers(socket: Socket<SocketEvents, SocketEvents, 
 
   // Join room
   socket.on('join-room', async data => {
-    console.log(
-      `🔐 Join request: roomId=${data?.roomId}, userName=${data?.userName}, hostToken=${data?.hostToken ? 'PROVIDED' : 'MISSING'}, socketId=${socket.id}`
-    );
+    logEvent({
+      level: 'info',
+      domain: 'room',
+      event: 'join_attempt',
+      message: `room.join: attempt from ${data?.userName || 'unknown'}`,
+      roomId: data?.roomId,
+      meta: { hasHostToken: !!data?.hostToken },
+    });
 
     // Check if this socket is already in this room
     if (data?.roomId && socket.rooms.has(data.roomId)) {
-      console.log(`🔄 Socket ${socket.id} already in room ${data.roomId}, checking if this is a known user...`);
+      logEvent({
+        level: 'info',
+        domain: 'room',
+        event: 'duplicate_join',
+        message: 'room.join: socket already in room, checking user',
+        roomId: data.roomId,
+      });
       const room = await RoomService.getRoom(data.roomId);
       if (room) {
         const existingUser = room.users.find(u => u.name === data?.userName?.trim());
         if (existingUser) {
           const isValidHost = existingUser.isHost && data?.hostToken === room.hostToken;
           if (isValidHost || !existingUser.isHost) {
-            console.log(`✅ User ${data.userName} already in room, emitting join success`);
+            logEvent({
+              level: 'info',
+              domain: 'room',
+              event: 'user_rejoined',
+              message: `room.join: ${data.userName} already in room, emitting success`,
+              roomId: data.roomId,
+              userId: existingUser.id,
+            });
             socket.emit('room-joined', { room, user: existingUser });
             emitVoiceParticipantCountToSocket(data.roomId);
             return;
           }
         }
       }
-      console.log(`🔄 Ignoring duplicate join attempt for unknown user`);
+      logEvent({
+        level: 'info',
+        domain: 'room',
+        event: 'duplicate_join_ignored',
+        message: 'room.join: ignoring duplicate join for unknown user',
+        roomId: data.roomId,
+      });
       return;
     }
 
@@ -130,7 +169,14 @@ export function registerRoomHandlers(socket: Socket<SocketEvents, SocketEvents, 
       }
 
       emitVoiceParticipantCountToSocket(result.room.id);
-      console.log(`${result.user.name} joined room ${result.room.id} as ${result.user.isHost ? 'host' : 'guest'}`);
+      logEvent({
+        level: 'info',
+        domain: 'room',
+        event: 'join_success',
+        message: `room.join: ${result.user.name} hopped in as ${result.user.isHost ? 'host' : 'guest'}`,
+        roomId: result.room.id,
+        userId: result.user.id,
+      });
     } catch (error) {
       if (error instanceof PasscodeRequiredError) {
         socket.emit('passcode-required', { roomId: error.roomId });
@@ -270,7 +316,14 @@ export function registerRoomHandlers(socket: Socket<SocketEvents, SocketEvents, 
       }
 
       emitVoiceParticipantCountToSocket(result.room.id);
-      console.log(`${result.user.name} joined room ${result.room.id} after passcode verification`);
+      logEvent({
+        level: 'info',
+        domain: 'room',
+        event: 'passcode_verified',
+        message: `room.join: ${result.user.name} joined after passcode verification`,
+        roomId: result.room.id,
+        userId: result.user.id,
+      });
     } catch (error) {
       handleServiceError(error, socket, 'room-error');
     }
@@ -335,7 +388,14 @@ export async function handleLeaveRoom(
     if (socket.rooms.has(voiceRoom)) {
       socket.to(voiceRoom).emit('voice-peer-left', { userId: ctx.userId });
       await socket.leave(voiceRoom);
-      console.log(`Voice: ${ctx.userName || 'User'} left ${voiceRoom}`);
+      logEvent({
+        level: 'info',
+        domain: 'voice',
+        event: 'voice_leave',
+        message: `voice.leave: ${ctx.userName || 'User'} left voice room`,
+        roomId,
+        userId: ctx.userId,
+      });
     }
 
     // Leave main room
@@ -344,8 +404,22 @@ export async function handleLeaveRoom(
     // Clean up user mapping
     await redisService.userMapping.removeUserSocket(ctx.userId);
 
-    console.log(`${ctx.userName || 'User'} left room ${roomId}`);
+    logEvent({
+      level: 'info',
+      domain: 'room',
+      event: 'user_left',
+      message: `room.leave: ${ctx.userName || 'User'} waved goodbye`,
+      roomId,
+      userId: ctx.userId,
+    });
   } catch (error) {
-    console.error('Error leaving room:', error);
+    logEvent({
+      level: 'error',
+      domain: 'room',
+      event: 'leave_error',
+      message: 'room.leave: error during leave',
+      roomId,
+      meta: { error: String(error) },
+    });
   }
 }

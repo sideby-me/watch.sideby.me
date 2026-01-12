@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { redisService } from '@/server/redis';
 import { generateRoomId } from '@/lib/video-utils';
+import { logEvent } from '@/server/logger';
 import type { Room, User, RoomSettings } from '@/types';
 import type { SocketContext } from './SocketContext';
 import { NotFoundError, PermissionError, ConflictError, RoomLockedError, PasscodeRequiredError } from '../errors';
@@ -110,7 +111,14 @@ class RoomServiceImpl {
 
     await redisService.rooms.createRoom(room);
 
-    console.log(`Room ${roomId} created by ${hostName}`);
+    logEvent({
+      level: 'info',
+      domain: 'room',
+      event: 'room_created',
+      message: `room.create: ${hostName} spun up a new room`,
+      roomId,
+      userId,
+    });
 
     return { room, user, hostToken };
   }
@@ -204,7 +212,14 @@ class RoomServiceImpl {
     if (isLastHost || updatedUsers.length === 0) {
       // Last host leaving or no users left - close room
       await redisService.rooms.deleteRoom(roomId);
-      console.log(`Room ${roomId} has been closed`);
+      logEvent({
+        level: 'info',
+        domain: 'room',
+        event: 'room_closed',
+        message: 'room.close: last host left, lights out',
+        roomId,
+        userId: ctx.userId,
+      });
 
       return {
         leavingUser,
@@ -217,7 +232,14 @@ class RoomServiceImpl {
     const updatedRoom = { ...room, users: updatedUsers };
     await redisService.rooms.updateRoom(roomId, updatedRoom);
 
-    console.log(`${leavingUser.name} left room ${roomId}`);
+    logEvent({
+      level: 'info',
+      domain: 'room',
+      event: 'user_left',
+      message: `room.leave: ${leavingUser.name} waved goodbye`,
+      roomId,
+      userId: leavingUser.id,
+    });
 
     return {
       leavingUser,
@@ -256,7 +278,15 @@ class RoomServiceImpl {
     const updatedRoom = { ...room, users: updatedUsers };
     await redisService.rooms.updateRoom(roomId, updatedRoom);
 
-    console.log(`${targetUser.name} promoted to host in room ${roomId} by ${currentUser.name}`);
+    logEvent({
+      level: 'info',
+      domain: 'room',
+      event: 'user_promoted',
+      message: `room.promote: ${targetUser.name} got the remote`,
+      roomId,
+      userId: targetUser.id,
+      meta: { promotedBy: currentUser.name },
+    });
 
     return { targetUser: { ...targetUser, isHost: true } };
   }
@@ -301,7 +331,15 @@ class RoomServiceImpl {
     // Clean up user mapping
     await redisService.userMapping.removeUserSocket(targetUserId);
 
-    console.log(`${targetUser.name} was kicked from room ${roomId} by ${currentUser.name}`);
+    logEvent({
+      level: 'info',
+      domain: 'room',
+      event: 'user_kicked',
+      message: `room.kick: ${targetUser.name} shown the door`,
+      roomId,
+      userId: targetUser.id,
+      meta: { kickedBy: currentUser.name },
+    });
 
     return { targetUser, targetSocketId };
   }
@@ -332,7 +370,15 @@ class RoomServiceImpl {
     const updatedRoom = { ...room, settings: updatedSettings };
     await redisService.rooms.updateRoom(roomId, updatedRoom);
 
-    console.log(`Room ${roomId} settings updated by ${currentUser.name}:`, updatedSettings);
+    logEvent({
+      level: 'info',
+      domain: 'room',
+      event: 'settings_updated',
+      message: `room.settings: ${currentUser.name} tweaked the dials`,
+      roomId,
+      userId: currentUser.id,
+      meta: { settings: updatedSettings },
+    });
 
     return { settings: updatedSettings };
   }
@@ -355,7 +401,14 @@ class RoomServiceImpl {
       if (!hostToken || hostToken !== room.hostToken) {
         throw new ConflictError("We don't allow copycats. Please choose a different callsign.");
       }
-      console.log(`Host ${userName} rejoined room ${room.id}`);
+      logEvent({
+        level: 'info',
+        domain: 'room',
+        event: 'host_rejoined',
+        message: `room.rejoin: host ${userName} is back`,
+        roomId: room.id,
+        userId: existingUser.id,
+      });
       return { room, user: existingUser, isNewUser: false };
     } else {
       // Guest name collision
@@ -378,13 +431,27 @@ class RoomServiceImpl {
     if (isRoomHost) {
       room.hostId = userId;
       await redisService.rooms.updateRoom(room.id, room);
-      console.log(`Host ${userName} rejoining room ${room.id} with new user ID`);
+      logEvent({
+        level: 'info',
+        domain: 'room',
+        event: 'host_rejoined',
+        message: `room.rejoin: host ${userName} is back with a fresh ID`,
+        roomId: room.id,
+        userId,
+      });
     }
 
     await redisService.rooms.addUserToRoom(room.id, user);
     const updatedRoom = await redisService.rooms.getRoom(room.id);
 
-    console.log(`${userName} joined room ${room.id} as ${isRoomHost ? 'host' : 'guest'}`);
+    logEvent({
+      level: 'info',
+      domain: 'room',
+      event: 'user_joined',
+      message: `room.join: ${userName} hopped in as ${isRoomHost ? 'host' : 'guest'}`,
+      roomId: room.id,
+      userId,
+    });
 
     return { room: updatedRoom!, user, isNewUser: true };
   }

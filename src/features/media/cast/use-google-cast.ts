@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { logCast, logClient } from '@/src/core/logger';
 
 // Default Media Receiver Application ID
 const DEFAULT_RECEIVER_APP_ID = 'CC1AD845';
@@ -69,7 +70,7 @@ function loadCastSdk(): Promise<boolean> {
     script.src = 'https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1';
     script.async = true;
     script.onerror = () => {
-      console.warn('Failed to load Google Cast SDK');
+      logClient({ level: 'warn', domain: 'cast', event: 'sdk_load_fail', message: 'Failed to load Google Cast SDK' });
       resolve(false);
     };
     document.head.appendChild(script);
@@ -221,7 +222,13 @@ export function useGoogleCast(options: UseGoogleCastOptions = {}): UseGoogleCast
           );
         };
       } catch (err) {
-        console.error('Failed to initialize Cast:', err);
+        logClient({
+          level: 'error',
+          domain: 'cast',
+          event: 'init_fail',
+          message: 'Failed to initialize Cast',
+          meta: { error: String(err) },
+        });
         setIsAvailable(false);
         setConnectionState('unavailable');
       }
@@ -237,7 +244,7 @@ export function useGoogleCast(options: UseGoogleCastOptions = {}): UseGoogleCast
   // Request a new cast session
   const requestSession = useCallback(async () => {
     if (!castContextRef.current) {
-      console.warn('Cast context not initialized');
+      logClient({ level: 'warn', domain: 'cast', event: 'ctx_missing', message: 'Cast context not initialized' });
       return;
     }
 
@@ -245,7 +252,13 @@ export function useGoogleCast(options: UseGoogleCastOptions = {}): UseGoogleCast
       setConnectionState('connecting');
       await castContextRef.current.requestSession();
     } catch (err) {
-      console.error('Failed to request cast session:', err);
+      logClient({
+        level: 'error',
+        domain: 'cast',
+        event: 'session_request_fail',
+        message: 'Failed to request cast session',
+        meta: { error: String(err) },
+      });
       setConnectionState('idle');
       onError?.(err instanceof Error ? err : new Error(String(err)));
     }
@@ -254,30 +267,35 @@ export function useGoogleCast(options: UseGoogleCastOptions = {}): UseGoogleCast
   // Start casting a specific media URL
   const startCasting = useCallback(
     async (mediaUrl: string, contentType?: string) => {
-      console.log('📺 startCasting called with:', { mediaUrl, contentType });
+      logCast('start_casting', 'startCasting called', { mediaUrl, contentType });
 
       const context = castContextRef.current;
       if (!context) {
-        console.warn('❌ Cast context not initialized');
+        logClient({ level: 'warn', domain: 'cast', event: 'ctx_missing', message: 'Cast context not initialized' });
         return;
       }
 
       // If not connected, request a session first
       const castState = context.getCastState();
-      console.log('📺 Current cast state:', castState);
+      logCast('cast_state', 'Current cast state', { castState });
 
       if (castState !== cast.framework.CastState.CONNECTED) {
-        console.log('📺 Not connected, requesting session...');
+        logCast('request_session', 'Not connected, requesting session...');
         await requestSession();
       }
 
       const session = context.getCurrentSession();
       if (!session) {
-        console.warn('❌ No active cast session after request');
+        logClient({
+          level: 'warn',
+          domain: 'cast',
+          event: 'session_fail',
+          message: 'No active cast session after request',
+        });
         return;
       }
 
-      console.log('📺 Got session, device:', session.getCastDevice().friendlyName);
+      logCast('session_active', 'Got session, device: ' + session.getCastDevice().friendlyName);
 
       try {
         // Determine content type
@@ -294,7 +312,7 @@ export function useGoogleCast(options: UseGoogleCastOptions = {}): UseGoogleCast
           }
         }
 
-        console.log('📺 Loading media:', { url: mediaUrl, contentType: effectiveContentType });
+        logCast('load_media', 'Loading media', { url: mediaUrl, contentType: effectiveContentType });
 
         const mediaInfo = new chrome.cast.media.MediaInfo(mediaUrl, effectiveContentType);
         mediaInfo.streamType = chrome.cast.media.StreamType.BUFFERED;
@@ -304,9 +322,15 @@ export function useGoogleCast(options: UseGoogleCastOptions = {}): UseGoogleCast
         request.currentTime = 0;
 
         await session.loadMedia(request);
-        console.log('✅ Media loaded on Chromecast successfully');
+        logCast('load_success', 'Media loaded on Chromecast successfully');
       } catch (err) {
-        console.error('❌ Failed to load media on Chromecast:', err);
+        logClient({
+          level: 'error',
+          domain: 'cast',
+          event: 'load_fail',
+          message: 'Failed to load media on Chromecast',
+          meta: { error: String(err) },
+        });
         onError?.(err instanceof Error ? err : new Error(String(err)));
       }
     },

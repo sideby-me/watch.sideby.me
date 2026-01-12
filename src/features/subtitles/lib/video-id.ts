@@ -1,8 +1,4 @@
-/**
- * Extract a stable video ID for subtitle localStorage keying.
- * For YouTube: returns video ID
- * For other URLs: returns base64-encoded hash prefix
- */
+// Extract a stable video ID for subtitle localStorage keying. For YouTube, returns video ID. For other URLs, returns base64-encoded hash prefix.
 export function getVideoIdForStorage(videoUrl?: string): string | undefined {
   if (!videoUrl) return undefined;
 

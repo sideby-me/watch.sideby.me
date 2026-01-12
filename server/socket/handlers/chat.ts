@@ -4,6 +4,7 @@ import { SocketEvents, SocketData } from '../types';
 import { validateData } from '../utils';
 import { handleServiceError } from '../error-handler';
 import { ChatService, createSocketContext } from '@/server/services';
+import { logEvent } from '@/server/logger';
 
 export function registerChatHandlers(socket: Socket<SocketEvents, SocketEvents, object, SocketData>, io: IOServer) {
   // Typing indicators (stateless relay - no service needed)
@@ -24,9 +25,23 @@ export function registerChatHandlers(socket: Socket<SocketEvents, SocketEvents, 
         userName: socket.data.userName,
       });
 
-      console.log(`${socket.data.userName} started typing in room ${roomId}`);
+      logEvent({
+        level: 'info',
+        domain: 'chat',
+        event: 'typing_start',
+        message: `chat.typing: ${socket.data.userName} is composing`,
+        roomId,
+        userId: socket.data.userId,
+      });
     } catch (error) {
-      console.error('Error handling typing start:', error);
+      logEvent({
+        level: 'error',
+        domain: 'chat',
+        event: 'typing_error',
+        message: 'chat.typing: error handling typing start',
+        roomId: data?.roomId,
+        meta: { error: String(error) },
+      });
       socket.emit('error', { error: "Just a heads-up: your 'typing...' indicator might not be working right now." });
     }
   });
@@ -47,9 +62,23 @@ export function registerChatHandlers(socket: Socket<SocketEvents, SocketEvents, 
         userId: socket.data.userId,
       });
 
-      console.log(`${socket.data.userName} stopped typing in room ${roomId}`);
+      logEvent({
+        level: 'info',
+        domain: 'chat',
+        event: 'typing_stop',
+        message: `chat.typing: ${socket.data.userName} stopped composing`,
+        roomId,
+        userId: socket.data.userId,
+      });
     } catch (error) {
-      console.error('Error handling typing stop:', error);
+      logEvent({
+        level: 'error',
+        domain: 'chat',
+        event: 'typing_error',
+        message: 'chat.typing: error handling typing stop',
+        roomId: data?.roomId,
+        meta: { error: String(error) },
+      });
       socket.emit('error', {
         error: "We're having a little trouble with the typing notifications. Your messages should still send fine!",
       });

@@ -18,6 +18,20 @@ export const RoomIdSchema = z
 export const VideoUrlSchema = z.string().url('Invalid URL format').min(1, 'Video URL is required');
 
 // Base schemas
+export const SDPSchema = z.object({
+  type: z.enum(['offer', 'answer']),
+  sdp: z.string(),
+});
+
+export const ICECandidateSchema = z
+  .object({
+    candidate: z.string(),
+    sdpMid: z.string().nullable().optional(),
+    sdpMLineIndex: z.number().nullable().optional(),
+    usernameFragment: z.string().nullable().optional(),
+  })
+  .or(z.null());
+
 export const VideoTypeSchema = z.enum(['youtube', 'mp4', 'm3u8']).nullable();
 
 export const VideoStateSchema = z.object({
@@ -229,19 +243,19 @@ export const VoicePeerJoinResponseSchema = z.object({
 export const VoiceOfferSchema = z.object({
   roomId: RoomIdSchema,
   targetUserId: z.string().uuid(),
-  sdp: z.any(),
+  sdp: SDPSchema,
 });
 
 export const VoiceAnswerSchema = z.object({
   roomId: RoomIdSchema,
   targetUserId: z.string().uuid(),
-  sdp: z.any(),
+  sdp: SDPSchema,
 });
 
 export const VoiceIceCandidateSchema = z.object({
   roomId: RoomIdSchema,
   targetUserId: z.string().uuid(),
-  candidate: z.any(),
+  candidate: ICECandidateSchema,
 });
 
 export const VoicePeerLeaveResponseSchema = z.object({
@@ -265,17 +279,17 @@ export const VoiceParticipantCountResponseSchema = z.object({
 // Incoming signaling event payloads (from server)
 export const VoiceOfferEventResponseSchema = z.object({
   fromUserId: z.string().uuid(),
-  sdp: z.any(),
+  sdp: SDPSchema,
 });
 
 export const VoiceAnswerEventResponseSchema = z.object({
   fromUserId: z.string().uuid(),
-  sdp: z.any(),
+  sdp: SDPSchema,
 });
 
 export const VoiceIceCandidateEventResponseSchema = z.object({
   fromUserId: z.string().uuid(),
-  candidate: z.any(),
+  candidate: ICECandidateSchema,
 });
 
 // Video Chat (camera) schemas (mirrors voice but video-only track)
@@ -290,19 +304,19 @@ export const VideoChatLeaveDataSchema = z.object({
 export const VideoChatOfferSchema = z.object({
   roomId: RoomIdSchema,
   targetUserId: z.string().uuid(),
-  sdp: z.any(),
+  sdp: SDPSchema,
 });
 
 export const VideoChatAnswerSchema = z.object({
   roomId: RoomIdSchema,
   targetUserId: z.string().uuid(),
-  sdp: z.any(),
+  sdp: SDPSchema,
 });
 
 export const VideoChatIceCandidateSchema = z.object({
   roomId: RoomIdSchema,
   targetUserId: z.string().uuid(),
-  candidate: z.any(),
+  candidate: ICECandidateSchema,
 });
 
 export const VideoChatExistingPeersResponseSchema = z.object({
@@ -329,17 +343,17 @@ export const VideoChatParticipantCountResponseSchema = z.object({
 
 export const VideoChatOfferEventResponseSchema = z.object({
   fromUserId: z.string().uuid(),
-  sdp: z.any(),
+  sdp: SDPSchema,
 });
 
 export const VideoChatAnswerEventResponseSchema = z.object({
   fromUserId: z.string().uuid(),
-  sdp: z.any(),
+  sdp: SDPSchema,
 });
 
 export const VideoChatIceCandidateEventResponseSchema = z.object({
   fromUserId: z.string().uuid(),
-  candidate: z.any(),
+  candidate: ICECandidateSchema,
 });
 
 // OpenSubtitles API schemas

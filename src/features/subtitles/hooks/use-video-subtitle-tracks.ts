@@ -2,6 +2,7 @@
 
 import { useEffect, useCallback } from 'react';
 import type { SubtitleTrack } from '@/types/schemas';
+import { logDebug } from '@/src/core/logger';
 
 interface UseVideoSubtitleTracksOptions {
   videoElement: HTMLVideoElement | null;
@@ -22,7 +23,7 @@ export function useVideoSubtitleTracks({
   useEffect(() => {
     if (!videoElement) return;
 
-    console.log('Managing subtitle tracks:', {
+    logDebug('subtitles', 'manage_tracks', 'Managing subtitle tracks', {
       subtitleTracks: subtitleTracks.length,
       activeTrack: activeSubtitleTrack,
       videoReadyState: videoElement.readyState,
@@ -34,7 +35,7 @@ export function useVideoSubtitleTracks({
 
     // If no subtitle tracks, just return
     if (subtitleTracks.length === 0) {
-      console.log('No subtitle tracks to add');
+      logDebug('subtitles', 'manage_tracks', 'No subtitle tracks to add');
       return;
     }
 
@@ -53,14 +54,16 @@ export function useVideoSubtitleTracks({
       }
 
       videoElement.appendChild(trackElement);
-      console.log(
+      logDebug(
+        'subtitles',
+        'track_added',
         `Added subtitle track: ${subtitleTrack.label} (${subtitleTrack.id}) - URL: ${subtitleTrack.url.substring(0, 50)}...`
       );
     });
 
     // Function to set up text tracks
     const setupTextTracks = () => {
-      console.log('Setting up text tracks...', {
+      logDebug('subtitles', 'setup_tracks', 'Setting up text tracks...', {
         totalTracks: videoElement.textTracks.length,
         activeTrack: activeSubtitleTrack,
       });
@@ -69,7 +72,11 @@ export function useVideoSubtitleTracks({
       for (let i = 0; i < videoElement.textTracks.length; i++) {
         const track = videoElement.textTracks[i];
         track.mode = 'disabled';
-        console.log(`Disabled track ${i}: ${track.label} (${track.language}) - kind: ${track.kind}`);
+        logDebug(
+          'subtitles',
+          'track_disabled',
+          `Disabled track ${i}: ${track.label} (${track.language}) - kind: ${track.kind}`
+        );
       }
 
       // Enable the active track if specified
@@ -85,7 +92,7 @@ export function useVideoSubtitleTracks({
             // Find the corresponding text track by matching label
             const trackLabel = trackElement.getAttribute('label');
 
-            console.log(`Looking for TextTrack matching: label="${trackLabel}"`);
+            logDebug('subtitles', 'track_search', `Looking for TextTrack matching: label="${trackLabel}"`);
 
             // Search through all text tracks to find the matching one
             for (let j = 0; j < videoElement.textTracks.length; j++) {
@@ -94,20 +101,26 @@ export function useVideoSubtitleTracks({
               // Try to match by label and kind
               if (textTrack.label === trackLabel && textTrack.kind === 'subtitles') {
                 textTrack.mode = 'showing';
-                console.log(`✅ Enabled subtitle track: ${textTrack.label} (${trackId}) - mode: ${textTrack.mode}`);
+                logDebug(
+                  'subtitles',
+                  'track_enabled',
+                  `Enabled subtitle track: ${textTrack.label} (${trackId}) - mode: ${textTrack.mode}`
+                );
 
                 // Add event listeners for debugging
                 const handleLoad = () => {
-                  console.log(`📁 Subtitle track loaded: ${textTrack.label}`);
+                  logDebug('subtitles', 'track_loaded', `Subtitle track loaded: ${textTrack.label}`);
                   // Force re-enable the track after load
                   if (textTrack.mode !== 'showing') {
                     textTrack.mode = 'showing';
-                    console.log(`🔄 Re-enabled track after load: ${textTrack.label}`);
+                    logDebug('subtitles', 'track_reenabled', `Re-enabled track after load: ${textTrack.label}`);
                   }
                 };
 
                 const handleError = (e: Event) => {
-                  console.error(`❌ Subtitle track failed to load: ${textTrack.label}`, e);
+                  logDebug('subtitles', 'track_load_err', `Subtitle track failed to load: ${textTrack.label}`, {
+                    error: String(e),
+                  });
                 };
 
                 trackElement.addEventListener('load', handleLoad);
@@ -124,25 +137,29 @@ export function useVideoSubtitleTracks({
       // If no tracks were found or enabled, try a fallback approach
       if (activeSubtitleTrack && videoElement.textTracks.length > 0) {
         setTimeout(() => {
-          console.log('🔄 Fallback: Re-checking subtitle tracks after delay...');
+          logDebug('subtitles', 'fallback_check', 'Re-checking subtitle tracks after delay...');
           let foundTrack = false;
 
           for (let i = 0; i < videoElement.textTracks.length; i++) {
             const track = videoElement.textTracks[i];
             if (track.mode === 'showing') {
               foundTrack = true;
-              console.log(`✅ Confirmed active track: ${track.label}`);
+              logDebug('subtitles', 'fallback_found', `Confirmed active track: ${track.label}`);
               break;
             }
           }
 
           if (!foundTrack) {
-            console.log('⚠️ No active tracks found, trying to enable the first subtitle track...');
+            logDebug(
+              'subtitles',
+              'fallback_activate',
+              'No active tracks found, trying to enable the first subtitle track...'
+            );
             for (let i = 0; i < videoElement.textTracks.length; i++) {
               const track = videoElement.textTracks[i];
               if (track.kind === 'subtitles') {
                 track.mode = 'showing';
-                console.log(`🔄 Force-enabled first subtitle track: ${track.label}`);
+                logDebug('subtitles', 'fallback_activate_first', `Force-enabled first subtitle track: ${track.label}`);
                 break;
               }
             }
@@ -153,12 +170,12 @@ export function useVideoSubtitleTracks({
 
     // Set up tracks immediately if video is ready, otherwise wait for loadeddata
     if (videoElement.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-      console.log('Video already loaded, setting up tracks immediately');
+      logDebug('subtitles', 'video_ready', 'Video already loaded, setting up tracks immediately');
       setupTextTracks();
     } else {
-      console.log('Video not ready, waiting for loadeddata event');
+      logDebug('subtitles', 'video_waiting', 'Video not ready, waiting for loadeddata event');
       const handleLoadedData = () => {
-        console.log('Video loadeddata event fired, setting up tracks');
+        logDebug('subtitles', 'video_loaded', 'Video loadeddata event fired, setting up tracks');
         setupTextTracks();
       };
 
@@ -173,17 +190,18 @@ export function useVideoSubtitleTracks({
   // Debug function
   const debugSubtitles = useCallback(() => {
     if (!videoElement) {
-      console.log('No video element');
+      logDebug('subtitles', 'debug', 'No video element');
       return;
     }
 
-    console.log('=== SUBTITLE DEBUG INFO ===');
-    console.log('Video ready state:', videoElement.readyState);
-    console.log('Total text tracks:', videoElement.textTracks.length);
+    logDebug('subtitles', 'debug', '=== SUBTITLE DEBUG INFO ===', {
+      videoReadyState: videoElement.readyState,
+      totalTextTracks: videoElement.textTracks.length,
+    });
 
     for (let i = 0; i < videoElement.textTracks.length; i++) {
       const track = videoElement.textTracks[i];
-      console.log(`Track ${i}:`, {
+      logDebug('subtitles', 'debug', `Track ${i}`, {
         label: track.label,
         language: track.language,
         kind: track.kind,
@@ -193,9 +211,9 @@ export function useVideoSubtitleTracks({
     }
 
     const trackElements = videoElement.querySelectorAll('track[data-subtitle-track]');
-    console.log('Track elements:', trackElements.length);
+    logDebug('subtitles', 'debug', `Track elements: ${trackElements.length}`);
     trackElements.forEach((el, i) => {
-      console.log(`Element ${i}:`, {
+      logDebug('subtitles', 'debug', `Element ${i}`, {
         src: el.getAttribute('src'),
         label: el.getAttribute('label'),
         id: el.getAttribute('data-subtitle-track'),
@@ -203,8 +221,8 @@ export function useVideoSubtitleTracks({
       });
     });
 
-    console.log('Active subtitle track prop:', activeSubtitleTrack);
-    console.log('========================');
+    logDebug('subtitles', 'debug', 'Active subtitle track prop', { activeSubtitleTrack });
+    logDebug('subtitles', 'debug', '========================');
   }, [videoElement, activeSubtitleTrack]);
 
   return {

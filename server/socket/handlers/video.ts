@@ -4,6 +4,7 @@ import { SocketEvents, SocketData } from '../types';
 import { validateData, emitSystemMessage } from '../utils';
 import { handleServiceError } from '../error-handler';
 import { VideoService, createSocketContext } from '@/server/services';
+import { logEvent } from '@/server/logger';
 
 export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents, object, SocketData>, io: IOServer) {
   // Set video URL
@@ -186,7 +187,14 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
         });
       }
     } catch (err) {
-      console.error('Error handling video-error-report:', err);
+      logEvent({
+        level: 'error',
+        domain: 'video',
+        event: 'error_report_failed',
+        message: 'video.error: failed to handle error report',
+        roomId,
+        meta: { error: String(err) },
+      });
     }
   });
 }

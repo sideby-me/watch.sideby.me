@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Socket } from 'socket.io-client';
 import { Room, User, RoomSettings, VideoSetResponse } from '@/types';
+import { logClient, logDebug } from '@/src/core/logger';
 
 interface UseRoomCoreOptions {
   roomId: string;
@@ -91,10 +92,12 @@ export function useRoomCore({ roomId, socket, isConnected }: UseRoomCoreOptions)
     if (!socket || !isConnected) return;
 
     const handleRoomJoined = ({ room: joinedRoom, user }: { room: Room; user: User }) => {
-      console.log('✅ Room joined successfully:', {
-        room: joinedRoom.id,
-        user: user.name,
-        isHost: user.isHost,
+      logClient({
+        level: 'info',
+        domain: 'room',
+        event: 'join_success',
+        message: `Joined room ${joinedRoom.id} as ${user.isHost ? 'host' : 'guest'}`,
+        meta: { roomId: joinedRoom.id, userName: user.name, isHost: user.isHost },
       });
       setRoom(joinedRoom);
       setCurrentUser(user);
@@ -111,12 +114,12 @@ export function useRoomCore({ roomId, socket, isConnected }: UseRoomCoreOptions)
         if (!prev) return null;
         const existingUserIndex = prev.users.findIndex(u => u.id === user.id);
         if (existingUserIndex >= 0) {
-          console.log('🔄 User already exists, updating:', user.name);
+          logDebug('room', 'user_update', `Updating existing user: ${user.name}`);
           const updatedUsers = [...prev.users];
           updatedUsers[existingUserIndex] = user;
           return { ...prev, users: updatedUsers };
         }
-        console.log('👋 New user joined:', user.name);
+        logClient({ level: 'info', domain: 'room', event: 'user_joined', message: `${user.name} joined` });
         return { ...prev, users: [...prev.users, user] };
       });
     };
@@ -139,19 +142,29 @@ export function useRoomCore({ roomId, socket, isConnected }: UseRoomCoreOptions)
 
       setCurrentUser(prev => {
         if (prev && prev.id === userId) {
-          console.log('🎉 You have been promoted to host!');
+          logClient({
+            level: 'info',
+            domain: 'room',
+            event: 'self_promoted',
+            message: 'You have been promoted to host!',
+          });
           return { ...prev, isHost: true };
         }
         return prev;
       });
 
-      console.log(`👑 ${userName} has been promoted to host`);
+      logClient({ level: 'info', domain: 'room', event: 'user_promoted', message: `${userName} promoted to host` });
     };
 
     const handleUserKicked = ({ userId, userName }: { userId: string; userName: string; kickedBy?: string }) => {
       // Check if WE are the one being kicked
       if (currentUser && userId === currentUser.id) {
-        console.log('🚪 You have been kicked from the room!');
+        logClient({
+          level: 'warn',
+          domain: 'room',
+          event: 'self_kicked',
+          message: 'You have been kicked from the room',
+        });
         onUserKickedRef.current?.();
         return; // Don't update room state - we're being redirected
       }
@@ -163,7 +176,7 @@ export function useRoomCore({ roomId, socket, isConnected }: UseRoomCoreOptions)
         const userExists = prev.users.some(u => u.id === userId);
         if (!userExists) return prev;
 
-        console.log(`👢 ${userName} was kicked from the room`);
+        logClient({ level: 'info', domain: 'room', event: 'user_kicked', message: `${userName} was kicked` });
         const updatedUsers = prev.users.filter(u => u.id !== userId);
         return {
           ...prev,
@@ -194,7 +207,7 @@ export function useRoomCore({ roomId, socket, isConnected }: UseRoomCoreOptions)
     };
 
     const handleRoomError = ({ error: errorMsg }: { error: string }) => {
-      console.error('🚨 Room error:', errorMsg);
+      logClient({ level: 'error', domain: 'room', event: 'room_error', message: errorMsg });
 
       // Handle room closure (all hosts left)
       if (
@@ -203,10 +216,10 @@ export function useRoomCore({ roomId, socket, isConnected }: UseRoomCoreOptions)
         errorMsg.includes('closing room') ||
         errorMsg.includes('sending you back home')
       ) {
-        console.log('🚪 Room closed by host departure');
+        logClient({ level: 'info', domain: 'room', event: 'room_closed', message: 'Room closed by host departure' });
 
         if (hasShownClosureToastRef.current) {
-          console.log('🛡️ Closure already handled, skipping duplicate');
+          logDebug('room', 'closure_skip', 'Closure already handled, skipping duplicate');
           return;
         }
         hasShownClosureToastRef.current = true;
@@ -217,14 +230,14 @@ export function useRoomCore({ roomId, socket, isConnected }: UseRoomCoreOptions)
 
       // Handle kick messages
       if (errorMsg.includes('You have been kicked from the room')) {
-        console.log('🚪 User has been kicked');
+        logClient({ level: 'warn', domain: 'room', event: 'kick_error', message: 'User has been kicked' });
         onUserKickedRef.current?.();
         return;
       }
 
       // For other errors, only show if not already in room
       if (room && currentUser) {
-        console.log('🛡️ Ignoring room error - already successfully in room');
+        logDebug('room', 'error_ignore', 'Ignoring room error - already in room');
         return;
       }
 
@@ -245,13 +258,18 @@ export function useRoomCore({ roomId, socket, isConnected }: UseRoomCoreOptions)
     };
 
     const handlePasscodeRequired = ({ roomId: reqRoomId }: { roomId: string }) => {
-      console.log(`🔑 Passcode required for room ${reqRoomId}`);
+      logClient({
+        level: 'info',
+        domain: 'room',
+        event: 'passcode_required',
+        message: `Passcode required for room ${reqRoomId}`,
+      });
       setIsJoining(false);
       onPasscodeRequiredRef.current?.();
     };
 
     const handleRoomSettingsUpdated = ({ settings }: { settings: RoomSettings }) => {
-      console.log('⚙️ Room settings updated:', settings);
+      logDebug('room', 'settings_updated', 'Room settings updated', { settings });
       setRoom(prev => (prev ? { ...prev, settings } : null));
       onRoomSettingsUpdatedRef.current?.(settings);
     };
@@ -297,7 +315,12 @@ export function useRoomCore({ roomId, socket, isConnected }: UseRoomCoreOptions)
     return () => {
       const { socket: s, isConnected: c, roomId: r, room: rm, currentUser: u } = cleanupDataRef.current;
       if (s && c && rm && u) {
-        console.log('🚪 Component unmounting, leaving room...');
+        logClient({
+          level: 'info',
+          domain: 'room',
+          event: 'unmount_leave',
+          message: 'Component unmounting, leaving room',
+        });
         s.emit('leave-room', { roomId: r });
       }
     };
@@ -328,7 +351,7 @@ export function useRoomCore({ roomId, socket, isConnected }: UseRoomCoreOptions)
     (settings: Partial<RoomSettings>) => {
       if (!socket || !currentUser?.isHost) return;
 
-      console.log('⚙️ Updating room settings:', settings);
+      logDebug('room', 'settings_update', 'Updating room settings', { settings });
       socket.emit('update-room-settings', { roomId, settings });
     },
     [socket, currentUser?.isHost, roomId]

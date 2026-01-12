@@ -7,6 +7,7 @@ import { HLSPlayerRef } from '@/components/video/hls-player';
 import { CastPlayerRef } from '@/src/features/media/cast';
 import { calculateCurrentTime } from '@/lib/video-utils';
 import { Room, User } from '@/types';
+import { logDebug } from '@/src/core/logger';
 
 // Re-export VideoPlayerRef type for consumers
 export interface VideoPlayerRef {
@@ -89,7 +90,7 @@ export function useVideoSync({
       const now = Date.now();
       const timeSinceLastAction = now - lastControlActionRef.current.timestamp;
       if (lastControlActionRef.current.userId === currentUser.id && timeSinceLastAction < 500) {
-        console.log('🔄 Skipping sync - user just performed this action');
+        logDebug('video', 'sync_skip', 'Skipping sync - user just performed this action');
         return;
       }
 
@@ -107,7 +108,11 @@ export function useVideoSync({
       const syncDiff = Math.abs(currentTime - adjustedTime);
 
       if (syncDiff > 1.5) {
-        console.log(`🎬 Syncing video: ${syncDiff.toFixed(2)}s difference, seeking to ${adjustedTime.toFixed(2)}s`);
+        logDebug(
+          'video',
+          'sync_seek',
+          `Syncing video: ${syncDiff.toFixed(2)}s difference, seeking to ${adjustedTime.toFixed(2)}s`
+        );
         player.seekTo(adjustedTime);
         lastSyncTimeRef.current = now;
         lastPlayerTimeRef.current = adjustedTime;
@@ -120,20 +125,20 @@ export function useVideoSync({
           const currentState = ytPlayer.getPlayerState();
 
           if (isPlaying && currentState !== YT_STATES.PLAYING) {
-            console.log('▶️ Syncing play state');
+            logDebug('video', 'sync_play', 'Syncing play state');
             ytPlayer.play();
           } else if (!isPlaying && currentState === YT_STATES.PLAYING) {
-            console.log('⏸️ Syncing pause state');
+            logDebug('video', 'sync_pause', 'Syncing pause state');
             ytPlayer.pause();
           }
         } else {
           const videoPlayer = player as VideoPlayerRef | HLSPlayerRef;
 
           if (isPlaying && videoPlayer.isPaused()) {
-            console.log('▶️ Syncing play state');
+            logDebug('video', 'sync_play', 'Syncing play state');
             videoPlayer.play();
           } else if (!isPlaying && !videoPlayer.isPaused()) {
-            console.log('⏸️ Syncing pause state');
+            logDebug('video', 'sync_pause', 'Syncing pause state');
             videoPlayer.pause();
           }
         }
@@ -165,7 +170,7 @@ export function useVideoSync({
         isPlaying = false;
       }
 
-      console.log(`🔄 Periodic sync check: ${currentTime.toFixed(2)}s, playing: ${isPlaying}`);
+      logDebug('video', 'sync_check', `Periodic sync check: ${currentTime.toFixed(2)}s, playing: ${isPlaying}`);
       socket.emit('sync-check', {
         roomId,
         currentTime,
@@ -184,17 +189,21 @@ export function useVideoSync({
 
   // Video control handlers for hosts
   const handleVideoPlay = useCallback(() => {
-    console.log('handleVideoPlay called', { hasRoom: !!room, isHost: currentUser?.isHost, hasSocket: !!socket });
+    logDebug('video', 'play_called', 'handleVideoPlay called', {
+      hasRoom: !!room,
+      isHost: currentUser?.isHost,
+      hasSocket: !!socket,
+    });
     if (!room || !currentUser?.isHost || !socket) return;
 
     const player = getCurrentPlayer();
     if (!player) {
-      console.log('No player found');
+      logDebug('video', 'play_no_player', 'No player found');
       return;
     }
 
     const currentTime = player.getCurrentTime();
-    console.log('Emitting play-video', { roomId, currentTime });
+    logDebug('video', 'play_emit', 'Emitting play-video', { roomId, currentTime });
 
     lastControlActionRef.current = {
       timestamp: Date.now(),
@@ -252,7 +261,7 @@ export function useVideoSync({
         // Check if this is a seek by comparing with last known time
         const timeDiff = Math.abs(currentTime - lastPlayerTimeRef.current);
         if (timeDiff > 1) {
-          console.log(`🎯 Detected seek to ${currentTime.toFixed(2)}s before play`);
+          logDebug('video', 'yt_seek_detected', `Detected seek to ${currentTime.toFixed(2)}s before play`);
           lastControlActionRef.current = {
             timestamp: Date.now(),
             type: 'seek',
@@ -280,7 +289,7 @@ export function useVideoSync({
         // Check for potential seek during buffering
         const timeDiff = Math.abs(currentTime - lastPlayerTimeRef.current);
         if (timeDiff > 1) {
-          console.log(`🎯 Detected seek to ${currentTime.toFixed(2)}s during buffering`);
+          logDebug('video', 'yt_seek_buffering', `Detected seek to ${currentTime.toFixed(2)}s during buffering`);
           lastControlActionRef.current = {
             timestamp: Date.now(),
             type: 'seek',
@@ -304,7 +313,7 @@ export function useVideoSync({
 
   const handleVideoControlAttempt = useCallback(() => {
     // This will be handled by the component that uses this hook
-    console.log('Video control attempted by non-host');
+    logDebug('video', 'control_attempt', 'Video control attempted by non-host');
   }, []);
 
   return {

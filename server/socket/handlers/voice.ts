@@ -10,14 +10,18 @@ import {
   VoiceIceCandidateSchema,
 } from '@/types';
 import { VoiceService, createSocketContext } from '@/server/services';
+import { logEvent } from '@/server/logger';
 
 export function registerVoiceHandlers(socket: Socket<SocketEvents, SocketEvents, object, SocketData>, io: IOServer) {
   const slog = (event: string, extra?: Record<string, unknown>) => {
-    console.log('[VOICE]', event, {
-      socketId: socket.id,
-      userId: socket.data.userId,
+    logEvent({
+      level: 'info',
+      domain: 'voice',
+      event: `voice_${event.replace(/-/g, '_').replace(/\s+/g, '_').toLowerCase()}`,
+      message: `voice.signaling: ${event}`,
       roomId: socket.data.roomId,
-      ...extra,
+      userId: socket.data.userId,
+      meta: extra,
     });
   };
 

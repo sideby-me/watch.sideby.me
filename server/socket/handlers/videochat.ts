@@ -10,17 +10,21 @@ import {
   VideoChatIceCandidateSchema,
 } from '@/types';
 import { VideoChatService, createSocketContext } from '@/server/services';
+import { logEvent } from '@/server/logger';
 
 export function registerVideoChatHandlers(
   socket: Socket<SocketEvents, SocketEvents, object, SocketData>,
   io: IOServer
 ) {
   const slog = (event: string, extra?: Record<string, unknown>) => {
-    console.log('[VIDEOCHAT]', event, {
-      socketId: socket.id,
-      userId: socket.data.userId,
+    logEvent({
+      level: 'info',
+      domain: 'videochat',
+      event: `videochat_${event.replace(/-/g, '_').replace(/\s+/g, '_').toLowerCase()}`,
+      message: `videochat.signaling: ${event}`,
       roomId: socket.data.roomId,
-      ...extra,
+      userId: socket.data.userId,
+      meta: extra,
     });
   };
 
