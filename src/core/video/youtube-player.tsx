@@ -58,6 +58,9 @@ interface YTPlayer {
 
 export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
   ({ videoId, onReady, onStateChange, onTimeUpdate, className }, ref) => {
+    const onReadyRef = useRef(onReady);
+    const onStateChangeRef = useRef(onStateChange);
+    const onTimeUpdateRef = useRef(onTimeUpdate);
     const containerRef = useRef<HTMLDivElement>(null);
     const playerRef = useRef<YTPlayer | null>(null);
     const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -97,6 +100,12 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
         return YT_STATES.UNSTARTED;
       },
     }));
+
+    useEffect(() => {
+      onReadyRef.current = onReady;
+      onStateChangeRef.current = onStateChange;
+      onTimeUpdateRef.current = onTimeUpdate;
+    });
 
     useEffect(() => {
       const loadYouTubeAPI = () => {
@@ -140,11 +149,11 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
           },
           events: {
             onReady: () => {
-              onReady?.();
+              onReadyRef.current?.();
               startTimeTracking();
             },
             onStateChange: (event: { data: number; target: YTPlayer }) => {
-              onStateChange?.(event.data);
+              onStateChangeRef.current?.(event.data);
 
               if (event.data === YT_STATES.PLAYING) {
                 startTimeTracking();
@@ -159,10 +168,10 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
       const startTimeTracking = () => {
         stopTimeTracking();
         intervalRef.current = setInterval(() => {
-          if (playerRef.current && onTimeUpdate) {
+          if (playerRef.current && onTimeUpdateRef.current) {
             const currentTime = playerRef.current.getCurrentTime();
             const duration = playerRef.current.getDuration();
-            onTimeUpdate(currentTime, duration);
+            onTimeUpdateRef.current(currentTime, duration);
           }
         }, 1000);
       };
@@ -182,7 +191,7 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
           playerRef.current.destroy();
         }
       };
-    }, [videoId, onReady, onStateChange, onTimeUpdate]);
+    }, [videoId]);
 
     return (
       <div className={className}>
