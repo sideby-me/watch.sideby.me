@@ -149,7 +149,7 @@ export function RoomShell({ roomId }: RoomShellProps) {
   const remoteActionHandlersRef = useRef<{
     onPlay: (() => void) | null;
     onPause: (() => void) | null;
-    onSeek: (() => void) | null;
+    onSeek: ((time?: number) => void) | null;
   }>({ onPlay: null, onPause: null, onSeek: null });
 
   // Google Cast initialized first to provide isCasting state
@@ -176,6 +176,11 @@ export function RoomShell({ roomId }: RoomShellProps) {
     onRemoteSeek: () => {
       if (core.currentUser?.isHost) {
         remoteActionHandlersRef.current.onSeek?.();
+      }
+    },
+    onDisconnect: (finalTime: number) => {
+      if (core.currentUser?.isHost) {
+        remoteActionHandlersRef.current.onSeek?.(finalTime);
       }
     },
   });

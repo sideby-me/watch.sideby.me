@@ -21,6 +21,7 @@ export interface UseGoogleCastOptions {
   onSessionStart?: () => void;
   onSessionEnd?: () => void;
   onError?: (error: Error) => void;
+  onDisconnect?: (lastTime: number) => void;
   // Remote control callbacks for TV-side actions
   onRemotePlay?: (currentTime: number) => void;
   onRemotePause?: (currentTime: number) => void;
@@ -100,6 +101,7 @@ export function useGoogleCast(options: UseGoogleCastOptions = {}): UseGoogleCast
   // Use refs for callbacks to avoid dependency churn in the heavy init effect
   const onSessionStartRef = useRef(onSessionStart);
   const onSessionEndRef = useRef(onSessionEnd);
+  const onDisconnectRef = useRef(options.onDisconnect);
   const onRemotePlayRef = useRef(options.onRemotePlay);
   const onRemotePauseRef = useRef(options.onRemotePause);
   const onRemoteSeekRef = useRef(options.onRemoteSeek);
@@ -108,10 +110,18 @@ export function useGoogleCast(options: UseGoogleCastOptions = {}): UseGoogleCast
   useEffect(() => {
     onSessionStartRef.current = onSessionStart;
     onSessionEndRef.current = onSessionEnd;
+    onDisconnectRef.current = options.onDisconnect;
     onRemotePlayRef.current = options.onRemotePlay;
     onRemotePauseRef.current = options.onRemotePause;
     onRemoteSeekRef.current = options.onRemoteSeek;
-  }, [onSessionStart, onSessionEnd, options.onRemotePlay, options.onRemotePause, options.onRemoteSeek]);
+  }, [
+    onSessionStart,
+    onSessionEnd,
+    options.onDisconnect,
+    options.onRemotePlay,
+    options.onRemotePause,
+    options.onRemoteSeek,
+  ]);
 
   // Initialize Cast SDK and context
   useEffect(() => {
@@ -207,6 +217,10 @@ export function useGoogleCast(options: UseGoogleCastOptions = {}): UseGoogleCast
           }
         };
 
+        // Track state for remote event detection
+        let lastKnownPaused = player.isPaused;
+        let lastKnownTime = player.currentTime;
+
         // Listen for session state changes
         const handleSessionStateChanged = (event: cast.framework.CastStateEventData) => {
           if (!mounted) return;
@@ -214,13 +228,15 @@ export function useGoogleCast(options: UseGoogleCastOptions = {}): UseGoogleCast
           if (event.sessionState === cast.framework.SessionState.SESSION_ENDED) {
             setConnectionState('idle');
             setDeviceName('');
+
+            // Get last known time before disconnect
+            const finalTime = remotePlayerRef.current?.currentTime ?? lastKnownTime ?? 0;
+            logCast('session_end', 'Cast session ended', { finalTime });
+
             onSessionEndRef.current?.();
+            onDisconnectRef.current?.(finalTime);
           }
         };
-
-        // Track state for remote event detection
-        let lastKnownPaused = player.isPaused;
-        let lastKnownTime = player.currentTime;
 
         // Listen for play/pause changes from TV remote
         const handlePausedChanged = (event: cast.framework.RemotePlayerChangedEvent) => {

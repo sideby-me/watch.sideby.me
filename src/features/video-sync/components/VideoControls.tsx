@@ -594,27 +594,29 @@ export function VideoControls({
 
           {/* Common controls (mute, chat, and fullscreen) */}
           <div className="flex items-center space-x-2">
-            <Button
-              variant="secondary"
-              size={isFullscreen ? 'default' : 'sm'}
-              disabled={isCasting}
-              onClick={handleMuteToggle}
-              className={`${isFullscreen ? 'h-11 w-11' : 'h-9 w-9'} border border-border p-0 duration-200 transition-interactive ${
-                isMuted
-                  ? 'border-0 bg-destructive-100 text-destructive-800'
-                  : 'bg-black/60 text-primary-foreground hover:border-primary hover:bg-primary hover:text-primary-foreground'
-              }`}
-              title={isMuted ? 'Unmute' : 'Mute'}
-            >
-              {isMuted ? (
-                <VolumeX className={isFullscreen ? 'h-5 w-5' : 'h-4 w-4'} />
-              ) : (
-                <Volume2 className={isFullscreen ? 'h-5 w-5' : 'h-4 w-4'} />
-              )}
-            </Button>
+            {/* Mute button */}
+            {!isCasting && (
+              <Button
+                variant="secondary"
+                size={isFullscreen ? 'default' : 'sm'}
+                onClick={handleMuteToggle}
+                className={`${isFullscreen ? 'h-11 w-11' : 'h-9 w-9'} border border-border p-0 duration-200 transition-interactive ${
+                  isMuted
+                    ? 'border-0 bg-destructive-100 text-destructive-800'
+                    : 'bg-black/60 text-primary-foreground hover:border-primary hover:bg-primary hover:text-primary-foreground'
+                }`}
+                title={isMuted ? 'Unmute' : 'Mute'}
+              >
+                {isMuted ? (
+                  <VolumeX className={isFullscreen ? 'h-5 w-5' : 'h-4 w-4'} />
+                ) : (
+                  <Volume2 className={isFullscreen ? 'h-5 w-5' : 'h-4 w-4'} />
+                )}
+              </Button>
+            )}
 
             {/* Subtitle Controls */}
-            {onAddSubtitleTracks && onActiveSubtitleTrackChange && (
+            {onAddSubtitleTracks && onActiveSubtitleTrackChange && !isCasting && (
               <SubtitleManager
                 subtitleTracks={subtitleTracks}
                 activeTrackId={activeSubtitleTrack}
@@ -657,16 +659,18 @@ export function VideoControls({
               </Button>
             )}
 
-            <Button
-              variant="secondary"
-              size={isFullscreen ? 'default' : 'sm'}
-              disabled={isCasting}
-              onClick={handleFullscreen}
-              className={`${isFullscreen ? 'h-11 w-11' : 'h-9 w-9'} border border-border bg-black/60 p-0 text-white duration-200 transition-interactive hover:border-primary hover:bg-primary hover:text-primary-foreground`}
-              title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-            >
-              <Maximize className={isFullscreen ? 'h-5 w-5' : 'h-4 w-4'} />
-            </Button>
+            {/* Fullscreen button */}
+            {!isCasting && (
+              <Button
+                variant="secondary"
+                size={isFullscreen ? 'default' : 'sm'}
+                onClick={handleFullscreen}
+                className={`${isFullscreen ? 'h-11 w-11' : 'h-9 w-9'} border border-border bg-black/60 p-0 text-white duration-200 transition-interactive hover:border-primary hover:bg-primary hover:text-primary-foreground`}
+                title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+              >
+                <Maximize className={isFullscreen ? 'h-5 w-5' : 'h-4 w-4'} />
+              </Button>
+            )}
           </div>
         </div>
       </div>
