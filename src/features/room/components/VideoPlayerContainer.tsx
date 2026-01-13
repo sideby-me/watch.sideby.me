@@ -104,6 +104,13 @@ export function VideoPlayerContainer({
   const [localProxyUrl, setLocalProxyUrl] = useState<string | null>(null);
   const guestProxyTriedRef = useRef(false);
 
+  // Initial load tracking for retry logic on very early errors
+  const isInitialLoadRef = useRef(true);
+  const initialLoadStartTimeRef = useRef<number>(Date.now());
+  const initialRetryAttemptedRef = useRef(false);
+  const [videoKey, setVideoKey] = useState(0);
+  const INITIAL_LOAD_GRACE_MS = 3000; // 3 second grace window
+
   // Check if video ref is ready
   useEffect(() => {
     const checkVideoRef = () => {
@@ -143,6 +150,11 @@ export function VideoPlayerContainer({
     // Reset guest local proxy state when room video URL changes
     setLocalProxyUrl(null);
     guestProxyTriedRef.current = false;
+    // Reset initial load tracking when video URL changes
+    isInitialLoadRef.current = true;
+    initialLoadStartTimeRef.current = Date.now();
+    initialRetryAttemptedRef.current = false;
+    setVideoKey(0);
   }, [videoUrl, videoType]);
 
   // Get video element ref for guest controls
@@ -378,6 +390,7 @@ export function VideoPlayerContainer({
       default:
         return (
           <VideoPlayer
+            key={`video-${videoKey}`}
             ref={videoPlayerRef}
             src={localProxyUrl || videoUrl}
             onPlay={onPlay}
@@ -393,8 +406,30 @@ export function VideoPlayerContainer({
                 domain: 'video',
                 event: 'player_error',
                 message: 'VideoPlayer reported error',
-                meta: { code: err.code, message: err.message, isHost },
+                meta: { code: err.code, message: err.message, isHost, isInitialLoad: isInitialLoadRef.current },
               });
+
+              // Check if we're within the initial load grace period for early retry
+              const isWithinGracePeriod =
+                isInitialLoadRef.current && Date.now() - initialLoadStartTimeRef.current < INITIAL_LOAD_GRACE_MS;
+
+              // For very early errors on initial load, attempt one retry before surfacing
+              if (isWithinGracePeriod && !initialRetryAttemptedRef.current && err.code === 4) {
+                logClient({
+                  level: 'info',
+                  domain: 'video',
+                  event: 'initial_load_retry',
+                  message: 'Retrying initial video load after early error (upstream might still be warming up)',
+                  meta: { code: err.code, elapsedMs: Date.now() - initialLoadStartTimeRef.current },
+                });
+                initialRetryAttemptedRef.current = true;
+                // Force component remount by changing key
+                setVideoKey(prev => prev + 1);
+                return;
+              }
+
+              // Mark initial load as complete after first real error handling
+              isInitialLoadRef.current = false;
 
               // Only hosts should emit error reports to server (for room-level fallback)
               if (isHost) {
