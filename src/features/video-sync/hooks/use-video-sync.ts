@@ -153,6 +153,9 @@ export function useVideoSync({
       clearInterval(syncCheckIntervalRef.current);
     }
 
+    // Use shorter interval when casting for faster sync convergence
+    const syncInterval = isCasting ? 2000 : 5000;
+
     syncCheckIntervalRef.current = setInterval(() => {
       if (!room || !currentUser?.isHost || !socket) return;
 
@@ -177,8 +180,8 @@ export function useVideoSync({
         isPlaying,
         timestamp: Date.now(),
       });
-    }, 5000);
-  }, [room, currentUser, socket, roomId, getCurrentPlayer]);
+    }, syncInterval);
+  }, [room, currentUser, socket, roomId, getCurrentPlayer, isCasting]);
 
   const stopSyncCheck = useCallback(() => {
     if (syncCheckIntervalRef.current) {

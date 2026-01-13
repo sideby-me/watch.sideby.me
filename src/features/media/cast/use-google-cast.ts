@@ -21,6 +21,10 @@ export interface UseGoogleCastOptions {
   onSessionStart?: () => void;
   onSessionEnd?: () => void;
   onError?: (error: Error) => void;
+  // Remote control callbacks for TV-side actions
+  onRemotePlay?: (currentTime: number) => void;
+  onRemotePause?: (currentTime: number) => void;
+  onRemoteSeek?: (currentTime: number) => void;
 }
 
 export interface UseGoogleCastReturn {
@@ -93,9 +97,26 @@ export function useGoogleCast(options: UseGoogleCastOptions = {}): UseGoogleCast
   const castPlayerRefInternal = useRef<CastPlayerRef | null>(null);
   const castPlayerRef = useRef<CastPlayerRef | null>(null);
 
+  // Use refs for callbacks to avoid dependency churn in the heavy init effect
+  const onSessionStartRef = useRef(onSessionStart);
+  const onSessionEndRef = useRef(onSessionEnd);
+  const onRemotePlayRef = useRef(options.onRemotePlay);
+  const onRemotePauseRef = useRef(options.onRemotePause);
+  const onRemoteSeekRef = useRef(options.onRemoteSeek);
+
+  // Keep refs up to date
+  useEffect(() => {
+    onSessionStartRef.current = onSessionStart;
+    onSessionEndRef.current = onSessionEnd;
+    onRemotePlayRef.current = options.onRemotePlay;
+    onRemotePauseRef.current = options.onRemotePause;
+    onRemoteSeekRef.current = options.onRemoteSeek;
+  }, [onSessionStart, onSessionEnd, options.onRemotePlay, options.onRemotePause, options.onRemoteSeek]);
+
   // Initialize Cast SDK and context
   useEffect(() => {
     let mounted = true;
+    let cleanupFn: (() => void) | undefined;
 
     const initializeCast = async () => {
       const available = await loadCastSdk();
@@ -180,7 +201,7 @@ export function useGoogleCast(options: UseGoogleCastOptions = {}): UseGoogleCast
               const session = context.getCurrentSession();
               if (session) {
                 setDeviceName(session.getCastDevice().friendlyName);
-                onSessionStart?.();
+                onSessionStartRef.current?.();
               }
               break;
           }
@@ -193,12 +214,61 @@ export function useGoogleCast(options: UseGoogleCastOptions = {}): UseGoogleCast
           if (event.sessionState === cast.framework.SessionState.SESSION_ENDED) {
             setConnectionState('idle');
             setDeviceName('');
-            onSessionEnd?.();
+            onSessionEndRef.current?.();
           }
+        };
+
+        // Track state for remote event detection
+        let lastKnownPaused = player.isPaused;
+        let lastKnownTime = player.currentTime;
+
+        // Listen for play/pause changes from TV remote
+        const handlePausedChanged = (event: cast.framework.RemotePlayerChangedEvent) => {
+          if (!mounted) return;
+
+          const currentlyPaused = event.value as boolean;
+          const currentTime = remotePlayerRef.current?.currentTime ?? 0;
+
+          if (currentlyPaused && !lastKnownPaused) {
+            // Transitioned from playing → paused
+            logCast('remote_pause', 'TV remote paused playback', { currentTime });
+            onRemotePauseRef.current?.(currentTime);
+          } else if (!currentlyPaused && lastKnownPaused) {
+            // Transitioned from paused → playing
+            logCast('remote_play', 'TV remote resumed playback', { currentTime });
+            onRemotePlayRef.current?.(currentTime);
+          }
+
+          lastKnownPaused = currentlyPaused;
+        };
+
+        // Listen for seek changes from TV remote
+        const handleTimeChanged = (event: cast.framework.RemotePlayerChangedEvent) => {
+          if (!mounted) return;
+
+          const newTime = event.value as number;
+          const timeDelta = Math.abs(newTime - lastKnownTime);
+
+          // Detect seeks: significant time jump (>2s) while paused, or >3s while playing
+          const isPaused = remotePlayerRef.current?.isPaused ?? true;
+          const seekThreshold = isPaused ? 2 : 3;
+
+          if (timeDelta > seekThreshold) {
+            logCast('remote_seek', 'TV remote seek detected', {
+              from: lastKnownTime,
+              to: newTime,
+              delta: timeDelta,
+            });
+            onRemoteSeekRef.current?.(newTime);
+          }
+
+          lastKnownTime = newTime;
         };
 
         context.addEventListener(cast.framework.CastContextEventType.CAST_STATE_CHANGED, handleCastStateChanged);
         context.addEventListener(cast.framework.CastContextEventType.SESSION_STATE_CHANGED, handleSessionStateChanged);
+        controller.addEventListener(cast.framework.RemotePlayerEventType.IS_PAUSED_CHANGED, handlePausedChanged);
+        controller.addEventListener(cast.framework.RemotePlayerEventType.CURRENT_TIME_CHANGED, handleTimeChanged);
 
         // Check initial state
         const initialState = context.getCastState();
@@ -214,12 +284,15 @@ export function useGoogleCast(options: UseGoogleCastOptions = {}): UseGoogleCast
           setConnectionState('idle');
         }
 
-        return () => {
+        // Store cleanup function
+        cleanupFn = () => {
           context.removeEventListener(cast.framework.CastContextEventType.CAST_STATE_CHANGED, handleCastStateChanged);
           context.removeEventListener(
             cast.framework.CastContextEventType.SESSION_STATE_CHANGED,
             handleSessionStateChanged
           );
+          controller.removeEventListener(cast.framework.RemotePlayerEventType.IS_PAUSED_CHANGED, handlePausedChanged);
+          controller.removeEventListener(cast.framework.RemotePlayerEventType.CURRENT_TIME_CHANGED, handleTimeChanged);
         };
       } catch (err) {
         logClient({
@@ -238,8 +311,9 @@ export function useGoogleCast(options: UseGoogleCastOptions = {}): UseGoogleCast
 
     return () => {
       mounted = false;
+      cleanupFn?.();
     };
-  }, [onSessionStart, onSessionEnd]);
+  }, []);
 
   // Request a new cast session
   const requestSession = useCallback(async () => {

@@ -57,17 +57,6 @@ export function RoomShell({ roomId }: RoomShellProps) {
   // Pending user name state for passcode flow
   const [pendingUserName, setPendingUserName] = useState('');
 
-  // Google Cast hook
-  const {
-    isCasting,
-    isAvailable: isCastAvailable,
-    deviceName: castDeviceName,
-    castPlayerRef,
-    startCasting,
-    stopCasting,
-    requestSession: requestCastSession,
-  } = useGoogleCast();
-
   // Core room state hook (no UI concerns)
   const core = useRoomCore({
     roomId,
@@ -157,6 +146,40 @@ export function RoomShell({ roomId }: RoomShellProps) {
     videoId: getVideoIdForStorage(core.room?.videoUrl),
   });
 
+  const remoteActionHandlersRef = useRef<{
+    onPlay: (() => void) | null;
+    onPause: (() => void) | null;
+    onSeek: (() => void) | null;
+  }>({ onPlay: null, onPause: null, onSeek: null });
+
+  // Google Cast initialized first to provide isCasting state
+  const {
+    isCasting,
+    isAvailable: isCastAvailable,
+    deviceName: castDeviceName,
+    castPlayerRef,
+    startCasting,
+    stopCasting,
+    requestSession: requestCastSession,
+  } = useGoogleCast({
+    onRemotePlay: () => {
+      // Only emit if current user is host
+      if (core.currentUser?.isHost) {
+        remoteActionHandlersRef.current.onPlay?.();
+      }
+    },
+    onRemotePause: () => {
+      if (core.currentUser?.isHost) {
+        remoteActionHandlersRef.current.onPause?.();
+      }
+    },
+    onRemoteSeek: () => {
+      if (core.currentUser?.isHost) {
+        remoteActionHandlersRef.current.onSeek?.();
+      }
+    },
+  });
+
   // Use video sync hook for video synchronization
   const {
     syncVideo,
@@ -177,6 +200,13 @@ export function RoomShell({ roomId }: RoomShellProps) {
     castPlayerRef,
     isCasting,
   });
+
+  // Update handler refs when they change
+  useEffect(() => {
+    remoteActionHandlersRef.current.onPlay = handleVideoPlay;
+    remoteActionHandlersRef.current.onPause = handleVideoPause;
+    remoteActionHandlersRef.current.onSeek = handleVideoSeek;
+  }, [handleVideoPlay, handleVideoPause, handleVideoSeek]);
 
   // Voice chat hook
   const voice = useVoiceChat({ roomId, currentUser: core.currentUser });
@@ -501,6 +531,7 @@ export function RoomShell({ roomId }: RoomShellProps) {
                 requestCastSession();
               }
             }}
+            castPlayerRef={castPlayerRef}
           />
         </div>
 

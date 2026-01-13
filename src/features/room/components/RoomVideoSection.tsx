@@ -6,6 +6,7 @@ import { VideoSetup } from './VideoSetup';
 import { YouTubePlayerRef } from '@/src/core/video/youtube-player';
 import { VideoPlayerRef } from '@/src/features/video-sync/components/VideoPlayer';
 import { HLSPlayerRef } from '@/src/core/video/hls-player';
+import { CastPlayerRef } from '@/src/features/media/cast';
 import type { SubtitleTrack } from '@/types/schemas';
 
 interface RoomVideoSectionProps {
@@ -43,6 +44,7 @@ interface RoomVideoSectionProps {
   isCastAvailable: boolean;
   castDeviceName: string | undefined;
   onCastClick: () => void;
+  castPlayerRef?: RefObject<CastPlayerRef | null>;
 }
 
 export const RoomVideoSection = memo(function RoomVideoSection({
@@ -72,6 +74,7 @@ export const RoomVideoSection = memo(function RoomVideoSection({
   isCastAvailable,
   castDeviceName,
   onCastClick,
+  castPlayerRef,
 }: RoomVideoSectionProps) {
   if (videoUrl && videoType) {
     return (
@@ -101,6 +104,7 @@ export const RoomVideoSection = memo(function RoomVideoSection({
         isCastAvailable={isCastAvailable && videoType !== 'youtube'}
         castDeviceName={castDeviceName}
         onCastClick={onCastClick}
+        castPlayerRef={castPlayerRef}
       />
     );
   }

@@ -17,9 +17,11 @@ import {
 import { SubtitleManager } from '@/src/features/subtitles/components';
 import type { SubtitleTrack } from '@/types/schemas';
 import { logVideo } from '@/src/core/logger/client-logger';
+import { CastPlayerRef } from '@/src/features/media/cast';
 
 interface VideoControlsProps {
   videoRef: React.RefObject<HTMLVideoElement> | null;
+  castPlayerRef?: React.RefObject<CastPlayerRef | null>;
   isHost?: boolean;
   isLoading?: boolean;
   onPlay?: () => void;
@@ -44,6 +46,7 @@ interface VideoControlsProps {
 
 export function VideoControls({
   videoRef,
+  castPlayerRef,
   isHost = false,
   isLoading = false,
   onPlay,
@@ -132,7 +135,34 @@ export function VideoControls({
       document.removeEventListener('msfullscreenchange', handleFullscreenChange);
     };
   }, [isFullscreen, onFullscreenChange, showControlsWithAutoHide]);
+
+  // Poll cast player state when casting (can't use DOM events)
   useEffect(() => {
+    if (!isCasting || !castPlayerRef?.current) return;
+
+    // Initialize state from cast player
+    setCurrentTime(castPlayerRef.current.getCurrentTime());
+    setDuration(castPlayerRef.current.getDuration());
+    setIsPlaying(!castPlayerRef.current.isPaused());
+
+    const interval = setInterval(() => {
+      if (!castPlayerRef.current) return;
+
+      if (!isDragging) {
+        setCurrentTime(castPlayerRef.current.getCurrentTime());
+      }
+      setDuration(castPlayerRef.current.getDuration());
+      setIsPlaying(!castPlayerRef.current.isPaused());
+    }, 500);
+
+    return () => clearInterval(interval);
+  }, [isCasting, castPlayerRef, isDragging]);
+
+  // DOM video event listeners (skip when casting)
+  useEffect(() => {
+    // Don't attach DOM listeners when casting
+    if (isCasting) return;
+
     const video = videoRef?.current;
     if (!video) return;
 
@@ -208,7 +238,7 @@ export function VideoControls({
       video.removeEventListener('playing', handlePlaying);
       video.removeEventListener('loadeddata', handleLoadedData);
     };
-  }, [videoRef, isDragging]);
+  }, [videoRef, isDragging, isCasting]);
 
   useEffect(() => {
     return () => {
@@ -218,8 +248,8 @@ export function VideoControls({
     };
   }, []);
 
-  // Don't render if no video ref (unless we're casting, which doesn't need local video)
-  if (!videoRef && !isCasting) {
+  // Don't render if no video ref and no cast player
+  if (!videoRef && !isCasting && !castPlayerRef?.current) {
     return null;
   }
 
@@ -275,6 +305,21 @@ export function VideoControls({
   };
 
   const handlePlayPause = () => {
+    // Handle casting
+    if (isCasting && castPlayerRef?.current) {
+      programmaticActionRef.current = false;
+
+      if (isPlaying) {
+        castPlayerRef.current.pause();
+        onPause?.();
+      } else {
+        castPlayerRef.current.play();
+        onPlay?.();
+      }
+      return;
+    }
+
+    // Handle local video
     if (!videoRef?.current) return;
 
     programmaticActionRef.current = false;
@@ -307,6 +352,15 @@ export function VideoControls({
   };
 
   const handleSeekBackward = () => {
+    // Handle casting
+    if (isCasting && castPlayerRef?.current) {
+      const newTime = Math.max(0, castPlayerRef.current.getCurrentTime() - 10);
+      castPlayerRef.current.seekTo(newTime);
+      onSeek?.(newTime);
+      return;
+    }
+
+    // Handle local video
     if (!videoRef?.current) return;
 
     const newTime = Math.max(0, videoRef.current.currentTime - 10);
@@ -315,6 +369,15 @@ export function VideoControls({
   };
 
   const handleSeekForward = () => {
+    // Handle casting
+    if (isCasting && castPlayerRef?.current) {
+      const newTime = Math.min(duration, castPlayerRef.current.getCurrentTime() + 10);
+      castPlayerRef.current.seekTo(newTime);
+      onSeek?.(newTime);
+      return;
+    }
+
+    // Handle local video
     if (!videoRef?.current) return;
 
     const newTime = Math.min(duration, videoRef.current.currentTime + 10);
@@ -323,10 +386,12 @@ export function VideoControls({
   };
 
   const handleSliderMouseDown = (e: React.MouseEvent) => {
-    if (!isHost || !sliderRef.current || !videoRef?.current) return;
+    if (!isHost || !sliderRef.current) return;
+    // Need either a video ref or cast player
+    if (!isCasting && !videoRef?.current) return;
 
     setIsDragging(true);
-    handleSliderMove(e);
+    handleSliderMove(e, false); // Don't emit seek during drag
 
     const handleMouseMove = (e: MouseEvent) => {
       // Create a synthetic event-like object for handleSliderMove
@@ -335,11 +400,18 @@ export function VideoControls({
         currentTarget: sliderRef.current,
         preventDefault: () => e.preventDefault(),
       } as React.MouseEvent<HTMLDivElement>;
-      handleSliderMove(syntheticEvent);
+      handleSliderMove(syntheticEvent, false); // Don't emit seek during drag
     };
 
-    const handleMouseUp = () => {
+    const handleMouseUp = (e: MouseEvent) => {
       setIsDragging(false);
+      // Emit seek only on drag end
+      const syntheticEvent = {
+        clientX: e.clientX,
+        currentTarget: sliderRef.current,
+        preventDefault: () => e.preventDefault(),
+      } as React.MouseEvent<HTMLDivElement>;
+      handleSliderMove(syntheticEvent, true); // Emit seek on mouseup
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
@@ -348,8 +420,8 @@ export function VideoControls({
     document.addEventListener('mouseup', handleMouseUp);
   };
 
-  const handleSliderMove = (e: React.MouseEvent | MouseEvent) => {
-    if (!sliderRef.current || !videoRef?.current) return;
+  const handleSliderMove = (e: React.MouseEvent | MouseEvent, emitSeek = true) => {
+    if (!sliderRef.current) return;
 
     const rect = sliderRef.current.getBoundingClientRect();
     const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
@@ -357,8 +429,18 @@ export function VideoControls({
     const newTime = percentage * duration;
 
     setCurrentTime(newTime);
-    videoRef.current.currentTime = newTime;
-    onSeek?.(newTime);
+
+    // Apply seek to player
+    if (isCasting && castPlayerRef?.current) {
+      castPlayerRef.current.seekTo(newTime);
+    } else if (videoRef?.current) {
+      videoRef.current.currentTime = newTime;
+    }
+
+    // Only emit seek event on drag end to reduce network chatter
+    if (emitSeek) {
+      onSeek?.(newTime);
+    }
   };
 
   const formatTime = (time: number) => {
@@ -515,6 +597,7 @@ export function VideoControls({
             <Button
               variant="secondary"
               size={isFullscreen ? 'default' : 'sm'}
+              disabled={isCasting}
               onClick={handleMuteToggle}
               className={`${isFullscreen ? 'h-11 w-11' : 'h-9 w-9'} border border-border p-0 duration-200 transition-interactive ${
                 isMuted
@@ -577,6 +660,7 @@ export function VideoControls({
             <Button
               variant="secondary"
               size={isFullscreen ? 'default' : 'sm'}
+              disabled={isCasting}
               onClick={handleFullscreen}
               className={`${isFullscreen ? 'h-11 w-11' : 'h-9 w-9'} border border-border bg-black/60 p-0 text-white duration-200 transition-interactive hover:border-primary hover:bg-primary hover:text-primary-foreground`}
               title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
