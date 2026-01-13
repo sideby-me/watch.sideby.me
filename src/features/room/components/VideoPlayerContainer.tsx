@@ -54,6 +54,7 @@ interface VideoPlayerContainerProps {
   castDeviceName?: string;
   onCastClick?: () => void;
   castPlayerRef?: React.RefObject<CastPlayerRef | null>;
+  applyPendingSync?: () => void;
 }
 
 export function VideoPlayerContainer({
@@ -83,6 +84,7 @@ export function VideoPlayerContainer({
   castDeviceName,
   onCastClick,
   castPlayerRef,
+  applyPendingSync,
 }: VideoPlayerContainerProps) {
   const { socket } = useSocket();
   const [isChangeDialogOpen, setIsChangeDialogOpen] = useState(false);
@@ -385,6 +387,7 @@ export function VideoPlayerContainer({
             subtitleTracks={subtitleTracks}
             activeSubtitleTrack={activeSubtitleTrack}
             className="h-full w-full"
+            onLoadedMetadata={applyPendingSync}
           />
         );
       default:
@@ -400,6 +403,7 @@ export function VideoPlayerContainer({
             subtitleTracks={subtitleTracks}
             activeSubtitleTrack={activeSubtitleTrack}
             className="h-full w-full"
+            onReady={applyPendingSync}
             onError={err => {
               logClient({
                 level: 'error',

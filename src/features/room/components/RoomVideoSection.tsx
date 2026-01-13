@@ -45,6 +45,7 @@ interface RoomVideoSectionProps {
   castDeviceName: string | undefined;
   onCastClick: () => void;
   castPlayerRef?: RefObject<CastPlayerRef | null>;
+  applyPendingSync?: () => void;
 }
 
 export const RoomVideoSection = memo(function RoomVideoSection({
@@ -75,6 +76,7 @@ export const RoomVideoSection = memo(function RoomVideoSection({
   castDeviceName,
   onCastClick,
   castPlayerRef,
+  applyPendingSync,
 }: RoomVideoSectionProps) {
   if (videoUrl && videoType) {
     return (
@@ -105,6 +107,7 @@ export const RoomVideoSection = memo(function RoomVideoSection({
         castDeviceName={castDeviceName}
         onCastClick={onCastClick}
         castPlayerRef={castPlayerRef}
+        applyPendingSync={applyPendingSync}
       />
     );
   }
