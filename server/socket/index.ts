@@ -27,6 +27,10 @@ export function initSocketIO(httpServer: HTTPServer): IOServer {
       credentials: true,
     },
     path: '/api/socket/io',
+    transports: ['websocket'],
+    pingInterval: 15000,
+    pingTimeout: 12000,
+    perMessageDeflate: false,
   });
 
   io.on('connection', (socket: Socket<SocketEvents, SocketEvents, object, SocketData>) => {

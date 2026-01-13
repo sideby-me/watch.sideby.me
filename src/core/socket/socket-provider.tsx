@@ -44,7 +44,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
 
     const socketInstance = io(socketUrl, {
       path: '/api/socket/io',
-      transports: ['websocket', 'polling'],
+      transports: ['websocket'],
       autoConnect: true,
     });
     setSocket(socketInstance);
