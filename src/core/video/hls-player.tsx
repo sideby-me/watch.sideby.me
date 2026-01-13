@@ -160,6 +160,11 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
             // Use HLS.js for browsers that don't support HLS natively
             const hls = new Hls({
               enableWorker: true,
+              maxBufferLength: 60,
+              maxMaxBufferLength: 600,
+              maxBufferSize: 60 * 1000 * 1000,
+              startFragPrefetch: true,
+              maxLoadingDelay: 4,
               // Only force proxying when requested; otherwise let Hls.js hit the origin directly
               xhrSetup: shouldProxy
                 ? (xhr: XMLHttpRequest, url: string) => {
