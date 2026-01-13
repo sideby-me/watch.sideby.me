@@ -54,6 +54,7 @@ interface VideoPlayerContainerProps {
   castDeviceName?: string;
   onCastClick?: () => void;
   castPlayerRef?: React.RefObject<CastPlayerRef | null>;
+  applyPendingSync?: () => void;
 }
 
 export function VideoPlayerContainer({
@@ -83,6 +84,7 @@ export function VideoPlayerContainer({
   castDeviceName,
   onCastClick,
   castPlayerRef,
+  applyPendingSync,
 }: VideoPlayerContainerProps) {
   const { socket } = useSocket();
   const [isChangeDialogOpen, setIsChangeDialogOpen] = useState(false);
@@ -99,6 +101,18 @@ export function VideoPlayerContainer({
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const lastErrorReportRef = useRef<number>(0);
   const ERROR_REPORT_DEBOUNCE_MS = 4000;
+  const codecRetryAttemptedRef = useRef(false);
+
+  // Local proxy URL override for guests (doesn't affect room state)
+  const [localProxyUrl, setLocalProxyUrl] = useState<string | null>(null);
+  const guestProxyTriedRef = useRef(false);
+
+  // Initial load tracking for retry logic on very early errors
+  const isInitialLoadRef = useRef(true);
+  const initialLoadStartTimeRef = useRef<number>(Date.now());
+  const initialRetryAttemptedRef = useRef(false);
+  const [videoKey, setVideoKey] = useState(0);
+  const INITIAL_LOAD_GRACE_MS = 3000; // 3 second grace window
 
   // Check if video ref is ready
   useEffect(() => {
@@ -136,6 +150,15 @@ export function VideoPlayerContainer({
     setVideoSourceValid(true);
     setPlaybackError(null);
     setUsingProxy(videoUrl ? isProxiedUrl(videoUrl) : false);
+    // Reset guest local proxy state when room video URL changes
+    setLocalProxyUrl(null);
+    guestProxyTriedRef.current = false;
+    codecRetryAttemptedRef.current = false;
+    // Reset initial load tracking when video URL changes
+    isInitialLoadRef.current = true;
+    initialLoadStartTimeRef.current = Date.now();
+    initialRetryAttemptedRef.current = false;
+    setVideoKey(0);
   }, [videoUrl, videoType]);
 
   // Get video element ref for guest controls
@@ -348,8 +371,11 @@ export function VideoPlayerContainer({
             onPause={onPause}
             onSeeked={onSeeked}
             onError={err => {
+              const codecUnparsable = Boolean(err?.codecUnparsable);
               setPlaybackError(
-                `We couldn't load this HLS stream. It might be expired, behind a firewall (403), or just being a bit shy with our proxy. Time for a new link?`
+                codecUnparsable
+                  ? `Your browser couldn't parse this HLS stream. It might be a niche codec—try another browser/device or a different link that sticks to common H.264/AAC.`
+                  : `We couldn't load this HLS stream. It might be expired, behind a firewall (403), or just being a bit shy with our proxy. Time for a new link?`
               );
               setIsLoading(false);
               setVideoSourceValid(false);
@@ -359,20 +385,22 @@ export function VideoPlayerContainer({
                 domain: 'video',
                 event: 'hls_error',
                 message: 'HLS reported fatal error',
-                meta: { err },
+                meta: { err, codecUnparsable, usingProxy: isProxiedUrl(videoUrl) },
               });
             }}
             isHost={isHost}
             subtitleTracks={subtitleTracks}
             activeSubtitleTrack={activeSubtitleTrack}
             className="h-full w-full"
+            onLoadedMetadata={applyPendingSync}
           />
         );
       default:
         return (
           <VideoPlayer
+            key={`video-${videoKey}`}
             ref={videoPlayerRef}
-            src={videoUrl}
+            src={localProxyUrl || videoUrl}
             onPlay={onPlay}
             onPause={onPause}
             onSeeked={onSeeked}
@@ -380,59 +408,166 @@ export function VideoPlayerContainer({
             subtitleTracks={subtitleTracks}
             activeSubtitleTrack={activeSubtitleTrack}
             className="h-full w-full"
+            onReady={applyPendingSync}
             onError={err => {
               logClient({
                 level: 'error',
                 domain: 'video',
                 event: 'player_error',
                 message: 'VideoPlayer reported error',
-                meta: { code: err.code, message: err.message },
+                meta: {
+                  code: err.code,
+                  message: err.message,
+                  codecUnparsable: err.codecUnparsable,
+                  isHost,
+                  isInitialLoad: isInitialLoadRef.current,
+                  usingProxy,
+                  localProxy: Boolean(localProxyUrl),
+                },
               });
-              const now = Date.now();
-              if (socket && now - lastErrorReportRef.current > ERROR_REPORT_DEBOUNCE_MS) {
-                lastErrorReportRef.current = now;
-                try {
-                  const effectiveRoomId =
-                    roomId || (typeof window !== 'undefined' ? window.location.pathname.split('/').pop() || '' : '');
-                  if (effectiveRoomId) {
-                    socket.emit('video-error-report', {
-                      roomId: effectiveRoomId,
-                      code: err.code,
-                      message: err.message,
-                      currentSrc: videoUrl,
-                      currentTime:
-                        (videoPlayerRef.current?.getCurrentTime && videoPlayerRef.current.getCurrentTime()) || 0,
-                    });
-                  }
-                } catch (e) {
-                  logClient({
-                    level: 'warn',
-                    domain: 'video',
-                    event: 'error_report_fail',
-                    message: 'Failed to emit video-error-report',
-                    meta: { error: String(e) },
-                  });
-                }
-              }
-              const alreadyProxy = isProxiedUrl(videoUrl);
-              if (err.code === 4 && !usingProxy && !alreadyProxy && onVideoChange) {
+
+              // Check if we're within the initial load grace period for early retry
+              const isWithinGracePeriod =
+                isInitialLoadRef.current && Date.now() - initialLoadStartTimeRef.current < INITIAL_LOAD_GRACE_MS;
+
+              // For very early errors on initial load, attempt one retry before surfacing
+              if (isWithinGracePeriod && !initialRetryAttemptedRef.current && err.code === 4) {
                 logClient({
                   level: 'info',
                   domain: 'video',
-                  event: 'proxy_switch',
-                  message: 'Switching to proxy due to player error code 4',
+                  event: 'initial_load_retry',
+                  message: 'Retrying initial video load after early error (upstream might still be warming up)',
+                  meta: { code: err.code, elapsedMs: Date.now() - initialLoadStartTimeRef.current },
                 });
-                const proxyUrl = buildProxyUrl(
-                  videoUrl,
-                  typeof window !== 'undefined' ? window.location.href : undefined
-                );
-                onVideoChange(proxyUrl);
-                setUsingProxy(true);
-                setPlaybackError(null);
-              } else {
+                initialRetryAttemptedRef.current = true;
+                // Force component remount by changing key
+                setVideoKey(prev => prev + 1);
+                return;
+              }
+
+              // Mark initial load as complete after first real error handling
+              isInitialLoadRef.current = false;
+
+              // Only hosts should emit error reports to server (for room-level fallback)
+              const codecUnparsable = Boolean(err.codecUnparsable);
+
+              if (isHost) {
+                const now = Date.now();
+                if (socket && now - lastErrorReportRef.current > ERROR_REPORT_DEBOUNCE_MS) {
+                  lastErrorReportRef.current = now;
+                  try {
+                    const effectiveRoomId =
+                      roomId || (typeof window !== 'undefined' ? window.location.pathname.split('/').pop() || '' : '');
+                    if (effectiveRoomId) {
+                      socket.emit('video-error-report', {
+                        roomId: effectiveRoomId,
+                        code: err.code,
+                        message: err.message,
+                        currentSrc: videoUrl,
+                        currentTime:
+                          (videoPlayerRef.current?.getCurrentTime && videoPlayerRef.current.getCurrentTime()) || 0,
+                        isHost: true,
+                        codecUnparsable,
+                      });
+                    }
+                  } catch (e) {
+                    logClient({
+                      level: 'warn',
+                      domain: 'video',
+                      event: 'error_report_fail',
+                      message: 'Failed to emit video-error-report',
+                      meta: { error: String(e) },
+                    });
+                  }
+                }
+              }
+
+              // Keep alreadyProxy based on room videoUrl (not localProxyUrl)
+              const alreadyProxy = isProxiedUrl(videoUrl);
+
+              if (
+                codecUnparsable &&
+                (localProxyUrl || usingProxy) &&
+                !alreadyProxy &&
+                !codecRetryAttemptedRef.current
+              ) {
+                // One-time retry without proxy if we previously fell back to proxy locally and the demux/codec still fails.
+                codecRetryAttemptedRef.current = true;
+                logClient({
+                  level: 'info',
+                  domain: 'video',
+                  event: 'codec_retry_without_proxy',
+                  message: 'Retrying without proxy after codec/demux error',
+                  meta: { wasUsingProxy: usingProxy, hadLocalProxy: Boolean(localProxyUrl) },
+                });
+                setLocalProxyUrl(null);
+                setUsingProxy(false);
+                setVideoKey(prev => prev + 1);
+                return;
+              }
+
+              if (codecUnparsable) {
                 setPlaybackError(
-                  `Oof, the player didn't like that one. The link might be broken, blocked, or just unsupported. Do you have a backup link?`
+                  usingProxy || localProxyUrl
+                    ? `Your browser couldn't parse this video format, even after a proxy detour. Try a different browser or device, or drop in another link that sticks to mainstream codecs.`
+                    : `Your browser couldn't parse this video format. It might be using a quirky codec—try a different browser/device or swap in another link that stays within the usual formats.`
                 );
+                setIsLoading(false);
+                setVideoSourceValid(false);
+                return;
+              }
+
+              if (err.code === 4 && !usingProxy && !alreadyProxy) {
+                if (isHost && onVideoChange) {
+                  // Host: trigger room-level fallback
+                  logClient({
+                    level: 'info',
+                    domain: 'video',
+                    event: 'proxy_switch',
+                    message: 'Host switching to proxy due to player error code 4',
+                  });
+                  const proxyUrl = buildProxyUrl(
+                    videoUrl,
+                    typeof window !== 'undefined' ? window.location.href : undefined
+                  );
+                  onVideoChange(proxyUrl);
+                  setUsingProxy(true);
+                  setPlaybackError(null);
+                } else if (!guestProxyTriedRef.current) {
+                  // Guest: silently switch to proxy locally (no room state change)
+                  logClient({
+                    level: 'info',
+                    domain: 'video',
+                    event: 'guest_local_proxy',
+                    message: 'Guest switching to local proxy after error code 4',
+                  });
+                  guestProxyTriedRef.current = true;
+                  const proxyUrl = buildProxyUrl(
+                    videoUrl,
+                    typeof window !== 'undefined' ? window.location.href : undefined
+                  );
+                  setLocalProxyUrl(proxyUrl);
+                  setUsingProxy(true);
+                  setPlaybackError(null);
+                } else {
+                  // Guest already tried proxy, show error
+                  setPlaybackError(
+                    `We threw the proxy at it, but your browser is still refusing the handshake. A refresh might clear the cache, otherwise try a different browser.`
+                  );
+                  setIsLoading(false);
+                  setVideoSourceValid(false);
+                }
+              } else {
+                // Differentiate messaging for hosts vs guests
+                if (isHost) {
+                  setPlaybackError(
+                    `Oof, the player didn't like that one. The link might be broken, blocked, or just unsupported. Do you have a backup link?`
+                  );
+                } else {
+                  setPlaybackError(
+                    `Your browser is having a disagreement with this video stream. The classic "turn it off and on again" (refresh) usually fixes it.`
+                  );
+                }
                 setIsLoading(false);
                 setVideoSourceValid(false);
               }

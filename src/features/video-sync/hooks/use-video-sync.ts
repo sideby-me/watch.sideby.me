@@ -42,6 +42,7 @@ interface UseVideoSyncReturn {
   handleYouTubeStateChange: (state: number) => void;
   handleSetVideo: (videoUrl: string) => void;
   handleVideoControlAttempt: () => void;
+  applyPendingSync: () => void;
 }
 
 export function useVideoSync({
@@ -64,6 +65,7 @@ export function useVideoSync({
   });
   const lastPlayerTimeRef = useRef<number>(0);
   const syncCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingSyncRef = useRef<{ targetTime: number; isPlaying: boolean | null; timestamp: number } | null>(null);
 
   // Get current player based on video type (prioritize cast player when casting)
   const getCurrentPlayer = useCallback(() => {
@@ -97,6 +99,21 @@ export function useVideoSync({
       const player = getCurrentPlayer();
       if (!player) return;
 
+      // For MP4/HLS, check if player has loaded metadata before syncing
+      if (room.videoType !== 'youtube') {
+        const videoElement = (player as { getVideoElement?: () => HTMLVideoElement | null }).getVideoElement?.();
+        if (videoElement && videoElement.readyState < 1) {
+          // Player not ready, queue sync for later
+          logDebug('video', 'sync_queued', 'Player not ready, queueing sync for after metadata load', {
+            targetTime,
+            readyState: videoElement.readyState,
+          });
+          pendingSyncRef.current = { targetTime, isPlaying, timestamp };
+          return;
+        }
+      }
+      pendingSyncRef.current = null;
+
       const adjustedTime = calculateCurrentTime({
         currentTime: targetTime,
         isPlaying: isPlaying ?? false,
@@ -106,6 +123,15 @@ export function useVideoSync({
       // Check if we need to sync
       const currentTime = player.getCurrentTime();
       const syncDiff = Math.abs(currentTime - adjustedTime);
+
+      // Detect large seek for observability (potential decoder stress)
+      const LARGE_SEEK_THRESHOLD_SECONDS = 30;
+      if (syncDiff > LARGE_SEEK_THRESHOLD_SECONDS && room.videoType !== 'youtube') {
+        logDebug('video', 'sync_large_seek', `Large seek detected: ${syncDiff.toFixed(1)}s`, {
+          from: currentTime,
+          to: adjustedTime,
+        });
+      }
 
       if (syncDiff > 1.5) {
         logDebug(
@@ -327,6 +353,17 @@ export function useVideoSync({
     logDebug('video', 'control_attempt', 'Video control attempted by non-host');
   }, []);
 
+  // Apply any pending sync that was queued while player was loading
+  const applyPendingSync = useCallback(() => {
+    if (pendingSyncRef.current) {
+      const { targetTime, isPlaying, timestamp } = pendingSyncRef.current;
+      logDebug('video', 'sync_apply_pending', 'Applying queued sync after player became ready', { targetTime });
+      pendingSyncRef.current = null;
+      // Re-invoke syncVideo now that player should be ready
+      syncVideo(targetTime, isPlaying, timestamp);
+    }
+  }, [syncVideo]);
+
   return {
     syncVideo,
     startSyncCheck,
@@ -337,5 +374,6 @@ export function useVideoSync({
     handleYouTubeStateChange,
     handleSetVideo,
     handleVideoControlAttempt,
+    applyPendingSync,
   };
 }

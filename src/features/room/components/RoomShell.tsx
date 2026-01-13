@@ -204,6 +204,7 @@ export function RoomShell({ roomId }: RoomShellProps) {
     handleVideoSeek,
     handleYouTubeStateChange,
     handleSetVideo,
+    applyPendingSync,
   } = useVideoSync({
     room: core.room,
     currentUser: core.currentUser,
@@ -550,6 +551,7 @@ export function RoomShell({ roomId }: RoomShellProps) {
               }
             }}
             castPlayerRef={castPlayerRef}
+            applyPendingSync={applyPendingSync}
           />
         </div>
 

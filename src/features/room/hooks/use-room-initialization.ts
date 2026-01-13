@@ -135,6 +135,13 @@ export function useRoomInitialization(options: UseRoomInitializationOptions): vo
 
     // Only apply if room doesn't already have a video
     if (!room.videoUrl) {
+      logClient({
+        level: 'info',
+        domain: 'video',
+        event: 'initial_video_apply',
+        message: 'Applying initial video from query params',
+        meta: { initialVideoUrl, roomJoined: !!room, timestamp: Date.now() },
+      });
       handleSetVideo(initialVideoUrl);
       initialVideoAppliedRef.current = true;
     }
@@ -154,21 +161,25 @@ export function useRoomInitialization(options: UseRoomInitializationOptions): vo
 
     autoplayTriggeredRef.current = true;
 
+    logDebug('video', 'autoplay_trigger', 'Attempting autoplay from query param');
+
     try {
       const maybePromise = player.play?.();
       if (maybePromise && typeof maybePromise.then === 'function') {
         maybePromise
           .then(() => {
+            logDebug('video', 'autoplay_success', 'Autoplay succeeded');
             handleVideoPlay();
           })
           .catch(() => {
-            // Autoplay blocked by browser
+            // Autoplay blocked by browser - this is expected behavior, not a playback error
+            logDebug('video', 'autoplay_blocked', 'Autoplay was blocked by browser (user interaction required)');
           });
       } else {
         handleVideoPlay();
       }
     } catch {
-      // Ignore autoplay errors
+      logDebug('video', 'autoplay_error', 'Autoplay threw an error');
     }
   }, [room, currentUser, autoplayParam, autoplayTriggeredRef, getActivePlayer, handleVideoPlay]);
 }
