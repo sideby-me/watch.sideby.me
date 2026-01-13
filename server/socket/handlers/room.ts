@@ -10,7 +10,7 @@ import {
 import { SocketEvents, SocketData } from '../types';
 import { validateData, emitSystemMessage } from '../utils';
 import { handleServiceError } from '../error-handler';
-import { RoomService, createSocketContext } from '@/server/services';
+import { RoomService, createSocketContext, VideoChatService } from '@/server/services';
 import { redisService } from '@/server/redis';
 import { PasscodeRequiredError } from '@/server/errors';
 import { logEvent } from '@/server/logger';
@@ -46,6 +46,27 @@ export function registerRoomHandlers(socket: Socket<SocketEvents, SocketEvents, 
     }
   }
 
+  // Video chat participant count helper (so late joiners immediately see current video occupancy)
+  function emitVideoChatParticipantCountToSocket(roomId: string) {
+    try {
+      const { sockets: participants } = VideoChatService.computeValidParticipants(io, roomId);
+      socket.emit('videochat-participant-count', {
+        roomId,
+        count: participants.length,
+        max: VideoChatService.getMaxParticipants(),
+      });
+    } catch (err) {
+      logEvent({
+        level: 'warn',
+        domain: 'room',
+        event: 'videochat_count_error',
+        message: 'room.join: failed to emit video chat participant count',
+        roomId,
+        meta: { error: String(err) },
+      });
+    }
+  }
+
   // Create room
   socket.on('create-room', async data => {
     try {
@@ -69,6 +90,7 @@ export function registerRoomHandlers(socket: Socket<SocketEvents, SocketEvents, 
       socket.emit('room-created', { roomId: result.room.id, room: result.room, hostToken: result.hostToken });
       socket.emit('room-joined', { room: result.room, user: result.user });
       emitVoiceParticipantCountToSocket(result.room.id);
+      emitVideoChatParticipantCountToSocket(result.room.id);
 
       logEvent({
         level: 'info',
@@ -119,6 +141,7 @@ export function registerRoomHandlers(socket: Socket<SocketEvents, SocketEvents, 
             });
             socket.emit('room-joined', { room, user: existingUser });
             emitVoiceParticipantCountToSocket(data.roomId);
+            emitVideoChatParticipantCountToSocket(data.roomId);
             return;
           }
         }
@@ -169,6 +192,7 @@ export function registerRoomHandlers(socket: Socket<SocketEvents, SocketEvents, 
       }
 
       emitVoiceParticipantCountToSocket(result.room.id);
+      emitVideoChatParticipantCountToSocket(result.room.id);
       logEvent({
         level: 'info',
         domain: 'room',
@@ -316,6 +340,7 @@ export function registerRoomHandlers(socket: Socket<SocketEvents, SocketEvents, 
       }
 
       emitVoiceParticipantCountToSocket(result.room.id);
+      emitVideoChatParticipantCountToSocket(result.room.id);
       logEvent({
         level: 'info',
         domain: 'room',
