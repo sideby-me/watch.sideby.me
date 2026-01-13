@@ -70,7 +70,12 @@ class ChatServiceImpl {
   }
 
   // Persist a prepared chat message to Redis and log success.
-  async persistMessage(roomId: string, chatMessage: ChatMessage, ctx: SocketContext, replyTo?: SendMessageRequest['replyTo']): Promise<void> {
+  async persistMessage(
+    roomId: string,
+    chatMessage: ChatMessage,
+    ctx: SocketContext,
+    replyTo?: SendMessageRequest['replyTo']
+  ): Promise<void> {
     await redisService.chat.addChatMessage(roomId, chatMessage);
 
     logEvent({
