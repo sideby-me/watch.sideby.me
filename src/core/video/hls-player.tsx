@@ -54,6 +54,7 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
     const programmaticActionRef = useRef(false);
     const proxyTriedRef = useRef<boolean>(!!useProxy);
     const mediaErrorRecoveryRef = useRef<number>(0);
+    const reattachAttemptedRef = useRef<boolean>(false);
     const MAX_MEDIA_ERROR_RECOVERIES = 2;
     const [shouldProxy, setShouldProxy] = useState<boolean>(!!useProxy);
 
@@ -123,6 +124,7 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
       // Reset proxy state and media error recovery counter when src changes
       proxyTriedRef.current = initialProxy;
       mediaErrorRecoveryRef.current = 0;
+      reattachAttemptedRef.current = false;
       setShouldProxy(initialProxy);
 
       // Check if HLS.js is supported
@@ -206,7 +208,14 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
                 return;
               }
 
-              logVideo('hls_error', 'HLS error', { data });
+              logVideo('hls_error', 'HLS error', {
+                type: errorData.type,
+                details: errorData.details,
+                fatal: errorData.fatal,
+                url: errorData.url,
+                responseCode: errorData.response?.code,
+                currentTime: video.currentTime,
+              });
 
               // Attempt media error recovery before giving up
               if (errorData.type === 'mediaError' && errorData.fatal) {
@@ -218,6 +227,19 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
                     details: errorData.details,
                   });
                   hls.recoverMediaError();
+                  return;
+                }
+                // Try detach+reattach as last resort before giving up
+                if (!reattachAttemptedRef.current) {
+                  reattachAttemptedRef.current = true;
+                  logVideo('hls_reattach', 'Attempting HLS detach+reattach after media error exhaustion', {
+                    src,
+                    details: errorData.details,
+                  });
+                  hls.destroy();
+                  hlsRef.current = null;
+                  // Re-trigger loadHLS after a short delay
+                  setTimeout(() => loadHLS(), 500);
                   return;
                 }
               }

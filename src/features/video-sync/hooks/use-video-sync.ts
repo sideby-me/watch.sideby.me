@@ -124,6 +124,15 @@ export function useVideoSync({
       const currentTime = player.getCurrentTime();
       const syncDiff = Math.abs(currentTime - adjustedTime);
 
+      // Detect large seek for observability (potential decoder stress)
+      const LARGE_SEEK_THRESHOLD_SECONDS = 30;
+      if (syncDiff > LARGE_SEEK_THRESHOLD_SECONDS && room.videoType !== 'youtube') {
+        logDebug('video', 'sync_large_seek', `Large seek detected: ${syncDiff.toFixed(1)}s`, {
+          from: currentTime,
+          to: adjustedTime,
+        });
+      }
+
       if (syncDiff > 1.5) {
         logDebug(
           'video',
