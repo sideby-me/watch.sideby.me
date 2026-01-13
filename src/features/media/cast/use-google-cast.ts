@@ -34,7 +34,7 @@ export interface UseGoogleCastReturn {
   isCasting: boolean;
   isAvailable: boolean;
   castPlayerRef: React.RefObject<CastPlayerRef | null>;
-  startCasting: (mediaUrl: string, contentType?: string) => Promise<void>;
+  startCasting: (mediaUrl: string, contentType?: string, startTime?: number) => Promise<void>;
   stopCasting: () => void;
   requestSession: () => Promise<void>;
 }
@@ -356,8 +356,8 @@ export function useGoogleCast(options: UseGoogleCastOptions = {}): UseGoogleCast
 
   // Start casting a specific media URL
   const startCasting = useCallback(
-    async (mediaUrl: string, contentType?: string) => {
-      logCast('start_casting', 'startCasting called', { mediaUrl, contentType });
+    async (mediaUrl: string, contentType?: string, startTime?: number) => {
+      logCast('start_casting', 'startCasting called', { mediaUrl, contentType, startTime });
 
       const context = castContextRef.current;
       if (!context) {
@@ -402,14 +402,14 @@ export function useGoogleCast(options: UseGoogleCastOptions = {}): UseGoogleCast
           }
         }
 
-        logCast('load_media', 'Loading media', { url: mediaUrl, contentType: effectiveContentType });
+        logCast('load_media', 'Loading media', { url: mediaUrl, contentType: effectiveContentType, startTime });
 
         const mediaInfo = new chrome.cast.media.MediaInfo(mediaUrl, effectiveContentType);
         mediaInfo.streamType = chrome.cast.media.StreamType.BUFFERED;
 
         const request = new chrome.cast.media.LoadRequest(mediaInfo);
         request.autoplay = true;
-        request.currentTime = 0;
+        request.currentTime = startTime || 0;
 
         await session.loadMedia(request);
         logCast('load_success', 'Media loaded on Chromecast successfully');

@@ -153,6 +153,15 @@ export function RoomShell({ roomId }: RoomShellProps) {
   }>({ onPlay: null, onPause: null, onSeek: null });
 
   // Google Cast initialized first to provide isCasting state
+  const getCurrentTime = useCallback(() => {
+    return (
+      youtubePlayerRef.current?.getCurrentTime() ??
+      hlsPlayerRef.current?.getCurrentTime() ??
+      videoPlayerRef.current?.getCurrentTime() ??
+      0
+    );
+  }, []);
+
   const {
     isCasting,
     isAvailable: isCastAvailable,
@@ -533,7 +542,11 @@ export function RoomShell({ roomId }: RoomShellProps) {
               if (isCasting) {
                 stopCasting();
               } else {
-                requestCastSession();
+                if (effectiveVideoUrl) {
+                  startCasting(effectiveVideoUrl, undefined, getCurrentTime());
+                } else {
+                  requestCastSession();
+                }
               }
             }}
             castPlayerRef={castPlayerRef}
