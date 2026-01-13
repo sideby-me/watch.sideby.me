@@ -63,6 +63,7 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
     const proxyTriedRef = useRef<boolean>(!!useProxy);
     const mediaErrorRecoveryRef = useRef<number>(0);
     const reattachAttemptedRef = useRef<boolean>(false);
+    const networkErrorCountRef = useRef<number>(0);
     const MAX_MEDIA_ERROR_RECOVERIES = 2;
     const [shouldProxy, setShouldProxy] = useState<boolean>(!!useProxy);
 
@@ -133,6 +134,7 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
       proxyTriedRef.current = initialProxy;
       mediaErrorRecoveryRef.current = 0;
       reattachAttemptedRef.current = false;
+      networkErrorCountRef.current = 0;
       setShouldProxy(initialProxy);
 
       // Check if HLS.js is supported
@@ -211,6 +213,10 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
                 errorData.details === 'fragLoadError' ||
                 errorData.details === 'manifestLoadError';
 
+              if (networkish) {
+                networkErrorCountRef.current += 1;
+              }
+
               const codecUnparsable = Boolean(
                 errorData.details &&
                   ['fragParsingError', 'manifestParsingError', 'levelParsingError', 'demux', 'parse'].some(token =>
@@ -229,7 +235,12 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
               const responseCode = errorData.response?.code;
               const hardHttpBlock = networkish && responseCode !== undefined && responseCode >= 400;
 
-              if (hardHttpBlock) {
+              const fatalishNetwork =
+                networkish &&
+                proxyTriedRef.current &&
+                (errorData.fatal || hardHttpBlock || networkErrorCountRef.current > 1);
+
+              if (fatalishNetwork) {
                 onError?.({
                   type: errorData.type,
                   details: errorData.details,

@@ -372,6 +372,38 @@ export function VideoPlayerContainer({
             onSeeked={onSeeked}
             onError={err => {
               const codecUnparsable = Boolean(err?.codecUnparsable);
+              const responseCode = err?.responseCode;
+
+              if (isHost) {
+                const now = Date.now();
+                if (socket && now - lastErrorReportRef.current > ERROR_REPORT_DEBOUNCE_MS) {
+                  lastErrorReportRef.current = now;
+                  try {
+                    const effectiveRoomId =
+                      roomId || (typeof window !== 'undefined' ? window.location.pathname.split('/').pop() || '' : '');
+                    if (effectiveRoomId) {
+                      socket.emit('video-error-report', {
+                        roomId: effectiveRoomId,
+                        code: responseCode,
+                        message: err?.details || err?.type || 'hls_error',
+                        currentSrc: videoUrl,
+                        currentTime: hlsPlayerRef.current?.getCurrentTime?.() || 0,
+                        isHost: true,
+                        codecUnparsable,
+                      });
+                    }
+                  } catch (e) {
+                    logClient({
+                      level: 'warn',
+                      domain: 'video',
+                      event: 'error_report_fail',
+                      message: 'Failed to emit video-error-report (HLS)',
+                      meta: { error: String(e) },
+                    });
+                  }
+                }
+              }
+
               setPlaybackError(
                 codecUnparsable
                   ? `Your browser couldn't parse this HLS stream. It might be a niche codec—try another browser/device or a different link that sticks to common H.264/AAC.`
