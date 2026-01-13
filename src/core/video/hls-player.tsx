@@ -53,6 +53,8 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
     const hlsRef = useRef<{ destroy: () => void } | null>(null);
     const programmaticActionRef = useRef(false);
     const proxyTriedRef = useRef<boolean>(!!useProxy);
+    const mediaErrorRecoveryRef = useRef<number>(0);
+    const MAX_MEDIA_ERROR_RECOVERIES = 2;
     const [shouldProxy, setShouldProxy] = useState<boolean>(!!useProxy);
 
     // Inject native <track> elements for iOS Safari native HLS playback
@@ -118,8 +120,9 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
 
       const initialProxy = !!useProxy || hasEmbeddedHeaders || looksLikeWorkerHost;
 
-      // Reset proxy state when src changes to allow fresh retry attempts
+      // Reset proxy state and media error recovery counter when src changes
       proxyTriedRef.current = initialProxy;
+      mediaErrorRecoveryRef.current = 0;
       setShouldProxy(initialProxy);
 
       // Check if HLS.js is supported
@@ -204,6 +207,20 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
               }
 
               logVideo('hls_error', 'HLS error', { data });
+
+              // Attempt media error recovery before giving up
+              if (errorData.type === 'mediaError' && errorData.fatal) {
+                if (mediaErrorRecoveryRef.current < MAX_MEDIA_ERROR_RECOVERIES) {
+                  mediaErrorRecoveryRef.current++;
+                  logVideo('hls_media_recovery', 'Attempting HLS media error recovery', {
+                    attempt: mediaErrorRecoveryRef.current,
+                    maxAttempts: MAX_MEDIA_ERROR_RECOVERIES,
+                    details: errorData.details,
+                  });
+                  hls.recoverMediaError();
+                  return;
+                }
+              }
 
               if (errorData.fatal) {
                 onError?.({

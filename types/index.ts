@@ -97,6 +97,7 @@ export interface SocketEvents {
     message?: string;
     currentSrc: string;
     currentTime?: number;
+    isHost?: boolean;
   }) => void;
 
   // Chat events

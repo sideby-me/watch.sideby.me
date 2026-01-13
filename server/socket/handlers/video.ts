@@ -166,8 +166,17 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
   });
 
   // Video error report (client reports playback failure)
-  socket.on('video-error-report', async ({ roomId, code, message, currentSrc, currentTime }) => {
+  socket.on('video-error-report', async ({ roomId, code, message, currentSrc, currentTime, isHost }) => {
     try {
+      logEvent({
+        level: 'warn',
+        domain: 'video',
+        event: 'error_report_received',
+        message: 'video.error: client reported playback error',
+        roomId,
+        meta: { code, message, currentSrc, currentTime, isHost },
+      });
+
       const result = await VideoService.handleErrorReport({
         roomId,
         code,
