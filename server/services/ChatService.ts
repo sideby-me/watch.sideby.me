@@ -41,11 +41,10 @@ export interface ToggleReactionResult {
 // ChatService
 
 class ChatServiceImpl {
-  // Send a chat message.
-  async sendMessage(request: SendMessageRequest, ctx: SocketContext): Promise<SendMessageResult> {
+  // Prepare a chat message and perform permission checks without persisting.
+  async prepareMessage(request: SendMessageRequest, ctx: SocketContext): Promise<ChatMessage> {
     const { roomId, message, replyTo } = request;
 
-    // Check if chat is locked for non-hosts
     const room = await redisService.rooms.getRoom(roomId);
     if (room?.settings?.isChatLocked) {
       const user = room.users.find(u => u.id === ctx.userId);
@@ -67,16 +66,33 @@ class ChatServiceImpl {
       replyTo,
     };
 
+    return chatMessage;
+  }
+
+  // Persist a prepared chat message to Redis and log success.
+  async persistMessage(
+    roomId: string,
+    chatMessage: ChatMessage,
+    ctx: SocketContext,
+    replyTo?: SendMessageRequest['replyTo']
+  ): Promise<void> {
     await redisService.chat.addChatMessage(roomId, chatMessage);
 
     logEvent({
       level: 'info',
       domain: 'chat',
       event: 'message_sent',
-      message: `chat.send: ${ctx.userName} dropped a message${replyTo ? ' (reply)' : ''}`,
+      message: `chat.send: ${ctx.userName || 'Unknown'} dropped a message${replyTo ? ' (reply)' : ''}`,
       roomId,
       userId: ctx.userId,
     });
+  }
+
+  // Send a chat message.
+  async sendMessage(request: SendMessageRequest, ctx: SocketContext): Promise<SendMessageResult> {
+    const chatMessage = await this.prepareMessage(request, ctx);
+
+    await this.persistMessage(request.roomId, chatMessage, ctx, request.replyTo);
 
     return { message: chatMessage };
   }

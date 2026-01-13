@@ -60,16 +60,16 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
         ctx
       );
 
-      if (result.shouldEmitSystemMessage) {
-        const room = await import('@/server/redis').then(m => m.redisService.rooms.getRoom(validatedData.roomId));
-        const currentUser = room?.users.find(u => u.id === ctx.userId);
-        emitSystemMessage(io, validatedData.roomId, 'Video resumed', 'play', { userName: currentUser?.name });
-      }
-
+      // Broadcast play event immediately based on computed state.
       socket.to(validatedData.roomId).emit('video-played', {
         currentTime: result.videoState.currentTime,
         timestamp: result.videoState.lastUpdateTime,
       });
+
+      // Emit system message without an extra Redis hop.
+      if (result.shouldEmitSystemMessage && socket.data.userName) {
+        emitSystemMessage(io, validatedData.roomId, 'Video resumed', 'play', { userName: socket.data.userName });
+      }
     } catch (error) {
       handleServiceError(error, socket);
     }
@@ -98,9 +98,9 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
       });
 
       if (result.shouldEmitSystemMessage) {
-        const room = await import('@/server/redis').then(m => m.redisService.rooms.getRoom(validatedData.roomId));
-        const currentUser = room?.users.find(u => u.id === ctx.userId);
-        emitSystemMessage(io, validatedData.roomId, 'Video paused', 'pause', { userName: currentUser?.name });
+        if (socket.data.userName) {
+          emitSystemMessage(io, validatedData.roomId, 'Video paused', 'pause', { userName: socket.data.userName });
+        }
       }
     } catch (error) {
       handleServiceError(error, socket);

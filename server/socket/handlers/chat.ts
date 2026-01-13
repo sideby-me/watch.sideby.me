@@ -97,16 +97,33 @@ export function registerChatHandlers(socket: Socket<SocketEvents, SocketEvents, 
         return;
       }
 
-      const result = await ChatService.sendMessage(
+      const extendedCtx = { ...ctx, userName: socket.data.userName };
+
+      // Prepare message (includes permission checks) but do not block on persistence.
+      const message = await ChatService.prepareMessage(
         {
           roomId: validatedData.roomId,
           message: validatedData.message,
           replyTo: validatedData.replyTo,
         },
-        { ...ctx, userName: socket.data.userName }
+        extendedCtx
       );
 
-      io.to(validatedData.roomId).emit('new-message', { message: result.message });
+      // Emit to room immediately for real-time responsiveness.
+      io.to(validatedData.roomId).emit('new-message', { message });
+
+      // Persist message asynchronously; failures are logged but do not block the emit.
+      ChatService.persistMessage(validatedData.roomId, message, extendedCtx, validatedData.replyTo).catch(error => {
+        logEvent({
+          level: 'error',
+          domain: 'chat',
+          event: 'message_persist_failed',
+          message: 'chat.persist: failed to store message',
+          roomId: validatedData.roomId,
+          userId: extendedCtx.userId,
+          meta: { error: String(error) },
+        });
+      });
     } catch (error) {
       handleServiceError(error, socket);
     }
