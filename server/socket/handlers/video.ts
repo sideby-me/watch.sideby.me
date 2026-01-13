@@ -166,44 +166,48 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
   });
 
   // Video error report (client reports playback failure)
-  socket.on('video-error-report', async ({ roomId, code, message, currentSrc, currentTime, isHost }) => {
-    try {
-      logEvent({
-        level: 'warn',
-        domain: 'video',
-        event: 'error_report_received',
-        message: 'video.error: client reported playback error',
-        roomId,
-        meta: { code, message, currentSrc, currentTime, isHost },
-      });
-
-      const result = await VideoService.handleErrorReport({
-        roomId,
-        code,
-        message,
-        currentSrc,
-        currentTime,
-      });
-
-      if (result.fallbackApplied && result.newPlaybackUrl && result.videoMeta) {
-        io.to(roomId).emit('video-set', {
-          videoUrl: result.newPlaybackUrl,
-          videoType: result.videoType!,
-          videoMeta: result.videoMeta,
+  socket.on(
+    'video-error-report',
+    async ({ roomId, code, message, currentSrc, currentTime, isHost, codecUnparsable }) => {
+      try {
+        logEvent({
+          level: 'warn',
+          domain: 'video',
+          event: 'error_report_received',
+          message: 'video.error: client reported playback error',
+          roomId,
+          meta: { code, message, currentSrc, currentTime, isHost, codecUnparsable },
         });
-        emitSystemMessage(io, roomId, 'Video source changed', 'video-change', {
-          videoUrl: result.newPlaybackUrl,
+
+        const result = await VideoService.handleErrorReport({
+          roomId,
+          code,
+          message,
+          currentSrc,
+          currentTime,
+          codecUnparsable,
+        });
+
+        if (result.fallbackApplied && result.newPlaybackUrl && result.videoMeta) {
+          io.to(roomId).emit('video-set', {
+            videoUrl: result.newPlaybackUrl,
+            videoType: result.videoType!,
+            videoMeta: result.videoMeta,
+          });
+          emitSystemMessage(io, roomId, 'Video source changed', 'video-change', {
+            videoUrl: result.newPlaybackUrl,
+          });
+        }
+      } catch (err) {
+        logEvent({
+          level: 'error',
+          domain: 'video',
+          event: 'error_report_failed',
+          message: 'video.error: failed to handle error report',
+          roomId,
+          meta: { error: String(err) },
         });
       }
-    } catch (err) {
-      logEvent({
-        level: 'error',
-        domain: 'video',
-        event: 'error_report_failed',
-        message: 'video.error: failed to handle error report',
-        roomId,
-        meta: { error: String(err) },
-      });
     }
-  });
+  );
 }

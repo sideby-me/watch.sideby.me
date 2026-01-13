@@ -101,6 +101,7 @@ export function VideoPlayerContainer({
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const lastErrorReportRef = useRef<number>(0);
   const ERROR_REPORT_DEBOUNCE_MS = 4000;
+  const codecRetryAttemptedRef = useRef(false);
 
   // Local proxy URL override for guests (doesn't affect room state)
   const [localProxyUrl, setLocalProxyUrl] = useState<string | null>(null);
@@ -152,6 +153,7 @@ export function VideoPlayerContainer({
     // Reset guest local proxy state when room video URL changes
     setLocalProxyUrl(null);
     guestProxyTriedRef.current = false;
+    codecRetryAttemptedRef.current = false;
     // Reset initial load tracking when video URL changes
     isInitialLoadRef.current = true;
     initialLoadStartTimeRef.current = Date.now();
@@ -369,8 +371,11 @@ export function VideoPlayerContainer({
             onPause={onPause}
             onSeeked={onSeeked}
             onError={err => {
+              const codecUnparsable = Boolean(err?.codecUnparsable);
               setPlaybackError(
-                `We couldn't load this HLS stream. It might be expired, behind a firewall (403), or just being a bit shy with our proxy. Time for a new link?`
+                codecUnparsable
+                  ? `Your browser couldn't parse this HLS stream. It might be a niche codec—try another browser/device or a different link that sticks to common H.264/AAC.`
+                  : `We couldn't load this HLS stream. It might be expired, behind a firewall (403), or just being a bit shy with our proxy. Time for a new link?`
               );
               setIsLoading(false);
               setVideoSourceValid(false);
@@ -380,7 +385,7 @@ export function VideoPlayerContainer({
                 domain: 'video',
                 event: 'hls_error',
                 message: 'HLS reported fatal error',
-                meta: { err },
+                meta: { err, codecUnparsable, usingProxy: isProxiedUrl(videoUrl) },
               });
             }}
             isHost={isHost}
@@ -410,7 +415,15 @@ export function VideoPlayerContainer({
                 domain: 'video',
                 event: 'player_error',
                 message: 'VideoPlayer reported error',
-                meta: { code: err.code, message: err.message, isHost, isInitialLoad: isInitialLoadRef.current },
+                meta: {
+                  code: err.code,
+                  message: err.message,
+                  codecUnparsable: err.codecUnparsable,
+                  isHost,
+                  isInitialLoad: isInitialLoadRef.current,
+                  usingProxy,
+                  localProxy: Boolean(localProxyUrl),
+                },
               });
 
               // Check if we're within the initial load grace period for early retry
@@ -436,6 +449,8 @@ export function VideoPlayerContainer({
               isInitialLoadRef.current = false;
 
               // Only hosts should emit error reports to server (for room-level fallback)
+              const codecUnparsable = Boolean(err.codecUnparsable);
+
               if (isHost) {
                 const now = Date.now();
                 if (socket && now - lastErrorReportRef.current > ERROR_REPORT_DEBOUNCE_MS) {
@@ -452,6 +467,7 @@ export function VideoPlayerContainer({
                         currentTime:
                           (videoPlayerRef.current?.getCurrentTime && videoPlayerRef.current.getCurrentTime()) || 0,
                         isHost: true,
+                        codecUnparsable,
                       });
                     }
                   } catch (e) {
@@ -468,6 +484,38 @@ export function VideoPlayerContainer({
 
               // Keep alreadyProxy based on room videoUrl (not localProxyUrl)
               const alreadyProxy = isProxiedUrl(videoUrl);
+
+              if (
+                codecUnparsable &&
+                (localProxyUrl || usingProxy) &&
+                !alreadyProxy &&
+                !codecRetryAttemptedRef.current
+              ) {
+                // One-time retry without proxy if we previously fell back to proxy locally and the demux/codec still fails.
+                codecRetryAttemptedRef.current = true;
+                logClient({
+                  level: 'info',
+                  domain: 'video',
+                  event: 'codec_retry_without_proxy',
+                  message: 'Retrying without proxy after codec/demux error',
+                  meta: { wasUsingProxy: usingProxy, hadLocalProxy: Boolean(localProxyUrl) },
+                });
+                setLocalProxyUrl(null);
+                setUsingProxy(false);
+                setVideoKey(prev => prev + 1);
+                return;
+              }
+
+              if (codecUnparsable) {
+                setPlaybackError(
+                  usingProxy || localProxyUrl
+                    ? `Your browser couldn't parse this video format, even after a proxy detour. Try a different browser or device, or drop in another link that sticks to mainstream codecs.`
+                    : `Your browser couldn't parse this video format. It might be using a quirky codec—try a different browser/device or swap in another link that stays within the usual formats.`
+                );
+                setIsLoading(false);
+                setVideoSourceValid(false);
+                return;
+              }
 
               if (err.code === 4 && !usingProxy && !alreadyProxy) {
                 if (isHost && onVideoChange) {

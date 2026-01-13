@@ -98,6 +98,7 @@ export interface SocketEvents {
     currentSrc: string;
     currentTime?: number;
     isHost?: boolean;
+    codecUnparsable?: boolean;
   }) => void;
 
   // Chat events

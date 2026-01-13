@@ -12,7 +12,7 @@ interface VideoPlayerProps {
   onPause?: () => void;
   onTimeUpdate?: (currentTime: number, duration: number) => void;
   onSeeked?: () => void;
-  onError?: (info: { code?: number; message?: string; src: string }) => void;
+  onError?: (info: { code?: number; message?: string; src: string; codecUnparsable?: boolean }) => void;
   className?: string;
   isHost?: boolean;
   subtitleTracks?: SubtitleTrack[];
@@ -151,16 +151,28 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(
 
           const errorMessage = errorMessages[error.code as keyof typeof errorMessages] || 'Unknown video error';
 
+          const messageText = error.message || errorMessage;
+
+          const codecUnparsable =
+            error.code === 4 &&
+            Boolean(
+              messageText &&
+                ['MEDIA_ELEMENT_ERROR', 'Format error', 'DEMUXER_ERROR', 'COULD_NOT_PARSE', 'decode'].some(token =>
+                  messageText.toUpperCase().includes(token)
+                )
+            );
+
           logVideo('video_error_details', 'Video error details', {
             code: error.code,
-            message: error.message || errorMessage,
+            message: messageText,
             src: video.src,
             networkState: video.networkState,
             readyState: video.readyState,
+            codecUnparsable,
           });
 
           // Notify container for potential fallback like proxy
-          onError?.({ code: error.code, message: error.message || errorMessage, src: video.src });
+          onError?.({ code: error.code, message: messageText, src: video.src, codecUnparsable });
         }
       };
 

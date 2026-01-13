@@ -30,6 +30,7 @@ export interface VideoErrorReportRequest {
   message?: string;
   currentSrc: string;
   currentTime?: number;
+  codecUnparsable?: boolean;
 }
 
 export interface SetVideoResult {
@@ -253,7 +254,7 @@ class VideoServiceImpl {
    *    (handles expired URLs or changed CDN endpoints)
    */
   async handleErrorReport(request: VideoErrorReportRequest): Promise<VideoErrorReportResult> {
-    const { roomId, code, message, currentSrc } = request;
+    const { roomId, code, message, currentSrc, codecUnparsable } = request;
 
     // Debounce rapid error reports
     const now = Date.now();
@@ -270,6 +271,21 @@ class VideoServiceImpl {
     const videoMeta = room.videoMeta;
     if (!videoMeta) {
       return { fallbackApplied: false };
+    }
+
+    if (codecUnparsable) {
+      logEvent({
+        level: 'warn',
+        domain: 'video',
+        event: 'codec_unparsable_reported',
+        message: 'video.error: client reported demux/codec parse failure',
+        roomId,
+        meta: { code, message, currentSrc },
+      });
+      // If we are already proxying (or proxy is disallowed), further proxy/re-resolve is unlikely to help.
+      if (videoMeta.requiresProxy) {
+        return { fallbackApplied: false };
+      }
     }
 
     // Ignore if already proxying or report src doesn't match current playback

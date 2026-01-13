@@ -23,7 +23,15 @@ interface HLSPlayerProps {
   onSeeked?: () => void;
   onLoadedMetadata?: () => void;
   onTimeUpdate?: () => void;
-  onError?: (info: { type?: string; details?: string; fatal?: boolean; url?: string; responseCode?: number }) => void;
+  onError?: (info: {
+    type?: string;
+    details?: string;
+    fatal?: boolean;
+    url?: string;
+    responseCode?: number;
+    codecUnparsable?: boolean;
+    currentTime?: number;
+  }) => void;
   className?: string;
   isHost?: boolean;
   useProxy?: boolean;
@@ -203,6 +211,13 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
                 errorData.details === 'fragLoadError' ||
                 errorData.details === 'manifestLoadError';
 
+              const codecUnparsable = Boolean(
+                errorData.details &&
+                  ['fragParsingError', 'manifestParsingError', 'levelParsingError', 'demux', 'parse'].some(token =>
+                    errorData.details!.toLowerCase().includes(token.toLowerCase())
+                  )
+              );
+
               const willRetryViaProxy = !shouldProxy && networkish && !proxyTriedRef.current;
               if (willRetryViaProxy) {
                 proxyTriedRef.current = true;
@@ -221,6 +236,8 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
                   fatal: true,
                   url: errorData.url,
                   responseCode,
+                  codecUnparsable,
+                  currentTime: video.currentTime,
                 });
                 hls.destroy();
                 return;
@@ -233,6 +250,7 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
                 url: errorData.url,
                 responseCode: errorData.response?.code,
                 currentTime: video.currentTime,
+                codecUnparsable,
               });
 
               // Attempt media error recovery before giving up
@@ -269,6 +287,8 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
                   fatal: true,
                   url: errorData.url,
                   responseCode: errorData.response?.code,
+                  codecUnparsable,
+                  currentTime: video.currentTime,
                 });
                 // Stop attempting recovery for fatal errors to avoid loops; surface to UI instead.
                 hls.destroy();
