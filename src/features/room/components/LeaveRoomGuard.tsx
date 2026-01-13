@@ -71,6 +71,31 @@ export function LeaveRoomGuard({ roomId, room, socket }: LeaveRoomGuardProps) {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [room]);
 
+  // Handle actual page unload when user closes tab/browser
+  useEffect(() => {
+    if (!room || !socket) return;
+
+    let hasLeftRoom = false;
+
+    const handlePageHide = (event: PageTransitionEvent) => {
+      if (!hasLeftRoom) {
+        hasLeftRoom = true;
+        try {
+          socket.emit('leave-room', { roomId });
+          logRoom('pagehide_leave', 'Sent leave-room on pagehide', { roomId, persisted: event.persisted });
+        } catch (error) {
+          logRoom('pagehide_leave_failed', 'Failed to send leave-room on pagehide', { error });
+        }
+      }
+    };
+
+    window.addEventListener('pagehide', handlePageHide);
+
+    return () => {
+      window.removeEventListener('pagehide', handlePageHide);
+    };
+  }, [room, socket, roomId]);
+
   useEffect(() => {
     if (!room) return;
 
