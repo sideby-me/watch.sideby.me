@@ -153,6 +153,9 @@ export function useVideoSync({
       clearInterval(syncCheckIntervalRef.current);
     }
 
+    // Use shorter interval when casting for faster sync convergence
+    const syncInterval = isCasting ? 2000 : 5000;
+
     syncCheckIntervalRef.current = setInterval(() => {
       if (!room || !currentUser?.isHost || !socket) return;
 
@@ -177,8 +180,8 @@ export function useVideoSync({
         isPlaying,
         timestamp: Date.now(),
       });
-    }, 5000);
-  }, [room, currentUser, socket, roomId, getCurrentPlayer]);
+    }, syncInterval);
+  }, [room, currentUser, socket, roomId, getCurrentPlayer, isCasting]);
 
   const stopSyncCheck = useCallback(() => {
     if (syncCheckIntervalRef.current) {
@@ -231,22 +234,30 @@ export function useVideoSync({
     socket.emit('pause-video', { roomId, currentTime });
   }, [room, currentUser, socket, roomId, getCurrentPlayer]);
 
-  const handleVideoSeek = useCallback(() => {
-    if (!room || !currentUser?.isHost || !socket) return;
+  const handleVideoSeek = useCallback(
+    (explicitTime?: number) => {
+      if (!room || !currentUser?.isHost || !socket) return;
 
-    const player = getCurrentPlayer();
-    if (!player) return;
+      const player = getCurrentPlayer();
+      if (!player && explicitTime === undefined) return;
 
-    const currentTime = player.getCurrentTime();
+      const currentTime = explicitTime ?? player!.getCurrentTime();
 
-    lastControlActionRef.current = {
-      timestamp: Date.now(),
-      type: 'seek',
-      userId: currentUser.id,
-    };
+      // If explicit time provided, seek the player to that time
+      if (explicitTime !== undefined && player) {
+        player.seekTo(explicitTime);
+      }
 
-    socket.emit('seek-video', { roomId, currentTime });
-  }, [room, currentUser, socket, roomId, getCurrentPlayer]);
+      lastControlActionRef.current = {
+        timestamp: Date.now(),
+        type: 'seek',
+        userId: currentUser.id,
+      };
+
+      socket.emit('seek-video', { roomId, currentTime });
+    },
+    [room, currentUser, socket, roomId, getCurrentPlayer]
+  );
 
   const handleYouTubeStateChange = useCallback(
     (state: number) => {

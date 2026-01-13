@@ -7,6 +7,7 @@ import { VideoControls } from '@/src/features/video-sync/components/VideoControl
 import { SubtitleOverlay } from '@/src/features/subtitles/components';
 import { Video, ExternalLink, Edit3, AlertTriangle, Cast } from 'lucide-react';
 import type { SubtitleTrack } from '@/types/schemas';
+import { CastPlayerRef } from '@/src/features/media/cast';
 import {
   Dialog,
   DialogContent,
@@ -52,6 +53,7 @@ interface VideoPlayerContainerProps {
   isCastAvailable?: boolean;
   castDeviceName?: string;
   onCastClick?: () => void;
+  castPlayerRef?: React.RefObject<CastPlayerRef | null>;
 }
 
 export function VideoPlayerContainer({
@@ -80,6 +82,7 @@ export function VideoPlayerContainer({
   isCastAvailable = false,
   castDeviceName,
   onCastClick,
+  castPlayerRef,
 }: VideoPlayerContainerProps) {
   const { socket } = useSocket();
   const [isChangeDialogOpen, setIsChangeDialogOpen] = useState(false);
@@ -494,6 +497,7 @@ export function VideoPlayerContainer({
           {videoType !== 'youtube' && (videoRefReady || isCasting) && videoSourceValid !== false && (
             <VideoControls
               videoRef={isCasting ? null : getVideoElementRef()}
+              castPlayerRef={castPlayerRef}
               isHost={isHost}
               isLoading={isLoading}
               onPlay={onPlay}
