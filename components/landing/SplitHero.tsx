@@ -12,7 +12,7 @@ import { ArrowRight, CheckCircle2, Loader2 } from 'lucide-react';
 export function SplitHero() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isSynced, setIsSynced] = useState(false);
-  const [scrollProgress, setScrollProgress] = useState(0);
+  const [_scrollProgress, setScrollProgress] = useState(0);
 
   useEffect(() => {
     const handleScroll = () => {
