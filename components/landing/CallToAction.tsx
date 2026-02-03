@@ -53,7 +53,7 @@ export function CallToAction() {
           <Link href="/create">
             <Button
               size="lg"
-              className="group relative h-14 overflow-hidden border-0 bg-primary px-8 text-lg text-primary-foreground shadow-[0_0_40px_-10px_rgba(var(--primary),0.5)] transition-interactive hover:scale-105 hover:shadow-[0_0_60px_-15px_rgba(var(--primary),0.6)]"
+              className="group relative h-14 overflow-hidden border-0 bg-primary px-8 text-lg text-primary-foreground shadow-[0_0_40px_-10px_rgba(var(--primary),0.5)] transition-interactive hover:shadow-[0_0_60px_-15px_rgba(var(--primary),0.6)]"
             >
               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
               <BadgePlus className="mr-2 h-5 w-5" />
