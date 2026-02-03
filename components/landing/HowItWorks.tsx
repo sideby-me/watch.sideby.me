@@ -39,7 +39,6 @@ const scenes: Scene[] = [
   },
 ];
 
-// Configuration
 const TOTAL_TRAVEL = 3000; // Total horizontal pixels to travel
 const TRIGGER_OFFSET = 100; // Start sticky when section is this many px from top
 
@@ -58,12 +57,12 @@ export function HowItWorks() {
       const viewportHeight = window.innerHeight;
 
       // Calculate scroll progress
-      // Reduced scrollable distance leads to faster animation for same scroll amount
       const scrollableDistance = sectionHeight - viewportHeight;
-      const scrolled = -rect.top;
-
+      // Start scrolling when the section is still 50% down the viewport
+      const startOffset = viewportHeight * 0.5;
+      // Add the offset to the 'scrolled' amount effectively shifting the start time earlier
+      const scrolled = -rect.top + startOffset;
       // Allow progress to go beyond 1 (overshoot)
-      // We only clamp the bottom to 0 so it doesn't go backwards at the start
       const progress = Math.max(0, scrolled / scrollableDistance);
 
       setHorizontalProgress(progress);
@@ -106,11 +105,7 @@ export function HowItWorks() {
   }, []);
 
   return (
-    <section
-      ref={sectionRef}
-      // Reduced height significantly to speed up the scroll (250vh = 1.5 screen of scrolling)
-      className="relative z-10 h-[250vh]"
-    >
+    <section ref={sectionRef} className="relative z-10 h-[250vh]">
       {/* Sticky viewport */}
       <div
         ref={viewportRef}
@@ -132,7 +127,6 @@ export function HowItWorks() {
         {/* Projector Light Glow */}
         <div className="pointer-events-none absolute left-1/2 top-1/2 z-0 h-[600px] w-[900px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/5 blur-3xl" />
 
-        {/* Header - disappear faster if we scroll fast */}
         <div
           className="absolute left-0 right-0 top-20 z-30 text-center transition-all duration-300"
           style={{
@@ -146,16 +140,15 @@ export function HowItWorks() {
           </div>
         </div>
 
-        {/* Progress Indicator - Fade out smoothly near the "standard" end, but don't reset abruptly */}
+        {/* Progress Indicator */}
         <div
           className="pointer-events-none absolute bottom-8 left-1/2 z-30 -translate-x-1/2 transition-opacity duration-300"
-          style={{ opacity: horizontalProgress > 0.05 && horizontalProgress < 0.95 ? 1 : 0 }}
+          style={{ opacity: 1 }}
         >
           <div className="flex items-center gap-2 rounded-full bg-black/50 px-4 py-2 backdrop-blur-sm">
             <div className="h-1.5 w-24 overflow-hidden rounded-full bg-white/20">
               <div
                 className="h-full rounded-full bg-primary transition-all duration-75"
-                // Clamp visual progress bar to 100%
                 style={{ width: `${Math.min(1, horizontalProgress) * 100}%` }}
               />
             </div>
@@ -166,7 +159,6 @@ export function HowItWorks() {
         <div
           className="flex will-change-transform"
           style={{
-            // Allow transform to go beyond 100% (overshoot)
             transform: `translateX(calc(-${horizontalProgress} * (4200px - 100vw)))`,
           }}
         >
@@ -213,16 +205,38 @@ function EmptyFrame({ label, frameNumber }: { label: string; frameNumber: string
 }
 
 function FilmFrame({ scene, index }: { scene: Scene; index: number }) {
+  const divRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!divRef.current) return;
+    const rect = divRef.current.getBoundingClientRect();
+    setPosition({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+  };
+
   return (
-    <div className="group relative flex h-[500px] w-[600px] flex-shrink-0 flex-col bg-background/40 backdrop-blur-sm">
-      <div className="relative flex h-14 w-full items-center justify-between gap-4 border-b border-white/5 bg-black px-4 py-3">
+    <div
+      ref={divRef}
+      onMouseMove={handleMouseMove}
+      className="group relative flex h-[500px] w-[600px] flex-shrink-0 flex-col overflow-hidden bg-background/40 backdrop-blur-sm"
+    >
+      {/* Spotlight Effect */}
+      <div
+        className="pointer-events-none absolute -inset-px opacity-0 transition duration-300 group-hover:opacity-100"
+        style={{
+          background: `radial-gradient(600px circle at ${position.x}px ${position.y}px, hsl(var(--primary) / 0.15), transparent 40%)`,
+        }}
+      />
+
+      {/* Top Border */}
+      <div className="relative z-10 flex h-14 w-full items-center justify-between gap-4 border-b border-white/5 bg-black px-4 py-3">
         {Array.from({ length: 12 }).map((_, i) => (
           <div key={i} className="h-5 w-4 rounded-[2px] bg-white/10 shadow-inner" />
         ))}
         <span className="absolute bottom-1 right-2 font-mono text-[10px] text-white/30">{index + 14}A</span>
       </div>
 
-      <div className="relative flex flex-1 flex-col items-center justify-center border-r border-white/5 p-12 text-center transition-colors duration-500 hover:bg-white/5">
+      <div className="relative z-10 flex flex-1 flex-col items-center justify-center border-r border-white/5 p-12 text-center transition-colors duration-500">
         <div className="absolute left-0 top-0 h-full w-[1px] bg-white/5" />
 
         <div className="mb-8 flex w-full justify-between font-[family-name:var(--font-space-mono)] text-xs tracking-widest text-muted-foreground/40">
@@ -230,7 +244,7 @@ function FilmFrame({ scene, index }: { scene: Scene; index: number }) {
           <span>{scene.meta}</span>
         </div>
 
-        <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-tr from-white/5 to-white/0 text-primary ring-1 ring-white/10 transition-transform duration-500 group-hover:scale-110">
+        <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-tr from-white/5 to-white/0 text-primary ring-1 ring-white/10 transition-all duration-500 group-hover:bg-primary/10 group-hover:shadow-[0_0_50px_-10px_hsl(var(--primary))] group-hover:ring-primary/50">
           {scene.icon}
         </div>
 
@@ -244,7 +258,8 @@ function FilmFrame({ scene, index }: { scene: Scene; index: number }) {
         <p className="max-w-xs text-base font-light leading-relaxed text-muted-foreground">{scene.description}</p>
       </div>
 
-      <div className="relative flex h-14 w-full items-center justify-between gap-4 border-t border-white/5 bg-black px-4 py-3">
+      {/* Bottom Border */}
+      <div className="relative z-10 flex h-14 w-full items-center justify-between gap-4 border-t border-white/5 bg-black px-4 py-3">
         {Array.from({ length: 12 }).map((_, i) => (
           <div key={i} className="h-5 w-4 rounded-[2px] bg-white/10 shadow-inner" />
         ))}
