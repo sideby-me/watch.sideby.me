@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BadgePlus, Link2, Play, Clapperboard } from 'lucide-react';
 
 interface Scene {
@@ -38,9 +38,6 @@ const scenes: Scene[] = [
     meta: 'FINAL CUT',
   },
 ];
-
-const TOTAL_TRAVEL = 3000; // Total horizontal pixels to travel
-const TRIGGER_OFFSET = 100; // Start sticky when section is this many px from top
 
 export function HowItWorks() {
   const sectionRef = useRef<HTMLDivElement>(null);

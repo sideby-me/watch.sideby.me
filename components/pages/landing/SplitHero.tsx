@@ -89,7 +89,7 @@ export function SplitHero() {
           <div className="flex gap-4">
             <Link href="/create">
               <Button size="lg" className="group gap-2 px-8">
-                Fine, let's do it
+                {`Fine, let's do it`}
                 <ArrowRight className="h-4 w-4 transition-interactive group-hover:translate-x-1" />
               </Button>
             </Link>
