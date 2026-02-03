@@ -80,11 +80,11 @@ export function Features() {
   return (
     <section ref={sectionRef} className="relative z-10 overflow-hidden bg-background py-32">
       {/* Console Surface Background */}
-      <div className="absolute inset-0 bg-[#0a0a0a]" />
+      <div className="absolute inset-0 bg-background" />
 
       {/* Subtle Grid Pattern */}
       <div
-        className="absolute inset-0 opacity-[0.02]"
+        className="absolute inset-0 opacity-[0.03]"
         style={{
           backgroundImage: `
             linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
@@ -95,24 +95,25 @@ export function Features() {
       />
 
       {/* LED Strip Accent */}
-      <div className="absolute left-0 right-0 top-0 h-[2px] bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
+      <div className="absolute left-0 right-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
 
       {/* Ambient Glow */}
-      <div className="bg-primary/3 absolute left-1/4 top-1/2 h-[400px] w-[600px] -translate-y-1/2 rounded-full blur-[120px]" />
-      <div className="bg-blue-500/3 absolute right-1/4 top-1/3 h-[300px] w-[400px] rounded-full blur-[100px]" />
+      <div className="absolute left-1/4 top-1/2 h-[400px] w-[600px] -translate-y-1/2 rounded-full bg-primary/5 blur-[120px]" />
 
       {/* Content */}
-      <div className="relative z-10 mx-auto max-w-6xl px-6">
+      <div className="relative z-10 mx-auto max-w-[1400px] px-6">
         {/* Section Header */}
         <div className="mb-20 text-center">
-          <div className="mb-4 inline-flex items-center gap-2 rounded-sm border border-white/10 bg-white/5 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.25em] text-muted-foreground">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-500" />
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.25em] text-muted-foreground backdrop-blur-md">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
             System Status: Operational
           </div>
-          <h2 className="font-[family-name:var(--font-space-grotesk)] text-4xl font-bold tracking-tight md:text-5xl">
-            What&apos;s included
+          <h2 className="font-[family-name:var(--font-space-grotesk)] text-4xl font-bold tracking-tight md:text-5xl lg:text-6xl">
+            What&apos;s Included
           </h2>
-          <p className="mx-auto mt-4 max-w-md text-muted-foreground">Everything you need. Nothing you don&apos;t.</p>
+          <p className="mx-auto mt-6 max-w-md text-lg font-light text-muted-foreground">
+            Everything you need. Nothing you don&apos;t.
+          </p>
         </div>
 
         {/* Ticket Grid */}
@@ -131,10 +132,19 @@ function TicketStub({ feature, index, isVisible }: { feature: Feature; index: nu
   const rotation = ['-1deg', '0.5deg', '-0.5deg', '1deg', '-0.8deg', '0.3deg'][index];
   const delay = index * 100;
 
+  const divRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!divRef.current) return;
+    const rect = divRef.current.getBoundingClientRect();
+    setPosition({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+  };
+
   return (
     <div
-      className={`group relative transition-all duration-500 ease-out ${
-        isVisible ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0'
+      className={`group relative transition-all duration-700 ease-out ${
+        isVisible ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0'
       }`}
       style={{
         transitionDelay: `${delay}ms`,
@@ -142,59 +152,60 @@ function TicketStub({ feature, index, isVisible }: { feature: Feature; index: nu
       }}
     >
       {/* Ticket Container */}
-      <div className="relative overflow-hidden rounded-sm bg-[#f5f2eb] transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-[0_8px_30px_-10px_rgba(0,0,0,0.5)]">
+      <div
+        ref={divRef}
+        onMouseMove={handleMouseMove}
+        className="relative overflow-hidden rounded-xl border border-white/5 bg-white/[0.02] backdrop-blur-sm transition-all duration-300 group-hover:-translate-y-1 group-hover:border-white/10 group-hover:bg-white/[0.04]"
+      >
+        {/* Spotlight Effect */}
+        <div
+          className="pointer-events-none absolute -inset-px opacity-0 transition duration-300 group-hover:opacity-100"
+          style={{
+            background: `radial-gradient(400px circle at ${position.x}px ${position.y}px, hsl(var(--primary) / 0.1), transparent 40%)`,
+          }}
+        />
+
         {/* Perforated Edge (Left) */}
-        <div className="absolute bottom-0 left-0 top-0 w-3 border-r border-dashed border-black/10 bg-[#ebe8e1]" />
+        <div className="absolute bottom-0 left-0 top-0 w-4 border-r border-dashed border-white/10 bg-black/20" />
 
         {/* Ticket Content */}
-        <div className="py-5 pl-6 pr-5">
+        <div className="py-6 pl-8 pr-6">
           {/* Header */}
-          <div className="mb-4 flex items-center justify-between border-b border-black/10 pb-3">
-            <div className="flex items-center gap-2">
-              <span className="text-black/60">{feature.icon}</span>
-              <span className="font-mono text-[9px] font-bold uppercase tracking-[0.15em] text-black/40">
-                SIDEBY FEATURE PASS
+          <div className="mb-6 flex items-center justify-between border-b border-white/5 pb-4">
+            <div className="flex items-center gap-3">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/5 text-primary ring-1 ring-white/10 transition-colors group-hover:bg-primary/10 group-hover:ring-primary/20">
+                {feature.icon}
+              </span>
+              <span className="font-mono text-[9px] font-bold uppercase tracking-[0.15em] text-muted-foreground/60">
+                FEATURE PASS
               </span>
             </div>
-            <span className="font-mono text-[9px] text-black/30">{feature.serial}</span>
+            <span className="font-mono text-[9px] text-white/20">{feature.serial}</span>
           </div>
 
           {/* Main Content */}
-          <div className="mb-4">
-            <h3 className="mb-2 font-[family-name:var(--font-space-grotesk)] text-lg font-bold tracking-tight text-black/90">
+          <div className="mb-6">
+            <h3 className="mb-3 font-[family-name:var(--font-space-grotesk)] text-xl font-bold tracking-tight text-foreground transition-colors group-hover:text-primary">
               {feature.title}
             </h3>
-            <p className="font-mono text-xs leading-relaxed text-black/50">{feature.description}</p>
+            <p className="font-mono text-xs leading-relaxed text-muted-foreground/80">{feature.description}</p>
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-between border-t border-black/10 pt-3">
+          <div className="flex items-center justify-between border-t border-white/5 pt-4">
             <div className="flex items-center gap-3">
-              <span className="font-mono text-[9px] text-black/30">ADMIT ONE</span>
-              <span className="rounded-sm bg-black/5 px-2 py-0.5 font-mono text-[9px] font-bold uppercase text-black/50">
+              <span className="font-mono text-[9px] text-muted-foreground/40">ADMIT ONE</span>
+              <span className="rounded-sm border border-primary/20 bg-primary/10 px-2 py-0.5 font-mono text-[9px] font-bold uppercase text-primary">
                 {feature.highlight}
               </span>
             </div>
-            <span className="font-mono text-[9px] text-black/25">02.03.26</span>
+            <span className="font-mono text-[9px] text-white/10">02.03.26</span>
           </div>
         </div>
 
-        {/* Hover Glow Effect */}
-        <div className="absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-          <div className="absolute -bottom-4 left-1/2 h-8 w-3/4 -translate-x-1/2 rounded-full bg-primary/20 blur-xl" />
-        </div>
-
-        {/* Paper Texture Overlay */}
-        <div
-          className="pointer-events-none absolute inset-0 opacity-[0.03] mix-blend-multiply"
-          style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`,
-          }}
-        />
+        {/* Ticket Shadow/Glow */}
+        <div className="absolute -bottom-1 left-4 right-4 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent blur-sm transition-all duration-300 group-hover:blur-md" />
       </div>
-
-      {/* Ticket Shadow */}
-      <div className="absolute -bottom-1 left-2 right-2 h-2 rounded-full bg-black/20 blur-sm transition-all duration-300 group-hover:-bottom-2 group-hover:blur-md" />
     </div>
   );
 }
