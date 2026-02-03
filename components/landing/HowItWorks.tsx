@@ -45,130 +45,78 @@ const TRIGGER_OFFSET = 100; // Start sticky when section is this many px from to
 
 export function HowItWorks() {
   const sectionRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
   const [horizontalProgress, setHorizontalProgress] = useState(0);
-  const [isInSection, setIsInSection] = useState(false);
-  const lastScrollY = useRef(0);
-  const accumulatedDelta = useRef(0);
 
-  // Calculate progress from scroll position (for scrollbar dragging)
-  const updateProgressFromScroll = useCallback(() => {
-    if (!sectionRef.current) return;
-
-    const rect = sectionRef.current.getBoundingClientRect();
-    const sectionHeight = sectionRef.current.offsetHeight;
-    const scrollableHeight = sectionHeight - window.innerHeight;
-
-    // How far into the section are we?
-    // Section starts when top reaches TRIGGER_OFFSET, ends when bottom reaches viewport bottom
-    const scrolledIntoSection = -rect.top + TRIGGER_OFFSET;
-    const progress = Math.max(0, Math.min(1, scrolledIntoSection / scrollableHeight));
-
-    setHorizontalProgress(progress);
-    accumulatedDelta.current = progress * TOTAL_TRAVEL;
-
-    // Check if we're in the active zone
-    const inSection = rect.top <= TRIGGER_OFFSET && rect.bottom > window.innerHeight;
-    setIsInSection(inSection);
-  }, []);
-
-  // Handle wheel events - prevent default scroll when in section
-  const handleWheel = useCallback((e: WheelEvent) => {
-    if (!sectionRef.current) return;
-
-    const rect = sectionRef.current.getBoundingClientRect();
-
-    // Check if section is in active zone (earlier trigger)
-    const inSection = rect.top <= TRIGGER_OFFSET && rect.bottom > window.innerHeight;
-
-    if (!inSection) return;
-
-    // Check if we're at boundaries
-    const currentProgress = accumulatedDelta.current / TOTAL_TRAVEL;
-    const scrollingDown = e.deltaY > 0;
-    const scrollingUp = e.deltaY < 0;
-    const atStart = currentProgress <= 0 && scrollingUp;
-    const atEnd = currentProgress >= 1 && scrollingDown;
-
-    if (atStart || atEnd) {
-      // Allow normal scroll at boundaries
-      return;
-    }
-
-    // Block vertical scroll and accumulate for horizontal movement
-    e.preventDefault();
-
-    accumulatedDelta.current = Math.max(0, Math.min(TOTAL_TRAVEL, accumulatedDelta.current + e.deltaY * 1.5));
-
-    setHorizontalProgress(accumulatedDelta.current / TOTAL_TRAVEL);
-  }, []);
-
-  // Handle scroll events (for scrollbar and programmatic scrolling)
+  // Manual sticky logic
   useEffect(() => {
     const handleScroll = () => {
-      updateProgressFromScroll();
-      lastScrollY.current = window.scrollY;
+      if (!sectionRef.current || !viewportRef.current) return;
+
+      const rect = sectionRef.current.getBoundingClientRect();
+      const sectionHeight = sectionRef.current.offsetHeight;
+      const viewportHeight = window.innerHeight;
+
+      // Calculate scroll progress
+      // Reduced scrollable distance leads to faster animation for same scroll amount
+      const scrollableDistance = sectionHeight - viewportHeight;
+      const scrolled = -rect.top;
+
+      // Allow progress to go beyond 1 (overshoot)
+      // We only clamp the bottom to 0 so it doesn't go backwards at the start
+      const progress = Math.max(0, scrolled / scrollableDistance);
+
+      setHorizontalProgress(progress);
+
+      // Manual Sticky Positioning
+      if (rect.top <= 0 && rect.bottom >= viewportHeight) {
+        // We are scrubbing through: Fix it to the viewport
+        viewportRef.current.style.position = 'fixed';
+        viewportRef.current.style.top = '0';
+        viewportRef.current.style.left = `${rect.left}px`;
+        viewportRef.current.style.width = `${rect.width}px`;
+        viewportRef.current.style.bottom = 'auto'; // Clear bottom
+      } else if (rect.bottom < viewportHeight) {
+        // We scrolled past: Pin it to the bottom of the container
+        viewportRef.current.style.position = 'absolute';
+        viewportRef.current.style.top = 'auto'; // Clear top
+        viewportRef.current.style.bottom = '0';
+        viewportRef.current.style.left = '0'; // align relative to container
+        viewportRef.current.style.width = '100%';
+      } else {
+        // We haven't reached it yet: Pin it to the top of the container
+        viewportRef.current.style.position = 'absolute';
+        viewportRef.current.style.top = '0';
+        viewportRef.current.style.left = '0'; // align relative to container
+        viewportRef.current.style.width = '100%';
+        viewportRef.current.style.bottom = 'auto'; // Clear bottom
+      }
     };
 
     window.addEventListener('scroll', handleScroll, { passive: true });
-    handleScroll(); // Initial call
+    window.addEventListener('resize', handleScroll);
 
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, [updateProgressFromScroll]);
-
-  // Handle wheel events
-  useEffect(() => {
-    window.addEventListener('wheel', handleWheel, { passive: false });
-    return () => window.removeEventListener('wheel', handleWheel);
-  }, [handleWheel]);
-
-  // Touch support
-  const touchStartY = useRef(0);
-
-  useEffect(() => {
-    const handleTouchStart = (e: TouchEvent) => {
-      touchStartY.current = e.touches[0].clientY;
-    };
-
-    const handleTouchMove = (e: TouchEvent) => {
-      if (!sectionRef.current) return;
-
-      const rect = sectionRef.current.getBoundingClientRect();
-      const inSection = rect.top <= TRIGGER_OFFSET && rect.bottom > window.innerHeight;
-
-      if (!inSection) return;
-
-      const deltaY = touchStartY.current - e.touches[0].clientY;
-      const currentProgress = accumulatedDelta.current / TOTAL_TRAVEL;
-      const atStart = currentProgress <= 0 && deltaY < 0;
-      const atEnd = currentProgress >= 1 && deltaY > 0;
-
-      if (atStart || atEnd) return;
-
-      e.preventDefault();
-
-      accumulatedDelta.current = Math.max(0, Math.min(TOTAL_TRAVEL, accumulatedDelta.current + deltaY * 2));
-
-      setHorizontalProgress(accumulatedDelta.current / TOTAL_TRAVEL);
-      touchStartY.current = e.touches[0].clientY;
-    };
-
-    window.addEventListener('touchstart', handleTouchStart, { passive: true });
-    window.addEventListener('touchmove', handleTouchMove, { passive: false });
+    // Initial check
+    handleScroll();
 
     return () => {
-      window.removeEventListener('touchstart', handleTouchStart);
-      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', handleScroll);
     };
   }, []);
 
   return (
     <section
       ref={sectionRef}
-      // Reduced height - just enough for the animation
-      className="relative z-10 h-[150vh]"
+      // Reduced height significantly to speed up the scroll (250vh = 1.5 screen of scrolling)
+      className="relative z-10 h-[250vh]"
     >
       {/* Sticky viewport */}
-      <div className="sticky top-0 flex h-screen w-full items-center justify-center overflow-hidden bg-background">
+      <div
+        ref={viewportRef}
+        className="flex h-screen w-full items-center overflow-hidden bg-background"
+        style={{ position: 'absolute', top: 0, left: 0 }} // Default start
+      >
         {/* Top/Bottom Vignette */}
         <div className="pointer-events-none absolute inset-0 z-10 bg-gradient-to-b from-background via-transparent to-background" />
 
@@ -184,12 +132,12 @@ export function HowItWorks() {
         {/* Projector Light Glow */}
         <div className="pointer-events-none absolute left-1/2 top-1/2 z-0 h-[600px] w-[900px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/5 blur-3xl" />
 
-        {/* Header */}
+        {/* Header - disappear faster if we scroll fast */}
         <div
           className="absolute left-0 right-0 top-20 z-30 text-center transition-all duration-300"
           style={{
-            opacity: Math.max(0, 1 - horizontalProgress * 4),
-            transform: `translateY(${horizontalProgress * -30}px)`,
+            opacity: Math.max(0, 1 - horizontalProgress * 6),
+            transform: `translateY(${horizontalProgress * -50}px)`,
           }}
         >
           <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 backdrop-blur-md">
@@ -198,26 +146,28 @@ export function HowItWorks() {
           </div>
         </div>
 
-        {/* Progress Indicator */}
-        {isInSection && (
-          <div className="pointer-events-none absolute bottom-8 left-1/2 z-30 -translate-x-1/2">
-            <div className="flex items-center gap-2 rounded-full bg-black/50 px-4 py-2 backdrop-blur-sm">
-              <div className="h-1.5 w-24 overflow-hidden rounded-full bg-white/20">
-                <div
-                  className="h-full rounded-full bg-primary transition-all duration-75"
-                  style={{ width: `${horizontalProgress * 100}%` }}
-                />
-              </div>
+        {/* Progress Indicator - Fade out smoothly near the "standard" end, but don't reset abruptly */}
+        <div
+          className="pointer-events-none absolute bottom-8 left-1/2 z-30 -translate-x-1/2 transition-opacity duration-300"
+          style={{ opacity: horizontalProgress > 0.05 && horizontalProgress < 0.95 ? 1 : 0 }}
+        >
+          <div className="flex items-center gap-2 rounded-full bg-black/50 px-4 py-2 backdrop-blur-sm">
+            <div className="h-1.5 w-24 overflow-hidden rounded-full bg-white/20">
+              <div
+                className="h-full rounded-full bg-primary transition-all duration-75"
+                // Clamp visual progress bar to 100%
+                style={{ width: `${Math.min(1, horizontalProgress) * 100}%` }}
+              />
             </div>
           </div>
-        )}
+        </div>
 
-        {/* The Film Strip - HEAD starts at left edge */}
+        {/* The Film Strip */}
         <div
-          className="flex items-center will-change-transform"
+          className="flex will-change-transform"
           style={{
-            // Start with HEAD at left edge (0), then move left as progress increases
-            transform: `translateX(calc(0px - ${horizontalProgress * TOTAL_TRAVEL}px))`,
+            // Allow transform to go beyond 100% (overshoot)
+            transform: `translateX(calc(-${horizontalProgress} * (4200px - 100vw)))`,
           }}
         >
           {/* Leader Frames (empty) */}
