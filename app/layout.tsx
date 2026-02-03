@@ -122,7 +122,7 @@ export default function RootLayout({
           <SocketProvider>
             <div className="mx-auto flex min-h-screen max-w-screen-4xl flex-col bg-background">
               <Navigation />
-              <main className="container mx-auto flex-1 py-6">{children}</main>
+              <main className="flex-1 py-6">{children}</main>
               <Footer />
             </div>
             <Toaster richColors />
