@@ -6,7 +6,7 @@ import { BadgePlus, ArrowRight, Zap } from 'lucide-react';
 
 export function CallToAction() {
   return (
-    <section className="relative overflow-hidden py-32">
+    <section className="relative overflow-hidden md:py-32">
       {/* Background */}
       <div className="absolute inset-0 -z-10 bg-[#020202]">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-primary/10 via-background to-background" />
