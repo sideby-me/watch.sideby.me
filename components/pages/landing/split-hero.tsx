@@ -50,7 +50,7 @@ export function SplitHero() {
           }}
         >
           <div className="max-w-md text-right">
-            <h1 className="text-4xl font-bold leading-[0.9] tracking-tighter md:text-7xl lg:text-8xl">
+            <h1 className="text-[2rem] font-bold leading-[0.9] tracking-tighter md:text-7xl lg:text-8xl">
               Watch
               <br />
               <span className="text-primary">Together.</span>
@@ -67,7 +67,7 @@ export function SplitHero() {
           }}
         >
           <div className="max-w-md">
-            <h1 className="text-4xl font-bold leading-[0.9] tracking-tighter md:text-7xl lg:text-8xl">
+            <h1 className="text-[2rem] font-bold leading-[0.9] tracking-tighter md:text-7xl lg:text-8xl">
               From
               <br />
               <span className="text-muted-foreground">Anywhere.</span>
