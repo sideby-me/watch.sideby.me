@@ -558,10 +558,7 @@ export function VideoPlayerContainer({
                     event: 'proxy_switch',
                     message: 'Host switching to proxy due to player error code 4',
                   });
-                  const proxyUrl = buildProxyUrl(
-                    videoUrl,
-                    typeof window !== 'undefined' ? window.location.href : undefined
-                  );
+                  const proxyUrl = buildProxyUrl(videoUrl);
                   onVideoChange(proxyUrl);
                   setUsingProxy(true);
                   setPlaybackError(null);
@@ -574,10 +571,7 @@ export function VideoPlayerContainer({
                     message: 'Guest switching to local proxy after error code 4',
                   });
                   guestProxyTriedRef.current = true;
-                  const proxyUrl = buildProxyUrl(
-                    videoUrl,
-                    typeof window !== 'undefined' ? window.location.href : undefined
-                  );
+                  const proxyUrl = buildProxyUrl(videoUrl);
                   setLocalProxyUrl(proxyUrl);
                   setUsingProxy(true);
                   setPlaybackError(null);

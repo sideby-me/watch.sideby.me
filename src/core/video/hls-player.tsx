@@ -115,9 +115,6 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
       const video = videoRef.current;
       if (!video || !src) return;
 
-      // Force proxy when URL contains embedded headers (needs proxy to extract them)
-      const hasEmbeddedHeaders = src.includes('headers=');
-
       // Heuristically force proxy for Cloudflare worker style hosts that reject direct browser fetches
       const looksLikeWorkerHost = (() => {
         try {
@@ -128,7 +125,7 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
         }
       })();
 
-      const initialProxy = !!useProxy || hasEmbeddedHeaders || looksLikeWorkerHost;
+      const initialProxy = !!useProxy || looksLikeWorkerHost;
 
       // Reset proxy state and media error recovery counter when src changes
       proxyTriedRef.current = initialProxy;
@@ -150,9 +147,9 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
             }
             try {
               const absolute = new URL(target, window.location.origin).toString();
-              return buildProxyUrl(absolute, window.location.href);
+              return buildProxyUrl(absolute);
             } catch {
-              return buildProxyUrl(target, window.location.href);
+              return buildProxyUrl(target);
             }
           };
 
