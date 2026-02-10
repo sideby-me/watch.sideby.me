@@ -93,7 +93,7 @@ class VideoServiceImpl {
       event: 'video_set',
       message: `video.set: new source queued up (${meta.deliveryType})`,
       roomId,
-      meta: { originalUrl: videoUrl, playbackUrl: meta.playbackUrl, deliveryType: meta.deliveryType },
+      meta: { deliveryType: meta.deliveryType, requiresProxy: meta.requiresProxy },
     });
 
     return {
@@ -249,9 +249,16 @@ class VideoServiceImpl {
 
   /**
    * Handle video error report from client. Uses two-tier fallback:
-   * 1. Proxy fallback: If not already proxying, wrap originalUrl in proxy (handles 403/CORS)
-   * 2. Re-resolve fallback: If proxy won't help or already proxied, re-resolve originalUrl
-   *    (handles expired URLs or changed CDN endpoints)
+   *
+   * 1. Proxy fallback: If not already proxying, wrap originalUrl through the
+   *    proxy as a CORS / hotlink-protection compatibility measure.
+   * 2. Re-resolve fallback: If proxy won't help or is already proxied,
+   *    re-resolve to handle expired signatures or changed CDN endpoints.
+   *
+   * The proxy is a reliability/compatibility tool — not a circumvention
+   * mechanism.  When the proxy is disabled (PROXY_ENABLED=false),
+   * buildProxyUrl returns the original URL and this path effectively becomes
+   * a no-op.
    */
   async handleErrorReport(request: VideoErrorReportRequest): Promise<VideoErrorReportResult> {
     const { roomId, code, message, currentSrc, codecUnparsable } = request;
@@ -280,7 +287,7 @@ class VideoServiceImpl {
         event: 'codec_unparsable_reported',
         message: 'video.error: client reported demux/codec parse failure',
         roomId,
-        meta: { code, message, currentSrc },
+        meta: { code },
       });
       // If we are already proxying (or proxy is disallowed), further proxy/re-resolve is unlikely to help.
       if (videoMeta.requiresProxy) {
@@ -324,9 +331,9 @@ class VideoServiceImpl {
         level: 'warn',
         domain: 'video',
         event: 'proxy_fallback',
-        message: 'video.fallback: forced proxy after client error',
+        message: 'video.fallback: forced proxy after client error (CORS/hotlink compatibility)',
         roomId,
-        meta: { code, proxyUrl },
+        meta: { code },
       });
 
       return {
@@ -360,7 +367,7 @@ class VideoServiceImpl {
         event: 're_resolved',
         message: `video.resolve: re-resolved source -> ${meta.deliveryType}`,
         roomId,
-        meta: { playbackUrl: meta.playbackUrl, deliveryType: meta.deliveryType },
+        meta: { deliveryType: meta.deliveryType },
       });
 
       return {
