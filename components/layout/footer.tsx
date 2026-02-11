@@ -17,7 +17,7 @@ const socialLinks = [
 ];
 
 const otherLinks = [
-  { href: '/feedback', label: 'Give Feedback' },
+  { href: 'mailto:hello@sideby.me', label: 'Give Feedback' },
   { href: 'https://buymeacoffee.com/sidebyme', label: 'Buy Me a Coffee', external: true },
 ];
 
