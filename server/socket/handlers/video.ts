@@ -176,7 +176,7 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
           event: 'error_report_received',
           message: 'video.error: client reported playback error',
           roomId,
-          meta: { code, message, currentSrc, currentTime, isHost, codecUnparsable },
+          meta: { code, message, currentTime, isHost, codecUnparsable },
         });
 
         const result = await VideoService.handleErrorReport({

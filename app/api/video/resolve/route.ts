@@ -1,10 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { resolveSource } from '@/server/video/resolve-source';
 import { logVideoEvent } from '@/server/logger';
+import { createRateLimiter } from '@/server/rate-limiter';
+
+// 20 requests per minute per IP for video resolution.
+const limiter = createRateLimiter({ windowMs: 60_000, maxRequests: 20 });
 
 export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
+  // Rate limit by client IP.
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim() || req.headers.get('x-real-ip') || 'unknown';
+  const rl = limiter.check(ip);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: 'Too many requests. Please wait a moment and try again.' },
+      {
+        status: 429,
+        headers: {
+          'Retry-After': String(Math.ceil((rl.retryAfterMs ?? 1000) / 1000)),
+          'Access-Control-Allow-Origin': '*',
+        },
+      }
+    );
+  }
+
   let url: string | undefined;
   try {
     const body = await req.json();
@@ -26,16 +46,12 @@ export async function POST(req: NextRequest) {
     logVideoEvent({
       level: 'info',
       event: 'preflight-resolve',
-      message: `Resolved ${url} -> ${meta.deliveryType}`,
+      message: `Resolved video source -> ${meta.deliveryType}`,
       meta: {
-        testedUrl: url,
-        playbackUrl: meta.playbackUrl,
         deliveryType: meta.deliveryType,
         requiresProxy: meta.requiresProxy,
         confidence: meta.confidence,
         confidenceReason: meta.confidenceReason,
-        decisionReasons: meta.decisionReasons,
-        probe: meta.probe,
       },
     });
 
@@ -50,12 +66,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (error instanceof Error && error.message.startsWith('URL is blocked')) {
+      return NextResponse.json(
+        { error: 'This URL cannot be used.' },
+        { status: 403, headers: { 'Access-Control-Allow-Origin': '*' } }
+      );
+    }
+
     // Log playback error
     logVideoEvent({
       level: 'error',
       event: 'preflight-error',
       message: error instanceof Error ? error.message : 'Unknown resolve error',
-      meta: { testedUrl: url, error },
+      meta: { error },
     });
     return NextResponse.json(
       { error: 'Failed to resolve video source' },

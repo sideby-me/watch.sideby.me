@@ -6,6 +6,10 @@ import {
   SubtitleSearchResponse,
 } from '@/types';
 import { logEvent } from '@/server/logger';
+import { createRateLimiter } from '@/server/rate-limiter';
+
+// 30 requests per minute per IP for subtitle searches.
+const limiter = createRateLimiter({ windowMs: 60_000, maxRequests: 30 });
 
 const OPENSUBTITLES_API_URL = 'https://api.opensubtitles.com/api/v1';
 
@@ -104,6 +108,16 @@ function mapToResult(apiItem: OpenSubtitlesAPIResponse['data'][0]): OpenSubtitle
 }
 
 export async function GET(req: NextRequest) {
+  // Rate limit by client IP.
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim() || req.headers.get('x-real-ip') || 'unknown';
+  const rl = limiter.check(ip);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: 'Too many requests. Please wait a moment and try again.' },
+      { status: 429, headers: { 'Retry-After': String(Math.ceil((rl.retryAfterMs ?? 1000) / 1000)) } }
+    );
+  }
+
   const apiKey = process.env.OPENSUBTITLES_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ error: 'Subtitle search is not configured' }, { status: 500 });

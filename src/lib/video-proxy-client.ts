@@ -1,17 +1,18 @@
-// External video proxy URL
-export const VIDEO_PROXY_URL = process.env.NEXT_PUBLIC_VIDEO_PROXY_URL || 'https://pipe.sideby.me';
+// Proxy URL from environment, when absent, proxy is disabled and all URLs are played directly
+const VIDEO_PROXY_RAW = process.env.NEXT_PUBLIC_VIDEO_PROXY_URL?.trim();
 
-// Build a proxied video URL
+export const PROXY_ENABLED = Boolean(VIDEO_PROXY_RAW);
+export const VIDEO_PROXY_URL = VIDEO_PROXY_RAW ?? '';
+
 export function buildProxyUrl(targetUrl: string): string {
-  if (isProxiedUrl(targetUrl)) {
-    return targetUrl;
-  }
+  if (!PROXY_ENABLED) return targetUrl;
+  if (isProxiedUrl(targetUrl)) return targetUrl;
+
   const params = new URLSearchParams({ url: targetUrl });
   return `${VIDEO_PROXY_URL}?${params.toString()}`;
 }
 
-// Check if a URL is already proxied
 export function isProxiedUrl(url: string): boolean {
-  if (!url) return false;
-  return url.includes('pipe.sideby.me') || url.includes('/api/video-proxy') || url.includes(VIDEO_PROXY_URL);
+  if (!PROXY_ENABLED || !url) return false;
+  return url.startsWith(VIDEO_PROXY_URL);
 }

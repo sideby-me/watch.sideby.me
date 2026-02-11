@@ -1,4 +1,5 @@
-import { buildProxyUrl } from '@/src/lib/video-proxy-client';
+import { buildProxyUrl, isProxiedUrl } from '@/src/lib/video-proxy-client';
+import { isBlocked } from './blocklist';
 
 export interface RoomVideoMeta {
   originalUrl: string;
@@ -128,15 +129,17 @@ export async function resolveSource(rawUrl: string): Promise<RoomVideoMeta> {
     throw new Error('Unsupported protocol');
   }
 
+  const blockCheck = isBlocked(originalUrl);
+  if (blockCheck.blocked) {
+    throw new Error(`URL is blocked: ${blockCheck.reason}`);
+  }
+
   const { kind, videoType: legacyVideoType, hints } = classify(originalUrl);
   const timestamp = Date.now();
 
   if (hints.hlsPath) decisionReasons.push('hls-path-hint');
   if (hints.extensionless) decisionReasons.push('url-extensionless');
   if (hints.signedQuery) decisionReasons.push('url-signed');
-
-  // Local helper to mirror client-side proxy detection
-  const isProxiedUrl = (url: string) => url.includes('pipe.sideby.me') || url.includes('/api/video-proxy');
 
   // Early exit for already-proxied URLs
   if (isProxiedUrl(originalUrl)) {
@@ -205,7 +208,7 @@ export async function resolveSource(rawUrl: string): Promise<RoomVideoMeta> {
     };
   }
 
-  // File: perform HEAD then Range probe if needed
+  // File: perform HEAD then Range probe to determine content type and codec
   const controller = new AbortController();
   const head = await headRequest(originalUrl, controller.signal);
   if (head.status === 403 || head.status === 401) {
@@ -261,6 +264,7 @@ export async function resolveSource(rawUrl: string): Promise<RoomVideoMeta> {
       range = await rangeProbe(originalUrl, controller.signal);
       decisionReasons.push('range-probed');
       if (range.status === 403) {
+        // Range-request blocked
         decisionReasons.push('range-access-denied');
         const meta: RoomVideoMeta = {
           originalUrl,
