@@ -185,6 +185,16 @@ export const SyncCheckDataSchema = z.object({
   timestamp: z.number().positive(),
 });
 
+// NTP-style clock sync schemas
+export const TimePingDataSchema = z.object({
+  clientSendTime: z.number().positive(),
+});
+
+export const TimePongDataSchema = z.object({
+  clientSendTime: z.number().positive(),
+  serverTime: z.number().positive(),
+});
+
 export const RoomActionDataSchema = z.object({
   roomId: RoomIdSchema,
 });
@@ -521,6 +531,8 @@ export type UpdateRoomSettingsData = z.infer<typeof UpdateRoomSettingsDataSchema
 export type VerifyPasscodeData = z.infer<typeof VerifyPasscodeDataSchema>;
 export type PasscodeRequiredResponse = z.infer<typeof PasscodeRequiredResponseSchema>;
 export type RoomSettingsUpdatedResponse = z.infer<typeof RoomSettingsUpdatedResponseSchema>;
+export type TimePingData = z.infer<typeof TimePingDataSchema>;
+export type TimePongData = z.infer<typeof TimePongDataSchema>;
 
 // Response types
 export type RoomCreatedResponse = z.infer<typeof RoomCreatedResponseSchema>;

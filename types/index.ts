@@ -56,6 +56,8 @@ import type {
   VerifyPasscodeData,
   PasscodeRequiredResponse,
   RoomSettingsUpdatedResponse,
+  TimePingData,
+  TimePongData,
 } from './schemas';
 
 export interface SocketEvents {
@@ -91,6 +93,11 @@ export interface SocketEvents {
   'video-seeked': (data: VideoEventResponse) => void;
   'sync-update': (data: SyncUpdateResponse) => void;
   'sync-video': (data: { videoState: VideoState }) => void;
+
+  // Clock sync events
+  'time-ping': (data: TimePingData) => void;
+  'time-pong': (data: TimePongData) => void;
+
   'video-error-report': (data: {
     roomId: string;
     code?: number;

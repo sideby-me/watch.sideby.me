@@ -79,6 +79,7 @@ export function registerRoomHandlers(socket: Socket<SocketEvents, SocketEvents, 
       socket.data.userId = result.user.id;
       socket.data.userName = result.user.name;
       socket.data.roomId = result.room.id;
+      socket.data.isHost = true;
 
       // Join socket room
       await socket.join(result.room.id);
@@ -173,6 +174,7 @@ export function registerRoomHandlers(socket: Socket<SocketEvents, SocketEvents, 
       socket.data.userId = result.user.id;
       socket.data.userName = result.user.name;
       socket.data.roomId = result.room.id;
+      socket.data.isHost = result.user.isHost;
 
       // Join socket room
       await socket.join(result.room.id);
@@ -230,6 +232,16 @@ export function registerRoomHandlers(socket: Socket<SocketEvents, SocketEvents, 
       const result = await RoomService.promoteUser({ roomId, targetUserId: userId }, ctx);
 
       io.to(roomId).emit('user-promoted', { userId, userName: result.targetUser.name });
+
+      // Update the promoted socket's data.isHost for passthrough checks
+      const targetSocketId = await redisService.userMapping.getUserSocket(userId);
+      if (targetSocketId) {
+        const targetSocket = io.sockets.sockets.get(targetSocketId);
+        if (targetSocket) {
+          targetSocket.data.isHost = true;
+        }
+      }
+
       emitSystemMessage(io, roomId, `${result.targetUser.name} was promoted to host`, 'promote', {
         userId,
         userName: result.targetUser.name,
@@ -321,6 +333,7 @@ export function registerRoomHandlers(socket: Socket<SocketEvents, SocketEvents, 
       socket.data.userId = result.user.id;
       socket.data.userName = result.user.name;
       socket.data.roomId = result.room.id;
+      socket.data.isHost = result.user.isHost;
 
       // Join socket room
       await socket.join(result.room.id);

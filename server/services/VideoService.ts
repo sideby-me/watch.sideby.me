@@ -17,13 +17,6 @@ export interface VideoControlRequest {
   currentTime: number;
 }
 
-export interface SyncCheckRequest {
-  roomId: string;
-  currentTime: number;
-  isPlaying: boolean;
-  timestamp: number;
-}
-
 export interface VideoErrorReportRequest {
   roomId: string;
   code?: number;
@@ -42,12 +35,6 @@ export interface SetVideoResult {
 export interface VideoControlResult {
   videoState: VideoState;
   shouldEmitSystemMessage: boolean;
-}
-
-export interface SyncCheckResult {
-  currentTime: number;
-  isPlaying: boolean;
-  timestamp: number;
 }
 
 export interface VideoErrorReportResult {
@@ -219,32 +206,6 @@ class VideoServiceImpl {
     });
 
     return { videoState, shouldEmitSystemMessage: false };
-  }
-
-  // Handle sync check from host.
-  async handleSyncCheck(request: SyncCheckRequest, ctx: SocketContext): Promise<SyncCheckResult> {
-    const { roomId, currentTime, isPlaying, timestamp } = request;
-
-    const room = await redisService.rooms.getRoom(roomId);
-    if (!room) {
-      throw new NotFoundError("Hmm, we couldn't find a room with that code. Maybe a typo?");
-    }
-
-    const currentUser = room.users.find(u => u.id === ctx.userId);
-    if (!currentUser?.isHost) {
-      throw new PermissionError('Only hosts can send sync checks');
-    }
-
-    logEvent({
-      level: 'info',
-      domain: 'video',
-      event: 'sync_check',
-      message: `video.sync: host nudged everyone to ${currentTime.toFixed(1)}s`,
-      roomId,
-      meta: { currentTime, isPlaying },
-    });
-
-    return { currentTime, isPlaying, timestamp };
   }
 
   /**

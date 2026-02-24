@@ -7,6 +7,7 @@ import { useRoomCore } from '@/src/features/room/hooks/use-room-core';
 import { useRoomUiState } from '@/src/features/room/hooks/use-room-ui-state';
 import { useChat } from '@/src/features/chat/hooks/use-chat';
 import { useVideoSync } from '@/src/features/video-sync/hooks';
+import { useClockOffset } from '@/src/features/video-sync/hooks';
 import { extractYouTubeId } from '@/src/features/video-sync/lib';
 import { useSubtitles } from '@/src/features/subtitles/hooks';
 import { getVideoIdForStorage } from '@/src/features/subtitles/lib';
@@ -194,6 +195,8 @@ export function RoomShell({ roomId }: RoomShellProps) {
     },
   });
 
+  const { clockOffset } = useClockOffset();
+
   // Use video sync hook for video synchronization
   const {
     syncVideo,
@@ -214,6 +217,7 @@ export function RoomShell({ roomId }: RoomShellProps) {
     hlsPlayerRef,
     castPlayerRef,
     isCasting,
+    clockOffset,
   });
 
   // Update handler refs when they change

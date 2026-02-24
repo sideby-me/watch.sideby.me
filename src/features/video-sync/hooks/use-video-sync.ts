@@ -6,6 +6,7 @@ import { YouTubePlayerRef, YT_STATES } from '@/src/core/video/youtube-player';
 import { HLSPlayerRef } from '@/src/core/video/hls-player';
 import { CastPlayerRef } from '@/src/features/media/cast';
 import { calculateCurrentTime } from '@/src/lib/video-utils';
+import { SYNC_TOLERANCE_S, SYNC_COOLDOWN_MS } from '@/src/lib/constants';
 import { Room, User } from '@/types';
 import { logDebug } from '@/src/core/logger';
 
@@ -30,6 +31,7 @@ interface UseVideoSyncOptions {
   hlsPlayerRef: React.RefObject<HLSPlayerRef | null>;
   castPlayerRef?: React.RefObject<CastPlayerRef | null>;
   isCasting?: boolean;
+  clockOffset?: number;
 }
 
 interface UseVideoSyncReturn {
@@ -54,6 +56,7 @@ export function useVideoSync({
   hlsPlayerRef,
   castPlayerRef,
   isCasting = false,
+  clockOffset = 0,
 }: UseVideoSyncOptions): UseVideoSyncReturn {
   const { socket } = useSocket();
 
@@ -66,6 +69,10 @@ export function useVideoSync({
   const lastPlayerTimeRef = useRef<number>(0);
   const syncCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const pendingSyncRef = useRef<{ targetTime: number; isPlaying: boolean | null; timestamp: number } | null>(null);
+
+  // Keep clockOffset in a ref so all callbacks always read the latest value
+  const clockOffsetRef = useRef(clockOffset);
+  clockOffsetRef.current = clockOffset;
 
   // Get current player based on video type (prioritize cast player when casting)
   const getCurrentPlayer = useCallback(() => {
@@ -89,8 +96,8 @@ export function useVideoSync({
       if (!room || !currentUser) return;
 
       // Don't sync if this user just performed the action (prevent feedback loop)
-      const now = Date.now();
-      const timeSinceLastAction = now - lastControlActionRef.current.timestamp;
+      const serverNow = Date.now() + clockOffsetRef.current;
+      const timeSinceLastAction = serverNow - lastControlActionRef.current.timestamp;
       if (lastControlActionRef.current.userId === currentUser.id && timeSinceLastAction < 500) {
         logDebug('video', 'sync_skip', 'Skipping sync - user just performed this action');
         return;
@@ -114,11 +121,14 @@ export function useVideoSync({
       }
       pendingSyncRef.current = null;
 
-      const adjustedTime = calculateCurrentTime({
-        currentTime: targetTime,
-        isPlaying: isPlaying ?? false,
-        lastUpdateTime: timestamp,
-      });
+      const adjustedTime = calculateCurrentTime(
+        {
+          currentTime: targetTime,
+          isPlaying: isPlaying ?? false,
+          lastUpdateTime: timestamp,
+        },
+        clockOffsetRef.current
+      );
 
       // Check if we need to sync
       const currentTime = player.getCurrentTime();
@@ -133,15 +143,25 @@ export function useVideoSync({
         });
       }
 
-      if (syncDiff > 1.5) {
-        logDebug(
-          'video',
-          'sync_seek',
-          `Syncing video: ${syncDiff.toFixed(2)}s difference, seeking to ${adjustedTime.toFixed(2)}s`
-        );
-        player.seekTo(adjustedTime);
-        lastSyncTimeRef.current = now;
-        lastPlayerTimeRef.current = adjustedTime;
+      if (syncDiff > SYNC_TOLERANCE_S) {
+        const serverNow = Date.now() + clockOffsetRef.current;
+        const timeSinceLastSeek = serverNow - lastSyncTimeRef.current;
+        if (timeSinceLastSeek > SYNC_COOLDOWN_MS) {
+          logDebug(
+            'video',
+            'sync_seek',
+            `Syncing video: ${syncDiff.toFixed(2)}s difference, seeking to ${adjustedTime.toFixed(2)}s`
+          );
+          player.seekTo(adjustedTime);
+          lastSyncTimeRef.current = serverNow;
+          lastPlayerTimeRef.current = adjustedTime;
+        } else {
+          logDebug(
+            'video',
+            'sync_cooldown',
+            `Drift ${syncDiff.toFixed(2)}s but cooldown active (${timeSinceLastSeek.toFixed(0)}ms since last seek)`
+          );
+        }
       }
 
       // Handle play/pause state
@@ -204,7 +224,7 @@ export function useVideoSync({
         roomId,
         currentTime,
         isPlaying,
-        timestamp: Date.now(),
+        timestamp: Date.now() + clockOffsetRef.current, // emit in server-time
       });
     }, syncInterval);
   }, [room, currentUser, socket, roomId, getCurrentPlayer, isCasting]);
@@ -235,7 +255,7 @@ export function useVideoSync({
     logDebug('video', 'play_emit', 'Emitting play-video', { roomId, currentTime });
 
     lastControlActionRef.current = {
-      timestamp: Date.now(),
+      timestamp: Date.now() + clockOffsetRef.current,
       type: 'play',
       userId: currentUser.id,
     };
@@ -252,7 +272,7 @@ export function useVideoSync({
     const currentTime = player.getCurrentTime();
 
     lastControlActionRef.current = {
-      timestamp: Date.now(),
+      timestamp: Date.now() + clockOffsetRef.current,
       type: 'pause',
       userId: currentUser.id,
     };
@@ -275,7 +295,7 @@ export function useVideoSync({
       }
 
       lastControlActionRef.current = {
-        timestamp: Date.now(),
+        timestamp: Date.now() + clockOffsetRef.current,
         type: 'seek',
         userId: currentUser.id,
       };
@@ -300,7 +320,7 @@ export function useVideoSync({
         if (timeDiff > 1) {
           logDebug('video', 'yt_seek_detected', `Detected seek to ${currentTime.toFixed(2)}s before play`);
           lastControlActionRef.current = {
-            timestamp: Date.now(),
+            timestamp: Date.now() + clockOffsetRef.current,
             type: 'seek',
             userId: currentUser.id,
           };
@@ -308,7 +328,7 @@ export function useVideoSync({
         }
 
         lastControlActionRef.current = {
-          timestamp: Date.now(),
+          timestamp: Date.now() + clockOffsetRef.current,
           type: 'play',
           userId: currentUser.id,
         };
@@ -316,7 +336,7 @@ export function useVideoSync({
         socket.emit('play-video', { roomId, currentTime });
       } else if (state === YT_STATES.PAUSED) {
         lastControlActionRef.current = {
-          timestamp: Date.now(),
+          timestamp: Date.now() + clockOffsetRef.current,
           type: 'pause',
           userId: currentUser.id,
         };
@@ -328,7 +348,7 @@ export function useVideoSync({
         if (timeDiff > 1) {
           logDebug('video', 'yt_seek_buffering', `Detected seek to ${currentTime.toFixed(2)}s during buffering`);
           lastControlActionRef.current = {
-            timestamp: Date.now(),
+            timestamp: Date.now() + clockOffsetRef.current,
             type: 'seek',
             userId: currentUser.id,
           };

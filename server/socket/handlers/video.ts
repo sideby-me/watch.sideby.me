@@ -1,5 +1,5 @@
 import { Socket, Server as IOServer } from 'socket.io';
-import { SetVideoDataSchema, VideoControlDataSchema, SyncCheckDataSchema } from '@/types';
+import { SetVideoDataSchema, VideoControlDataSchema, SyncCheckDataSchema, TimePingDataSchema } from '@/types';
 import { SocketEvents, SocketData } from '../types';
 import { validateData, emitSystemMessage } from '../utils';
 import { handleServiceError } from '../error-handler';
@@ -134,35 +134,24 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
   });
 
   // Sync check (host broadcasts to guests)
-  socket.on('sync-check', async data => {
-    try {
-      const validatedData = validateData(SyncCheckDataSchema, data, socket);
-      if (!validatedData) return;
+  socket.on('sync-check', data => {
+    const validatedData = validateData(SyncCheckDataSchema, data, socket);
+    if (!validatedData) return;
+    if (!socket.data.isHost) return;
+    if (validatedData.roomId !== socket.data.roomId) return;
 
-      const ctx = createSocketContext(socket.data);
-      if (!ctx) {
-        socket.emit('error', { error: 'Hmm, we lost your connection details.' });
-        return;
-      }
+    socket.to(validatedData.roomId).emit('sync-update', {
+      currentTime: validatedData.currentTime,
+      isPlaying: validatedData.isPlaying,
+      timestamp: validatedData.timestamp,
+    });
+  });
 
-      const result = await VideoService.handleSyncCheck(
-        {
-          roomId: validatedData.roomId,
-          currentTime: validatedData.currentTime,
-          isPlaying: validatedData.isPlaying,
-          timestamp: validatedData.timestamp,
-        },
-        ctx
-      );
-
-      socket.to(validatedData.roomId).emit('sync-update', {
-        currentTime: result.currentTime,
-        isPlaying: result.isPlaying,
-        timestamp: result.timestamp,
-      });
-    } catch (error) {
-      handleServiceError(error, socket);
-    }
+  // NTP-style clock sync
+  socket.on('time-ping', data => {
+    const validated = validateData(TimePingDataSchema, data, socket);
+    if (!validated) return;
+    socket.emit('time-pong', { clientSendTime: validated.clientSendTime, serverTime: Date.now() });
   });
 
   // Video error report (client reports playback failure)

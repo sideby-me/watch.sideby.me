@@ -83,16 +83,20 @@ export function generateRoomId(): string {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
 
-export function calculateCurrentTime(videoState: {
-  currentTime: number;
-  isPlaying: boolean;
-  lastUpdateTime: number;
-}): number {
+export function calculateCurrentTime(
+  videoState: {
+    currentTime: number;
+    isPlaying: boolean;
+    lastUpdateTime: number;
+  },
+  clockOffset: number = 0
+): number {
   if (!videoState.isPlaying) {
     return videoState.currentTime;
   }
 
-  const timeDiff = (Date.now() - videoState.lastUpdateTime) / 1000;
+  const serverNow = Date.now() + clockOffset;
+  const timeDiff = (serverNow - videoState.lastUpdateTime) / 1000;
   return videoState.currentTime + timeDiff;
 }
 

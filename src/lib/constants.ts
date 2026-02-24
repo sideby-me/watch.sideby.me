@@ -22,6 +22,10 @@ export const TURN_CREDENTIAL_CACHE_MS = 5 * 60 * 1000;
 export const VIDEO_SYNC_DEBOUNCE_MS = 1_000;
 /** Debounce window for video error reports from clients */
 export const VIDEO_ERROR_REPORT_DEBOUNCE_MS = 8_000;
+/** Maximum drift (seconds) before a forced seek correction */
+export const SYNC_TOLERANCE_S = 0.4;
+/** Minimum interval (ms) between forced seek corrections to prevent thrashing */
+export const SYNC_COOLDOWN_MS = 3_000;
 
 // Audio Analysis
 
