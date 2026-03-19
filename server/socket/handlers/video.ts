@@ -21,7 +21,8 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
 
       const result = await VideoService.setVideo(
         { roomId: validatedData.roomId, videoUrl: validatedData.videoUrl },
-        ctx
+        ctx,
+        socket
       );
 
       io.to(validatedData.roomId).emit('video-set', {
@@ -34,7 +35,11 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
       });
     } catch (error) {
       const message =
-        (error as Error)?.message === 'Unsupported protocol' ? 'Only http/https video links are supported' : undefined;
+        (error as Error)?.message === 'Unsupported protocol'
+          ? 'Only http/https video links are supported'
+          : (error as Error)?.message?.startsWith('DRM-protected content')
+            ? (error as Error).message
+            : undefined;
       if (message) {
         socket.emit('error', { error: message });
       } else {
@@ -158,45 +163,38 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
   socket.on(
     'video-error-report',
     async ({ roomId, code, message, currentSrc, currentTime, isHost, codecUnparsable }) => {
-      try {
-        logEvent({
-          level: 'warn',
-          domain: 'video',
-          event: 'error_report_received',
-          message: 'video.error: client reported playback error',
-          roomId,
-          meta: { code, message, currentTime, isHost, codecUnparsable },
-        });
-
-        const result = await VideoService.handleErrorReport({
-          roomId,
-          code,
-          message,
-          currentSrc,
-          currentTime,
-          codecUnparsable,
-        });
-
-        if (result.fallbackApplied && result.newPlaybackUrl && result.videoMeta) {
-          io.to(roomId).emit('video-set', {
-            videoUrl: result.newPlaybackUrl,
-            videoType: result.videoType!,
-            videoMeta: result.videoMeta,
-          });
-          emitSystemMessage(io, roomId, 'Video source changed', 'video-change', {
-            videoUrl: result.newPlaybackUrl,
-          });
-        }
-      } catch (err) {
-        logEvent({
-          level: 'error',
-          domain: 'video',
-          event: 'error_report_failed',
-          message: 'video.error: failed to handle error report',
-          roomId,
-          meta: { error: String(err) },
-        });
-      }
+      logEvent({
+        level: 'warn',
+        domain: 'video',
+        event: 'error_report_received',
+        message: 'video.error: client reported playback error',
+        roomId,
+        meta: { code, message, currentSrc, currentTime, isHost, codecUnparsable },
+      });
     }
   );
+
+  // Host-triggered manual URL refresh (re-dispatches original URL and broadcasts fresh uuid to room)
+  socket.on('video-url-refresh', async () => {
+    try {
+      if (!socket.data.isHost || !socket.data.roomId) return;
+      const roomId = socket.data.roomId;
+
+      const ctx = createSocketContext(socket.data);
+      if (!ctx) return;
+
+      const room = await (await import('@/server/redis')).redisService.rooms.getRoom(roomId);
+      if (!room?.videoMeta?.originalUrl) return;
+
+      const result = await VideoService.setVideo({ roomId, videoUrl: room.videoMeta.originalUrl }, ctx, socket);
+
+      io.to(roomId).emit('video-url-refresh', {
+        videoUrl: result.playbackUrl,
+        videoType: result.videoType,
+        videoMeta: result.videoMeta,
+      });
+    } catch (error) {
+      handleServiceError(error, socket);
+    }
+  });
 }

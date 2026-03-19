@@ -2,7 +2,14 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Socket } from 'socket.io-client';
-import { Room, User, RoomSettings, VideoSetResponse } from '@/types';
+import {
+  Room,
+  User,
+  RoomSettings,
+  VideoSetResponse,
+  VideoUrlRefreshResponse,
+  VideoLoadingStatusResponse,
+} from '@/types';
 import { logClient, logDebug } from '@/src/core/logger';
 
 interface UseRoomCoreOptions {
@@ -18,6 +25,7 @@ interface UseRoomCoreReturn {
   error: string;
   syncError: string;
   isJoining: boolean;
+  captureStatus: string | null;
 
   // Refs
   hasAttemptedJoinRef: React.MutableRefObject<boolean>;
@@ -60,6 +68,7 @@ export function useRoomCore({ roomId, socket, isConnected }: UseRoomCoreOptions)
   const [error, setError] = useState('');
   const [syncError, setSyncError] = useState('');
   const [isJoining, setIsJoining] = useState(false);
+  const [captureStatus, setCaptureStatus] = useState<string | null>(null);
 
   const hasAttemptedJoinRef = useRef<boolean>(false);
   const hasShownClosureToastRef = useRef<boolean>(false);
@@ -186,6 +195,7 @@ export function useRoomCore({ roomId, socket, isConnected }: UseRoomCoreOptions)
     };
 
     const handleVideoSet = ({ videoUrl, videoType, videoMeta }: VideoSetResponse) => {
+      setCaptureStatus(null);
       setRoom(prev =>
         prev
           ? {
@@ -204,6 +214,27 @@ export function useRoomCore({ roomId, socket, isConnected }: UseRoomCoreOptions)
       );
 
       onVideoSetRef.current?.({ videoUrl, videoType, videoMeta });
+    };
+
+    // Lens: URL refresh without resetting playback (daemon-triggered rotation)
+    const handleVideoUrlRefresh = ({ videoUrl, videoType, videoMeta }: VideoUrlRefreshResponse) => {
+      logDebug('room', 'video_url_refresh', 'Video URL refreshed by daemon', { videoUrl });
+      setRoom(prev =>
+        prev
+          ? {
+              ...prev,
+              videoUrl,
+              videoType,
+              videoMeta: videoMeta ?? prev.videoMeta,
+            }
+          : null
+      );
+    };
+
+    // Lens: loading status during capture
+    const handleVideoLoadingStatus = ({ status, message }: VideoLoadingStatusResponse) => {
+      logDebug('room', 'video_loading_status', `Lens: ${status}${message ? ` - ${message}` : ''}`);
+      setCaptureStatus(status);
     };
 
     const handleRoomError = ({ error: errorMsg }: { error: string }) => {
@@ -280,6 +311,8 @@ export function useRoomCore({ roomId, socket, isConnected }: UseRoomCoreOptions)
     socket.on('user-promoted', handleUserPromoted);
     socket.on('user-kicked', handleUserKicked);
     socket.on('video-set', handleVideoSet);
+    socket.on('video-url-refresh', handleVideoUrlRefresh);
+    socket.on('video-loading-status', handleVideoLoadingStatus);
     socket.on('room-error', handleRoomError);
     socket.on('error', handleSocketError);
     socket.on('passcode-required', handlePasscodeRequired);
@@ -292,6 +325,8 @@ export function useRoomCore({ roomId, socket, isConnected }: UseRoomCoreOptions)
       socket.off('user-promoted', handleUserPromoted);
       socket.off('user-kicked', handleUserKicked);
       socket.off('video-set', handleVideoSet);
+      socket.off('video-url-refresh', handleVideoUrlRefresh);
+      socket.off('video-loading-status', handleVideoLoadingStatus);
       socket.off('room-error', handleRoomError);
       socket.off('error', handleSocketError);
       socket.off('passcode-required', handlePasscodeRequired);
@@ -416,6 +451,7 @@ export function useRoomCore({ roomId, socket, isConnected }: UseRoomCoreOptions)
     error,
     syncError,
     isJoining,
+    captureStatus,
 
     // Refs
     hasAttemptedJoinRef,

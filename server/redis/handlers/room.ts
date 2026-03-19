@@ -120,4 +120,21 @@ export class RoomRepository {
       }
     }
   }
+
+  async getRoomsWithExpiringPayloads(bufferMs: number): Promise<Room[]> {
+    const activeRoomIds = await redis.smembers('active-rooms');
+    const now = Date.now();
+    const threshold = now + bufferMs;
+    const results: Room[] = [];
+
+    for (const roomId of activeRoomIds) {
+      const room = await this.getRoom(roomId);
+      if (!room?.videoMeta?.expiresAt) continue;
+      if (room.videoMeta.expiresAt <= threshold) {
+        results.push(room);
+      }
+    }
+
+    return results;
+  }
 }

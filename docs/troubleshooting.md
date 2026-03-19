@@ -16,8 +16,8 @@ Common issues and things to check when working on watch.sideby.me.
 ## Video and media issues
 
 - If a video URL fails to play:
-  - Check the behavior of `server/video/resolve-source.ts`.
-  - Look for logs indicating why a URL was rejected or proxied.
+  - Check the behavior of `server/video/dispatch.ts` and the Lens capture flow (`server/video/lens-client.ts`).
+  - Look for logs with `domain: 'video'` indicating why a URL was rejected, which tier it hit, or whether Lens timed out.
 - For voice/videochat problems:
   - Check media-related logs and any signaling errors.
 

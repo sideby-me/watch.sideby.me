@@ -115,6 +115,9 @@ export const VideoMetaSchema = z.object({
     acceptRanges: z.boolean().optional(),
   }),
   timestamp: z.number(),
+  // Lens integration fields
+  lensUuid: z.string().uuid().optional(),
+  expiresAt: z.number().optional(),
 });
 
 export const RoomSchema = z.object({
@@ -463,6 +466,19 @@ export const VideoSetResponseSchema = z.object({
   videoMeta: RoomSchema.shape.videoMeta.optional(),
 });
 
+// Lens: daemon-triggered URL refresh (same shape as video-set)
+export const VideoUrlRefreshResponseSchema = z.object({
+  videoUrl: VideoUrlSchema,
+  videoType: z.enum(['youtube', 'mp4', 'm3u8']),
+  videoMeta: RoomSchema.shape.videoMeta.optional(),
+});
+
+// Lens: loading status relayed from Lens SSE during capture
+export const VideoLoadingStatusResponseSchema = z.object({
+  status: z.string(),
+  message: z.string().optional(),
+});
+
 export const VideoEventResponseSchema = z.object({
   currentTime: z.number().min(0),
   timestamp: z.number().positive(),
@@ -549,6 +565,8 @@ export type ReactionUpdatedResponse = z.infer<typeof ReactionUpdatedResponseSche
 export type TypingEventResponse = z.infer<typeof TypingEventResponseSchema>;
 export type ErrorResponse = z.infer<typeof ErrorResponseSchema>;
 export type VideoErrorReport = z.infer<typeof VideoErrorReportSchema>;
+export type VideoUrlRefreshResponse = z.infer<typeof VideoUrlRefreshResponseSchema>;
+export type VideoLoadingStatusResponse = z.infer<typeof VideoLoadingStatusResponseSchema>;
 
 // Voice chat types
 export type VoiceJoinData = z.infer<typeof VoiceJoinDataSchema>;

@@ -1,0 +1,264 @@
+/**
+ * 6-tier dispatch: decides how to deliver a video URL.
+ *
+ * Tiers (first match wins):
+ *  a. Non-http/https protocol → throw ValidationError
+ *  b. DRM hostname match → throw ValidationError
+ *  c. YouTube hostname → direct playback
+ *  d. Already a pipe URL (isProxiedUrl) → return as-is
+ *  e. Direct media extension without signed params → HEAD probe → file-direct / file-proxy / Lens
+ *  f. Everything else → Lens capture
+ */
+
+import { logEvent } from '@/server/logger';
+import { isBlocked } from './blocklist';
+import { LensClient } from './lens-client';
+import type { Socket } from 'socket.io';
+
+// Client-side helpers are importable from the shared lib
+const VIDEO_PROXY_URL = process.env.NEXT_PUBLIC_VIDEO_PROXY_URL?.trim() ?? 'http://localhost:8787';
+const PROXY_ENABLED = Boolean(VIDEO_PROXY_URL);
+
+function buildProxyUrl(targetUrl: string): string {
+  if (!PROXY_ENABLED) return targetUrl; // serve direct when proxy not configured
+  const params = new URLSearchParams({ url: targetUrl });
+  return `${VIDEO_PROXY_URL}?${params.toString()}`;
+}
+
+function buildLensPlaybackUrl(uuid: string): string {
+  if (!PROXY_ENABLED) throw new Error('NEXT_PUBLIC_VIDEO_PROXY_URL is not set - cannot build Lens playback URL');
+  return `${VIDEO_PROXY_URL}?uuid=${uuid}`;
+}
+
+function isProxiedUrl(url: string): boolean {
+  if (!PROXY_ENABLED || !url) return false;
+  return url.startsWith(VIDEO_PROXY_URL);
+}
+
+export interface DispatchResult {
+  playbackUrl: string;
+  videoType: 'youtube' | 'mp4' | 'm3u8';
+  deliveryType: 'youtube' | 'file-direct' | 'file-proxy' | 'hls';
+  lensUuid?: string;
+  expiresAt?: number;
+  originalUrl: string;
+}
+
+/** DRM-protected streaming services that cannot be proxied */
+const DRM_HOSTS = new Set([
+  'netflix.com',
+  'www.netflix.com',
+  'disneyplus.com',
+  'www.disneyplus.com',
+  'hulu.com',
+  'www.hulu.com',
+  'primevideo.com',
+  'www.primevideo.com',
+  'tv.apple.com',
+  'play.max.com',
+  'www.peacocktv.com',
+  'www.paramountplus.com',
+]);
+
+/** Media file extensions that indicate a directly-addressable media file */
+const DIRECT_MEDIA_EXTS = ['.mp4', '.webm', '.m3u8', '.mpd'];
+
+/** Exact signed URL parameter names (lower-cased); X-Amz-* is handled via prefix below */
+const SIGNED_PARAMS_EXACT = ['exp', 'token', 'sig', 'signature', 'hash', 'validfrom', 'validto'];
+
+function isDrmHost(hostname: string): boolean {
+  const lower = hostname.toLowerCase();
+  return DRM_HOSTS.has(lower) || [...DRM_HOSTS].some(h => lower.endsWith(`.${h}`));
+}
+
+function isYouTubeHost(hostname: string): boolean {
+  const lower = hostname.toLowerCase();
+  return (
+    lower === 'youtube.com' ||
+    lower === 'www.youtube.com' ||
+    lower === 'm.youtube.com' ||
+    lower === 'youtu.be' ||
+    lower === 'www.youtube-nocookie.com'
+  );
+}
+
+function hasDirectMediaExt(pathname: string): boolean {
+  const lower = pathname.toLowerCase();
+  return DIRECT_MEDIA_EXTS.some(ext => lower.endsWith(ext) || lower.includes(`${ext}?`));
+}
+
+function hasSignedParams(searchParams: URLSearchParams): boolean {
+  for (const key of searchParams.keys()) {
+    const lower = key.toLowerCase();
+    if (lower.startsWith('x-amz-')) return true;
+    if (SIGNED_PARAMS_EXACT.includes(lower)) return true;
+  }
+  return false;
+}
+
+interface HeadProbeResult {
+  status: number;
+  cors: 'permissive' | 'restrictive';
+}
+
+async function headProbe(url: string): Promise<HeadProbeResult | null> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    try {
+      const res = await fetch(url, { method: 'HEAD', signal: controller.signal, redirect: 'follow' });
+      const acao = res.headers.get('access-control-allow-origin');
+      const cors: 'permissive' | 'restrictive' = acao === '*' ? 'permissive' : 'restrictive';
+      return { status: res.status, cors };
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch {
+    return null; // timeout or network error → treat as non-2xx
+  }
+}
+
+function videoTypeFromUrl(pathname: string): 'mp4' | 'm3u8' {
+  return pathname.toLowerCase().includes('.m3u8') ? 'm3u8' : 'mp4';
+}
+
+const lensClient = new LensClient();
+
+/**
+ * Dispatch a raw video URL to the correct delivery path.
+ * Throws on validation errors (DRM, invalid protocol).
+ */
+export async function dispatch(rawUrl: string, socket?: Socket): Promise<DispatchResult> {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new Error(`Invalid URL: ${rawUrl}`);
+  }
+
+  // Tier a: Non-http/https
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('Unsupported protocol');
+  }
+
+  // Tier b: DRM hosts
+  if (isDrmHost(parsed.hostname)) {
+    throw new Error(`DRM-protected content from ${parsed.hostname} cannot be played - use the native app instead.`);
+  }
+
+  // Check blocklist
+  const blockCheck = isBlocked(rawUrl);
+  if (blockCheck.blocked) {
+    throw new Error(`URL is blocked: ${blockCheck.reason}`);
+  }
+
+  // Tier c: YouTube
+  if (isYouTubeHost(parsed.hostname)) {
+    logEvent({
+      level: 'info',
+      domain: 'video',
+      event: 'dispatch_youtube',
+      message: `dispatch: YouTube → direct`,
+      meta: { url: rawUrl },
+    });
+    return {
+      playbackUrl: rawUrl,
+      videoType: 'youtube',
+      deliveryType: 'youtube',
+      originalUrl: rawUrl,
+    };
+  }
+
+  // Tier d: Already proxied
+  if (isProxiedUrl(rawUrl)) {
+    // Infer videoType from the embedded url= param; uuid= paths are Lens output (predominantly HLS)
+    let vType: 'mp4' | 'm3u8' = 'mp4';
+    try {
+      const inner = new URL(rawUrl);
+      const innerUrl = inner.searchParams.get('url');
+      if (innerUrl) vType = videoTypeFromUrl(new URL(innerUrl).pathname);
+      else if (inner.searchParams.has('uuid')) vType = 'm3u8';
+    } catch {
+      /* leave as 'mp4' */
+    }
+    logEvent({
+      level: 'info',
+      domain: 'video',
+      event: 'dispatch_proxied',
+      message: `dispatch: already proxied → as-is (${vType})`,
+      meta: { url: rawUrl },
+    });
+    return {
+      playbackUrl: rawUrl,
+      videoType: vType,
+      deliveryType: 'file-proxy',
+      originalUrl: rawUrl,
+    };
+  }
+
+  // Tier e: Direct media extension without signed params → HEAD probe to decide delivery
+  if (hasDirectMediaExt(parsed.pathname) && !hasSignedParams(parsed.searchParams)) {
+    const probe = await headProbe(rawUrl);
+    if (probe && probe.status >= 200 && probe.status < 300) {
+      const vType = videoTypeFromUrl(parsed.pathname);
+      if (probe.cors === 'permissive') {
+        logEvent({
+          level: 'info',
+          domain: 'video',
+          event: 'dispatch_direct',
+          message: `dispatch: direct ${vType} → file-direct (permissive CORS)`,
+          meta: { url: rawUrl },
+        });
+        return {
+          playbackUrl: rawUrl,
+          videoType: vType,
+          deliveryType: 'file-direct',
+          originalUrl: rawUrl,
+        };
+      } else {
+        logEvent({
+          level: 'info',
+          domain: 'video',
+          event: 'dispatch_direct',
+          message: `dispatch: direct ${vType} → file-proxy (restrictive/no CORS)`,
+          meta: { url: rawUrl },
+        });
+        return {
+          playbackUrl: buildProxyUrl(rawUrl),
+          videoType: vType,
+          deliveryType: vType === 'm3u8' ? 'hls' : 'file-proxy',
+          originalUrl: rawUrl,
+        };
+      }
+    }
+    // 401/403/405/non-2xx or timeout → fall through to Lens
+    logEvent({
+      level: 'info',
+      domain: 'video',
+      event: 'dispatch_direct_fallback',
+      message: `dispatch: HEAD probe ${probe ? probe.status : 'failed'} → falling through to Lens`,
+      meta: { url: rawUrl },
+    });
+  }
+
+  // Tier f: Everything else → Lens
+  logEvent({
+    level: 'info',
+    domain: 'video',
+    event: 'dispatch_lens',
+    message: `dispatch: → Lens capture`,
+    meta: { url: rawUrl },
+  });
+
+  const result = await lensClient.capture(rawUrl, socket);
+
+  const vType = result.mediaType === 'hls' ? 'm3u8' : 'mp4';
+  return {
+    playbackUrl: buildLensPlaybackUrl(result.uuid),
+    videoType: vType,
+    deliveryType: result.mediaType === 'hls' ? 'hls' : 'file-proxy',
+    lensUuid: result.uuid,
+    expiresAt: result.expiresAt,
+    originalUrl: rawUrl,
+  };
+}

@@ -99,7 +99,7 @@ npm run redis:logs
 
 ## Browser Extension
 
-**Sideby Pass** — A Chrome extension that detects videos on any page and instantly creates watch rooms.
+**Sideby Pass** - A Chrome extension that detects videos on any page and instantly creates watch rooms.
 
 - Auto-detects videos (mp4, m3u8/HLS)
 - YouTube support (watch pages & shorts)

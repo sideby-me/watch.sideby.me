@@ -13,7 +13,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { parseVideoUrl } from '@/src/lib/video-utils';
+import { parseVideoUrl, isDrmHost } from '@/src/lib/video-utils';
 import { Video, Youtube, FileVideo, ExternalLink, ArrowRight, Link } from 'lucide-react';
 
 interface VideoSetupProps {
@@ -41,6 +41,11 @@ export function VideoSetup({ onVideoSet, isHost, hasVideo, videoUrl }: VideoSetu
       setError(
         `Hmm, that link doesn't look right. We can handle a public http/https video link (YouTube, HLS, MP4, or similar).`
       );
+      return;
+    }
+
+    if (isDrmHost(url.trim())) {
+      setError(`That stream is heavily encrypted with DRM. We're good, but we're not "crack Disney's mainframe" good.`);
       return;
     }
 

@@ -58,6 +58,8 @@ import type {
   RoomSettingsUpdatedResponse,
   TimePingData,
   TimePongData,
+  VideoUrlRefreshResponse,
+  VideoLoadingStatusResponse,
 } from './schemas';
 
 export interface SocketEvents {
@@ -107,6 +109,11 @@ export interface SocketEvents {
     isHost?: boolean;
     codecUnparsable?: boolean;
   }) => void;
+
+  // Lens: loading status relayed during capture
+  'video-loading-status': (data: VideoLoadingStatusResponse) => void;
+  // Lens: daemon-triggered URL refresh
+  'video-url-refresh': (data: VideoUrlRefreshResponse) => void;
 
   // Chat events
   'send-message': (data: SendMessageData) => void;

@@ -4,10 +4,10 @@ This guide focuses on performance-sensitive areas in watch.sideby.me.
 
 ## Server-side hotspots
 
-- **Video resolution** (`server/video/resolve-source.ts`):
-  - Classifies and probes video URLs.
-  - Decides whether to play directly, via HLS, or through a proxy.
-  - Be mindful of external requests and timeouts when changing this code.
+- **Video dispatch** (`server/video/dispatch.ts`, `server/video/lens-client.ts`):
+  - Six-tier dispatch decides delivery path: YouTube direct, DRM block, pipe proxy, or Lens capture.
+  - Lens capture spawns a headless Chrome session - latency and concurrency (`LENS_CONCURRENCY`) matter here.
+  - Be mindful of SSE timeout and external Lens network calls when changing this code.
 - **Redis usage** (`server/redis/`):
   - Stores room state, chat messages, and related data.
   - Changes here can affect latency and memory usage.

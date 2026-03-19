@@ -556,6 +556,7 @@ export function RoomShell({ roomId }: RoomShellProps) {
             }}
             castPlayerRef={castPlayerRef}
             applyPendingSync={applyPendingSync}
+            captureStatus={core.captureStatus}
           />
         </div>
 
