@@ -278,6 +278,7 @@ export function useRoomCore({ roomId, socket, isConnected }: UseRoomCoreOptions)
     };
 
     const handleSocketError = ({ error: errorMsg }: { error: string }) => {
+      setCaptureStatus(null); // Always clear Lens loading overlay on any socket error
       // Check if this is a passcode-related error
       if (errorMsg.toLowerCase().includes('passcode') || errorMsg.toLowerCase().includes('incorrect')) {
         onPasscodeErrorRef.current?.(errorMsg);

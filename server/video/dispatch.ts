@@ -231,7 +231,13 @@ export async function dispatch(rawUrl: string, socket?: Socket): Promise<Dispatc
         };
       }
     }
-    // 401/403/405/non-2xx or timeout → fall through to Lens
+    // 401/403/405/non-2xx or timeout → for M3U8 playlists, reject immediately (Lens can't help)
+    // For other media types (mp4/webm), fall through to Lens which may find a stream via page context
+    if (videoTypeFromUrl(parsed.pathname) === 'm3u8') {
+      throw new Error(
+        `This M3U8 stream returned ${probe ? probe.status : 'no response'} — it likely requires a signed or authenticated URL. Grab the full signed link from the source page.`
+      );
+    }
     logEvent({
       level: 'info',
       domain: 'video',
