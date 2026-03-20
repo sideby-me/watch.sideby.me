@@ -106,7 +106,13 @@ async function headProbe(url: string): Promise<HeadProbeResult | null> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 5000);
     try {
-      const res = await fetch(url, { method: 'HEAD', signal: controller.signal, redirect: 'follow' });
+      const appOrigin = process.env.NEXT_PUBLIC_APP_URL?.trim() || 'http://localhost:3000';
+      const res = await fetch(url, {
+        method: 'HEAD',
+        headers: { Origin: appOrigin },
+        signal: controller.signal,
+        redirect: 'follow',
+      });
       const acao = res.headers.get('access-control-allow-origin');
       const cors: 'permissive' | 'restrictive' = acao === '*' ? 'permissive' : 'restrictive';
       return { status: res.status, cors };

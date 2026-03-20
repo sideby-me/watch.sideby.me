@@ -157,7 +157,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(
             error.code === 4 &&
             Boolean(
               messageText &&
-                ['MEDIA_ELEMENT_ERROR', 'Format error', 'DEMUXER_ERROR', 'COULD_NOT_PARSE', 'decode'].some(token =>
+                ['Format error', 'DEMUXER_ERROR', 'COULD_NOT_PARSE', 'decode'].some(token =>
                   messageText.toUpperCase().includes(token)
                 )
             );
