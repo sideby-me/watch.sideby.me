@@ -13,6 +13,7 @@
 import { logEvent } from '@/server/logger';
 import { isBlocked } from './blocklist';
 import { LensClient } from './lens-client';
+import { ValidationError } from '../errors';
 import type { Socket } from 'socket.io';
 
 // Client-side helpers are importable from the shared lib
@@ -107,9 +108,11 @@ async function headProbe(url: string): Promise<HeadProbeResult | null> {
     const timer = setTimeout(() => controller.abort(), 5000);
     try {
       const appOrigin = process.env.NEXT_PUBLIC_APP_URL?.trim() || 'http://localhost:3000';
+      const isM3u8 = url.toLowerCase().includes('.m3u8');
+      const probeHeaders: Record<string, string> = isM3u8 ? {} : { Origin: appOrigin };
       const res = await fetch(url, {
         method: 'HEAD',
-        headers: { Origin: appOrigin },
+        headers: probeHeaders,
         signal: controller.signal,
         redirect: 'follow',
       });
@@ -155,7 +158,7 @@ export async function dispatch(rawUrl: string, socket?: Socket): Promise<Dispatc
   // Check blocklist
   const blockCheck = isBlocked(rawUrl);
   if (blockCheck.blocked) {
-    throw new Error(`URL is blocked: ${blockCheck.reason}`);
+    throw new ValidationError(`URL is blocked: ${blockCheck.reason}`);
   }
 
   // Tier c: YouTube
@@ -240,7 +243,7 @@ export async function dispatch(rawUrl: string, socket?: Socket): Promise<Dispatc
     // 401/403/405/non-2xx or timeout → for M3U8 playlists, reject immediately (Lens can't help)
     // For other media types (mp4/webm), fall through to Lens which may find a stream via page context
     if (videoTypeFromUrl(parsed.pathname) === 'm3u8') {
-      throw new Error(
+      throw new ValidationError(
         `This M3U8 stream returned ${probe ? probe.status : 'no response'} — it likely requires a signed or authenticated URL. Grab the full signed link from the source page.`
       );
     }
