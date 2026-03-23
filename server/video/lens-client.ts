@@ -10,6 +10,16 @@ export interface LensCaptureResult {
   playbackUrl: string;
   mediaType: 'hls' | 'mp4' | 'other';
   expiresAt: number;
+  lowConfidence: boolean;
+  ambiguous: boolean;
+  alternatives: Array<{
+    mediaUrl: string;
+    mediaType: 'hls' | 'mp4' | 'other';
+    durationSec: number | null;
+    bitrate: number | null;
+    isLive: boolean | undefined;
+    headers: Record<string, string>;
+  }>;
 }
 
 export class LensClient {
@@ -125,6 +135,11 @@ export class LensClient {
           playbackUrl: String(data.playbackUrl),
           mediaType: data.mediaType as 'hls' | 'mp4' | 'other',
           expiresAt: Number(data.expiresAt),
+          lowConfidence: Boolean(data.lowConfidence),
+          ambiguous: Boolean(data.ambiguous),
+          alternatives: Array.isArray(data.alternatives)
+            ? (data.alternatives as LensCaptureResult['alternatives'])
+            : [],
         });
         break;
 
