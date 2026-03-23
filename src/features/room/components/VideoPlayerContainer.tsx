@@ -25,6 +25,8 @@ import { isProxiedUrl } from '@/src/lib/video-proxy-client';
 import { toast } from 'sonner';
 import { useSocket } from '@/src/core/socket';
 import { logClient, logDebug } from '@/src/core/logger';
+import { PickerOverlay } from '@/src/features/picker/components/PickerOverlay';
+import type { PickerCandidate, PickerRequiredResponse } from '@/types';
 
 interface VideoPlayerContainerProps {
   roomId?: string;
@@ -55,6 +57,7 @@ interface VideoPlayerContainerProps {
   onCastClick?: () => void;
   castPlayerRef?: React.RefObject<CastPlayerRef | null>;
   applyPendingSync?: () => void;
+  alternatives?: PickerCandidate[]; // alternatives from the current video-set payload; drives Wrong video? visibility
 }
 
 export function VideoPlayerContainer({
@@ -85,6 +88,7 @@ export function VideoPlayerContainer({
   onCastClick,
   castPlayerRef,
   applyPendingSync,
+  alternatives,
 }: VideoPlayerContainerProps) {
   const { socket } = useSocket();
   const [isChangeDialogOpen, setIsChangeDialogOpen] = useState(false);
@@ -99,6 +103,13 @@ export function VideoPlayerContainer({
   const [videoSourceValid, setVideoSourceValid] = useState<boolean | null>(true);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const lastErrorReportRef = useRef<number>(0);
+
+  // Picker state
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerMode, setPickerMode] = useState<'proactive' | 'reactive'>('proactive');
+  const [pickerCandidates, setPickerCandidates] = useState<PickerCandidate[]>([]);
+  const [pickerWinnerUrl, setPickerWinnerUrl] = useState('');
+  const [pickerReason, setPickerReason] = useState<'lowConfidence' | 'ambiguous' | 'both' | undefined>(undefined);
   const ERROR_REPORT_DEBOUNCE_MS = 4000;
 
   // Check if video ref is ready
@@ -137,6 +148,49 @@ export function VideoPlayerContainer({
     setVideoSourceValid(true);
     setPlaybackError(null);
   }, [videoUrl, videoType]);
+
+  // Picker socket listener (host only)
+  useEffect(() => {
+    if (!socket || !isHost) return;
+
+    const handlePickerRequired = (data: PickerRequiredResponse) => {
+      setPickerCandidates(data.candidates);
+      setPickerWinnerUrl(data.winnerPlaybackUrl);
+      setPickerReason(data.reason ?? undefined);
+      setPickerMode('proactive');
+      setPickerOpen(true);
+    };
+
+    socket.on('picker-required', handlePickerRequired);
+    return () => {
+      socket.off('picker-required', handlePickerRequired);
+    };
+  }, [socket, isHost]);
+
+  // Picker action handlers
+  const handlePickerSelect = (selectedUrl: string) => {
+    if (!roomId || !socket) return;
+    socket.emit('picker-select', { roomId, selectedUrl });
+    setPickerOpen(false);
+  };
+
+  const handlePickerDismiss = () => {
+    if (!pickerWinnerUrl) {
+      setPickerOpen(false);
+      return;
+    }
+    handlePickerSelect(pickerWinnerUrl);
+  };
+
+  const handleWrongVideo = () => {
+    if (!alternatives || alternatives.length === 0) return;
+    const winner: PickerCandidate | undefined = alternatives.find(c => c.isWinner);
+    setPickerCandidates(alternatives);
+    setPickerWinnerUrl(winner?.mediaUrl ?? '');
+    setPickerReason(undefined);
+    setPickerMode('reactive');
+    setPickerOpen(true);
+  };
 
   // Get video element ref for guest controls
   const getVideoElementRef = () => {
@@ -559,6 +613,22 @@ export function VideoPlayerContainer({
               isCastAvailable={isCastAvailable}
               castDeviceName={castDeviceName}
               onCastClick={onCastClick}
+              alternativesCount={alternatives?.length ?? 0}
+              onWrongVideo={isHost ? handleWrongVideo : undefined}
+            />
+          )}
+
+          {/* Picker overlay for host */}
+          {isHost && (
+            <PickerOverlay
+              open={pickerOpen}
+              onOpenChange={setPickerOpen}
+              mode={pickerMode}
+              candidates={pickerCandidates}
+              winnerPlaybackUrl={pickerWinnerUrl}
+              reason={pickerReason}
+              onSelect={handlePickerSelect}
+              onDismiss={handlePickerDismiss}
             />
           )}
 
