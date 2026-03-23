@@ -58,7 +58,44 @@ export class LensRefreshDaemon {
           });
 
           // Re-dispatch without socket (no status relay for background refresh)
-          const result = await dispatch(room.videoMeta.originalUrl);
+          // Prefer userSelectedUrl as dispatch target when present (PERS-02)
+          const userSelectedUrl = room.videoMeta.userSelectedUrl;
+          const targetUrl = userSelectedUrl ?? room.videoMeta.originalUrl;
+
+          let result: Awaited<ReturnType<typeof dispatch>>;
+          let usedUserSelected = false;
+
+          try {
+            result = await dispatch(targetUrl);
+            usedUserSelected = !!userSelectedUrl;
+          } catch (dispatchErr) {
+            if (userSelectedUrl) {
+              // userSelectedUrl is unavailable — clear it and fall back to originalUrl
+              logEvent({
+                level: 'info',
+                domain: 'video',
+                event: 'refresh_fallback',
+                message: `userSelectedUrl dispatch failed, falling back to originalUrl`,
+                meta: { roomId: room.id, reason: 'userSelectedUrl_unavailable' },
+              });
+              // Clear userSelectedUrl from VideoMeta in Redis
+              const currentRoom = await redisService.rooms.getRoom(room.id);
+              if (currentRoom?.videoMeta) {
+                const clearedMeta: VideoMeta = { ...currentRoom.videoMeta, userSelectedUrl: undefined };
+                await redisService.rooms.setVideoUrl(
+                  room.id,
+                  currentRoom.videoUrl ?? currentRoom.videoMeta.playbackUrl,
+                  currentRoom.videoType ?? 'm3u8',
+                  clearedMeta
+                );
+              }
+              // Fall back to full scoring pass
+              result = await dispatch(room.videoMeta.originalUrl);
+              usedUserSelected = false;
+            } else {
+              throw dispatchErr; // no userSelectedUrl — let outer catch handle
+            }
+          }
 
           // Build updated VideoMeta - use fresh expiresAt from dispatch result only, so stale expiresAt cannot re-trigger the daemon on the next tick
           const updatedMeta: VideoMeta = {
@@ -67,6 +104,8 @@ export class LensRefreshDaemon {
             lensUuid: result.lensUuid,
             expiresAt: result.expiresAt, // always the fresh value; undefined if non-Lens dispatch
             timestamp: Date.now(),
+            // Preserve userSelectedUrl if dispatch succeeded on that URL
+            ...(usedUserSelected ? { userSelectedUrl: room.videoMeta.userSelectedUrl } : { userSelectedUrl: undefined }),
           };
 
           // Update Redis - uses the correct (roomId, url, type, meta) signature

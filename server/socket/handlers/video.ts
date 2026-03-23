@@ -7,6 +7,7 @@ import { VideoService, createSocketContext } from '@/server/services';
 import { logEvent } from '@/server/logger';
 import { redisService } from '@/server/redis';
 import type { PickerState } from '@/server/redis/handlers/picker';
+import { dispatch } from '@/server/video/dispatch';
 
 const LENS_PICKER_TIMEOUT_MS = Number(process.env.LENS_PICKER_TIMEOUT_MS ?? 60_000);
 
@@ -339,8 +340,7 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
         return;
       }
 
-      // Phase 5: only winner selection is handled (alternative dispatch is Phase 7)
-      // Treat all selections as winner for now — emit video-set with stored winnerPlaybackUrl
+      // Delete picker state first (consumed)
       await redisService.picker.deletePickerState(roomId);
 
       logEvent({
@@ -352,18 +352,57 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
         meta: { reason: 'host-selection', duration_ms: Date.now() - stored.createdAt },
       });
 
-      // Get current room meta to include in video-set
-      const room = await redisService.rooms.getRoom(roomId);
-      const videoMeta = room?.videoMeta;
+      const isWinnerSelection = validatedData.selectedUrl === stored.winnerPlaybackUrl;
 
-      io.to(roomId).emit('video-set', {
-        videoUrl: stored.winnerPlaybackUrl,
-        videoType: 'm3u8' as const,  // Lens captures are always HLS or proxied
-        videoMeta: videoMeta ?? undefined,
-      });
-      emitSystemMessage(io, roomId, 'Video source changed', 'video-change', {
-        videoUrl: stored.winnerPlaybackUrl,
-      });
+      if (isWinnerSelection) {
+        // Winner selection: emit video-set with winner URL, no userSelectedUrl
+        const room = await redisService.rooms.getRoom(roomId);
+        const videoMeta = room?.videoMeta;
+
+        io.to(roomId).emit('video-set', {
+          videoUrl: stored.winnerPlaybackUrl,
+          videoType: 'm3u8' as const,
+          videoMeta: videoMeta ?? undefined,
+        });
+        emitSystemMessage(io, roomId, 'Video source changed', 'video-change', {
+          videoUrl: stored.winnerPlaybackUrl,
+        });
+      } else {
+        // Alternative selection: dispatch the selected URL, store userSelectedUrl in VideoMeta
+        const result = await dispatch(validatedData.selectedUrl, socket);
+
+        const room = await redisService.rooms.getRoom(roomId);
+        const updatedMeta: import('@/types').VideoMeta = {
+          ...(room?.videoMeta ?? {
+            originalUrl: validatedData.selectedUrl,
+            playbackUrl: result.playbackUrl,
+            deliveryType: result.deliveryType,
+            videoType: result.videoType,
+            requiresProxy: result.deliveryType !== 'youtube',
+            decisionReasons: [`dispatch:${result.deliveryType}`],
+            probe: { status: 200 },
+            timestamp: Date.now(),
+          }),
+          playbackUrl: result.playbackUrl,
+          deliveryType: result.deliveryType,
+          videoType: result.videoType,
+          lensUuid: result.lensUuid,
+          expiresAt: result.expiresAt,
+          timestamp: Date.now(),
+          userSelectedUrl: validatedData.selectedUrl,  // PERS-01: store host's deliberate choice
+        };
+
+        await redisService.rooms.setVideoUrl(roomId, result.playbackUrl, result.videoType, updatedMeta);
+
+        io.to(roomId).emit('video-set', {
+          videoUrl: result.playbackUrl,
+          videoType: result.videoType,
+          videoMeta: updatedMeta,
+        });
+        emitSystemMessage(io, roomId, 'Video source changed', 'video-change', {
+          videoUrl: result.playbackUrl,
+        });
+      }
     } catch (error) {
       handleServiceError(error, socket);
     }
