@@ -118,6 +118,7 @@ export const VideoMetaSchema = z.object({
   // Lens integration fields
   lensUuid: z.string().uuid().optional(),
   expiresAt: z.number().optional(),
+  userSelectedUrl: z.string().url().optional(),
 });
 
 export const RoomSchema = z.object({
