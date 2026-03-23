@@ -21,6 +21,10 @@ export interface SetVideoResult {
   playbackUrl: string;
   videoType: 'youtube' | 'mp4' | 'm3u8';
   videoMeta: VideoMeta;
+  // Picker fields — propagated from DispatchResult when Lens returns lowConfidence/ambiguous
+  pickerRequired?: boolean;
+  pickerCandidates?: import('@/types').PickerCandidate[];
+  pickerReason?: 'lowConfidence' | 'ambiguous' | 'both';
 }
 
 export interface VideoControlResult {
@@ -80,6 +84,13 @@ class VideoServiceImpl {
       playbackUrl: result.playbackUrl,
       videoType: result.videoType,
       videoMeta: meta,
+      ...(result.pickerRequired
+        ? {
+            pickerRequired: true,
+            pickerCandidates: result.pickerCandidates,
+            pickerReason: result.pickerReason,
+          }
+        : {}),
     };
   }
 

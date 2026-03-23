@@ -15,6 +15,7 @@ import { isBlocked } from './blocklist';
 import { LensClient } from './lens-client';
 import { ValidationError } from '../errors';
 import type { Socket } from 'socket.io';
+import type { PickerCandidate } from '@/types';
 
 // Client-side helpers are importable from the shared lib
 const VIDEO_PROXY_URL = process.env.NEXT_PUBLIC_VIDEO_PROXY_URL?.trim() ?? 'http://localhost:8787';
@@ -43,6 +44,10 @@ export interface DispatchResult {
   lensUuid?: string;
   expiresAt?: number;
   originalUrl: string;
+  // Picker fields — only present when Lens returns lowConfidence or ambiguous
+  pickerRequired?: boolean;
+  pickerCandidates?: PickerCandidate[];
+  pickerReason?: 'lowConfidence' | 'ambiguous' | 'both';
 }
 
 /** DRM-protected streaming services that cannot be proxied */
@@ -129,6 +134,36 @@ async function headProbe(url: string): Promise<HeadProbeResult | null> {
 
 function videoTypeFromUrl(pathname: string): 'mp4' | 'm3u8' {
   return pathname.toLowerCase().includes('.m3u8') ? 'm3u8' : 'mp4';
+}
+
+function lensMediaTypeToPicker(
+  t: 'hls' | 'mp4' | 'other'
+): 'video/mp4' | 'application/x-mpegURL' | 'application/dash+xml' {
+  if (t === 'hls') return 'application/x-mpegURL';
+  return 'video/mp4'; // 'mp4' and 'other' both map to video/mp4
+}
+
+function buildPickerCandidates(result: import('./lens-client').LensCaptureResult): PickerCandidate[] {
+  // Winner is always first with isWinner: true
+  const winner: PickerCandidate = {
+    mediaUrl: result.playbackUrl,  // NOTE: winner mediaUrl is the pre-built pipe?uuid= URL
+    mediaType: lensMediaTypeToPicker(result.mediaType),
+    durationSec: null,
+    bitrate: null,
+    isLive: undefined,
+    headers: {},
+    isWinner: true,
+  };
+  const rest: PickerCandidate[] = result.alternatives.map(alt => ({
+    mediaUrl: alt.mediaUrl,
+    mediaType: lensMediaTypeToPicker(alt.mediaType),
+    durationSec: alt.durationSec,
+    bitrate: alt.bitrate,
+    isLive: alt.isLive,
+    headers: alt.headers,
+    isWinner: false,
+  }));
+  return [winner, ...rest];
 }
 
 const lensClient = new LensClient();
@@ -268,12 +303,26 @@ export async function dispatch(rawUrl: string, socket?: Socket): Promise<Dispatc
   const result = await lensClient.capture(rawUrl, socket);
 
   const vType = result.mediaType === 'hls' ? 'm3u8' : 'mp4';
+  const lensPlaybackUrl = buildLensPlaybackUrl(result.uuid);
+  const needsPicker = result.lowConfidence || result.ambiguous;
+
   return {
-    playbackUrl: buildLensPlaybackUrl(result.uuid),
+    playbackUrl: lensPlaybackUrl,
     videoType: vType,
     deliveryType: result.mediaType === 'hls' ? 'hls' : 'file-proxy',
     lensUuid: result.uuid,
     expiresAt: result.expiresAt,
     originalUrl: rawUrl,
+    ...(needsPicker
+      ? {
+          pickerRequired: true,
+          pickerCandidates: buildPickerCandidates(result),
+          pickerReason: (result.lowConfidence && result.ambiguous
+            ? 'both'
+            : result.lowConfidence
+              ? 'lowConfidence'
+              : 'ambiguous') as 'lowConfidence' | 'ambiguous' | 'both',
+        }
+      : {}),
   };
 }
