@@ -60,6 +60,8 @@ import type {
   TimePongData,
   VideoUrlRefreshResponse,
   VideoLoadingStatusResponse,
+  PickerRequiredResponse,
+  PickerSelectData,
 } from './schemas';
 
 export interface SocketEvents {
@@ -114,6 +116,10 @@ export interface SocketEvents {
   'video-loading-status': (data: VideoLoadingStatusResponse) => void;
   // Lens: daemon-triggered URL refresh
   'video-url-refresh': (data: VideoUrlRefreshResponse) => void;
+  // Picker: host receives required picker event (server -> host only)
+  'picker-required': (data: PickerRequiredResponse) => void;
+  // Picker: host sends selection back to server (client -> server)
+  'picker-select': (data: PickerSelectData) => void;
 
   // Chat events
   'send-message': (data: SendMessageData) => void;
