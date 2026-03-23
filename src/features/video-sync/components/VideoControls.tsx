@@ -42,6 +42,9 @@ interface VideoControlsProps {
   isCastAvailable?: boolean;
   castDeviceName?: string;
   onCastClick?: () => void;
+  // Picker controls
+  alternativesCount?: number; // number of alternatives; 0 or undefined = hide button
+  onWrongVideo?: () => void;  // called when host clicks "Wrong video?"
 }
 
 export function VideoControls({
@@ -66,6 +69,8 @@ export function VideoControls({
   isCastAvailable = false,
   castDeviceName,
   onCastClick,
+  alternativesCount,
+  onWrongVideo,
 }: VideoControlsProps) {
   const [isMuted, setIsMuted] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -588,6 +593,18 @@ export function VideoControls({
                 >
                   <RotateCw className={isFullscreen ? 'h-5 w-5' : 'h-4 w-4'} />
                 </Button>
+
+                {isHost && alternativesCount && alternativesCount > 0 && onWrongVideo && (
+                  <Button
+                    variant="ghost"
+                    size={isFullscreen ? 'default' : 'sm'}
+                    onClick={onWrongVideo}
+                    className={`${isFullscreen ? 'h-11' : 'h-9'} px-3 text-primary-foreground hover:bg-white/10 hover:text-primary-foreground`}
+                    title="Wrong video?"
+                  >
+                    Wrong video?
+                  </Button>
+                )}
               </>
             )}
           </div>
