@@ -479,6 +479,32 @@ export const VideoLoadingStatusResponseSchema = z.object({
   message: z.string().optional(),
 });
 
+// Picker: candidate entry for picker-required event
+export const PickerCandidateSchema = z.object({
+  mediaUrl: z.string().url(),
+  mediaType: z.enum(['video/mp4', 'application/x-mpegURL', 'application/dash+xml']),
+  durationSec: z.number().nullable(),
+  bitrate: z.number().nullable(),
+  isLive: z.boolean().optional(),
+  headers: z.record(z.string(), z.string()),
+  isWinner: z.boolean(),
+});
+
+// Picker: picker-required event (server → host socket only)
+export const PickerRequiredResponseSchema = z.object({
+  roomId: RoomIdSchema,
+  candidates: z.array(PickerCandidateSchema).min(1),
+  winnerPlaybackUrl: z.string().url(),
+  expiresAt: z.number().positive(),
+  reason: z.enum(['lowConfidence', 'ambiguous', 'both']).optional(),
+});
+
+// Picker: picker-select event (host → server)
+export const PickerSelectDataSchema = z.object({
+  roomId: RoomIdSchema,
+  selectedUrl: z.string().url(),
+});
+
 export const VideoEventResponseSchema = z.object({
   currentTime: z.number().min(0),
   timestamp: z.number().positive(),
@@ -608,3 +634,6 @@ export type SubtitleSearchRequest = z.infer<typeof SubtitleSearchRequestSchema>;
 export type SubtitleSearchResponse = z.infer<typeof SubtitleSearchResponseSchema>;
 export type SubtitleDownloadRequest = z.infer<typeof SubtitleDownloadRequestSchema>;
 export type SubtitleDownloadResponse = z.infer<typeof SubtitleDownloadResponseSchema>;
+export type PickerCandidate = z.infer<typeof PickerCandidateSchema>;
+export type PickerRequiredResponse = z.infer<typeof PickerRequiredResponseSchema>;
+export type PickerSelectData = z.infer<typeof PickerSelectDataSchema>;
