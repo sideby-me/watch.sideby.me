@@ -594,7 +594,7 @@ export function VideoControls({
                   <RotateCw className={isFullscreen ? 'h-5 w-5' : 'h-4 w-4'} />
                 </Button>
 
-                {isHost && alternativesCount && alternativesCount > 0 && onWrongVideo && (
+                {isHost && (alternativesCount ?? 0) > 0 && onWrongVideo && (
                   <Button
                     variant="ghost"
                     size={isFullscreen ? 'default' : 'sm'}

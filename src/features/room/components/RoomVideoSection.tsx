@@ -1,6 +1,6 @@
 'use client';
 
-import { RefObject, memo } from 'react';
+import { RefObject, memo, useState, useEffect } from 'react';
 import { VideoPlayerContainer } from './VideoPlayerContainer';
 import { VideoSetup } from './VideoSetup';
 import { YouTubePlayerRef } from '@/src/core/video/youtube-player';
@@ -9,6 +9,9 @@ import { HLSPlayerRef } from '@/src/core/video/hls-player';
 import { CastPlayerRef } from '@/src/features/media/cast';
 import type { SubtitleTrack } from '@/types/schemas';
 import { CheckCircle2, Loader2 } from 'lucide-react';
+import { useSocket } from '@/src/core/socket';
+import { PickerOverlay } from '@/src/features/picker/components/PickerOverlay';
+import type { PickerCandidate, PickerRequiredResponse } from '@/types';
 
 type CapturePhase = 'queued' | 'processing';
 
@@ -225,47 +228,110 @@ export const RoomVideoSection = memo(function RoomVideoSection({
   applyPendingSync,
   captureStatus,
 }: RoomVideoSectionProps) {
-  if (videoUrl && videoType) {
-    return (
-      <div className="relative">
-        <CaptureOverlay captureStatus={captureStatus} />
-        <VideoPlayerContainer
-          roomId={roomId}
-          videoUrl={videoUrl}
-          videoType={videoType}
-          videoId={youTubeId}
-          isHost={isHost}
-          onPlay={onPlay}
-          onPause={onPause}
-          onSeeked={onSeeked}
-          onYouTubeStateChange={onYouTubeStateChange}
-          onControlAttempt={onControlAttempt}
-          onVideoChange={onVideoChange}
-          onShowChatOverlay={onShowChatOverlay}
-          subtitleTracks={subtitleTracks}
-          activeSubtitleTrack={activeSubtitleTrack}
-          onAddSubtitleTracks={onAddSubtitleTracks}
-          onRemoveSubtitleTrack={onRemoveSubtitleTrack}
-          onActiveSubtitleTrackChange={onActiveSubtitleTrackChange}
-          currentVideoTitle={undefined}
-          youtubePlayerRef={youtubePlayerRef}
-          videoPlayerRef={videoPlayerRef}
-          hlsPlayerRef={hlsPlayerRef}
-          isCasting={isCasting}
-          isCastAvailable={isCastAvailable && videoType !== 'youtube'}
-          castDeviceName={castDeviceName}
-          onCastClick={onCastClick}
-          castPlayerRef={castPlayerRef}
-          applyPendingSync={applyPendingSync}
-        />
-      </div>
-    );
-  }
+  const { socket } = useSocket();
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerMode, setPickerMode] = useState<'proactive' | 'reactive'>('proactive');
+  const [pickerCandidates, setPickerCandidates] = useState<PickerCandidate[]>([]);
+  const [pickerWinnerUrl, setPickerWinnerUrl] = useState('');
+  const [pickerReason, setPickerReason] = useState<'lowConfidence' | 'ambiguous' | 'both' | undefined>(undefined);
+
+  useEffect(() => {
+    if (!socket || !isHost) return;
+    const handlePickerRequired = (data: PickerRequiredResponse) => {
+      setPickerCandidates(data.candidates);
+      setPickerWinnerUrl(data.winnerPlaybackUrl);
+      setPickerReason(data.reason ?? undefined);
+      setPickerMode('proactive');
+      setPickerOpen(true);
+    };
+    socket.on('picker-required', handlePickerRequired);
+    return () => { socket.off('picker-required', handlePickerRequired); };
+  }, [socket, isHost]);
+
+  const handlePickerSelect = (selectedUrl: string) => {
+    // Update isWinner so reactive mode reflects the new selection
+    setPickerCandidates(prev => prev.map(c => ({ ...c, isWinner: c.mediaUrl === selectedUrl })));
+    setPickerWinnerUrl(selectedUrl);
+    setPickerOpen(false);
+
+    if (pickerMode === 'reactive') {
+      // Picker state in Redis is already gone — just change the video directly.
+      // Candidate mediaUrls are pipe URLs so dispatch hits Tier D (pass-through).
+      onVideoChange(selectedUrl);
+    } else {
+      if (!socket) return;
+      socket.emit('picker-select', { roomId, selectedUrl });
+    }
+  };
+
+  const handlePickerDismiss = () => {
+    if (!pickerWinnerUrl) {
+      setPickerOpen(false);
+      return;
+    }
+    handlePickerSelect(pickerWinnerUrl);
+  };
+
+  const handleWrongVideo = () => {
+    setPickerMode('reactive');
+    setPickerOpen(true);
+  };
 
   return (
-    <div className="relative h-full">
-      <CaptureOverlay captureStatus={captureStatus} />
-      <VideoSetup onVideoSet={onVideoChange} isHost={isHost} hasVideo={hasVideo} videoUrl={originalVideoUrl} />
-    </div>
+    <>
+      {videoUrl && videoType ? (
+        <div className="relative">
+          <CaptureOverlay captureStatus={captureStatus} />
+          <VideoPlayerContainer
+            roomId={roomId}
+            videoUrl={videoUrl}
+            videoType={videoType}
+            videoId={youTubeId}
+            isHost={isHost}
+            onPlay={onPlay}
+            onPause={onPause}
+            onSeeked={onSeeked}
+            onYouTubeStateChange={onYouTubeStateChange}
+            onControlAttempt={onControlAttempt}
+            onVideoChange={onVideoChange}
+            onShowChatOverlay={onShowChatOverlay}
+            subtitleTracks={subtitleTracks}
+            activeSubtitleTrack={activeSubtitleTrack}
+            onAddSubtitleTracks={onAddSubtitleTracks}
+            onRemoveSubtitleTrack={onRemoveSubtitleTrack}
+            onActiveSubtitleTrackChange={onActiveSubtitleTrackChange}
+            currentVideoTitle={undefined}
+            youtubePlayerRef={youtubePlayerRef}
+            videoPlayerRef={videoPlayerRef}
+            hlsPlayerRef={hlsPlayerRef}
+            isCasting={isCasting}
+            isCastAvailable={isCastAvailable && videoType !== 'youtube'}
+            castDeviceName={castDeviceName}
+            onCastClick={onCastClick}
+            castPlayerRef={castPlayerRef}
+            applyPendingSync={applyPendingSync}
+            alternatives={pickerCandidates.length > 0 ? pickerCandidates : undefined}
+            onWrongVideo={pickerCandidates.length > 0 ? handleWrongVideo : undefined}
+          />
+        </div>
+      ) : (
+        <div className="relative h-full">
+          <CaptureOverlay captureStatus={captureStatus} />
+          <VideoSetup onVideoSet={onVideoChange} isHost={isHost} hasVideo={hasVideo} videoUrl={originalVideoUrl} />
+        </div>
+      )}
+      {isHost && (
+        <PickerOverlay
+          open={pickerOpen}
+          onOpenChange={setPickerOpen}
+          mode={pickerMode}
+          candidates={pickerCandidates}
+          winnerPlaybackUrl={pickerWinnerUrl}
+          reason={pickerReason}
+          onSelect={handlePickerSelect}
+          onDismiss={handlePickerDismiss}
+        />
+      )}
+    </>
   );
 });
