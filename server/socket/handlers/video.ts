@@ -104,12 +104,15 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
         });
       }
     } catch (error) {
+      const errMsg = (error as Error)?.message ?? '';
       const message =
-        (error as Error)?.message === 'Unsupported protocol'
+        errMsg === 'Unsupported protocol'
           ? 'Only http/https video links are supported'
-          : (error as Error)?.message?.startsWith('DRM-protected content')
-            ? (error as Error).message
-            : undefined;
+          : errMsg.startsWith('DRM-protected content')
+            ? errMsg
+            : errMsg.includes('no-media-found')
+              ? "We couldn't find a playable stream on that page."
+              : undefined;
       if (message) {
         socket.emit('error', { error: message });
       } else {
