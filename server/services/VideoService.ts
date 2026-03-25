@@ -21,7 +21,6 @@ export interface SetVideoResult {
   playbackUrl: string;
   videoType: 'youtube' | 'mp4' | 'm3u8';
   videoMeta: VideoMeta;
-  // Picker fields — propagated from DispatchResult when Lens returns lowConfidence/ambiguous
   pickerRequired?: boolean;
   pickerCandidates?: import('@/types').PickerCandidate[];
   pickerReason?: 'lowConfidence' | 'ambiguous' | 'both';
@@ -52,7 +51,7 @@ class VideoServiceImpl {
       throw new PermissionError('Only hosts can set the video');
     }
 
-    // 6-tier dispatch (replaces resolveSource)
+    // 6-tier dispatch
     const result = await dispatch(videoUrl, socket);
 
     // Build VideoMeta from dispatch result

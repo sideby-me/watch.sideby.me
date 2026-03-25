@@ -44,13 +44,12 @@ export interface DispatchResult {
   lensUuid?: string;
   expiresAt?: number;
   originalUrl: string;
-  // Picker fields — only present when Lens returns lowConfidence or ambiguous
   pickerRequired?: boolean;
   pickerCandidates?: PickerCandidate[];
   pickerReason?: 'lowConfidence' | 'ambiguous' | 'both';
 }
 
-/** DRM-protected streaming services that cannot be proxied */
+//DRM-protected streaming services that cannot be proxied
 const DRM_HOSTS = new Set([
   'netflix.com',
   'www.netflix.com',
@@ -66,10 +65,8 @@ const DRM_HOSTS = new Set([
   'www.paramountplus.com',
 ]);
 
-/** Media file extensions that indicate a directly-addressable media file */
 const DIRECT_MEDIA_EXTS = ['.mp4', '.webm', '.m3u8', '.mpd'];
 
-/** Exact signed URL parameter names (lower-cased); X-Amz-* is handled via prefix below */
 const SIGNED_PARAMS_EXACT = ['exp', 'token', 'sig', 'signature', 'hash', 'validfrom', 'validto'];
 
 function isDrmHost(hostname: string): boolean {
@@ -146,7 +143,7 @@ function lensMediaTypeToPicker(
 function buildPickerCandidates(result: import('./lens-client').LensCaptureResult): PickerCandidate[] {
   // Winner is always first with isWinner: true
   const winner: PickerCandidate = {
-    mediaUrl: result.playbackUrl,  // NOTE: winner mediaUrl is the pre-built pipe?uuid= URL
+    mediaUrl: result.playbackUrl, // NOTE: winner mediaUrl is the pre-built pipe?uuid= URL
     mediaType: lensMediaTypeToPicker(result.mediaType),
     durationSec: null,
     bitrate: null,
@@ -168,10 +165,7 @@ function buildPickerCandidates(result: import('./lens-client').LensCaptureResult
 
 const lensClient = new LensClient();
 
-/**
- * Dispatch a raw video URL to the correct delivery path.
- * Throws on validation errors (DRM, invalid protocol).
- */
+// Dispatch a raw video URL to the correct delivery path.
 export async function dispatch(rawUrl: string, socket?: Socket): Promise<DispatchResult> {
   let parsed: URL;
   try {

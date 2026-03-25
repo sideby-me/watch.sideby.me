@@ -1,5 +1,11 @@
 import { Socket, Server as IOServer } from 'socket.io';
-import { SetVideoDataSchema, VideoControlDataSchema, SyncCheckDataSchema, TimePingDataSchema, PickerSelectDataSchema } from '@/types';
+import {
+  SetVideoDataSchema,
+  VideoControlDataSchema,
+  SyncCheckDataSchema,
+  TimePingDataSchema,
+  PickerSelectDataSchema,
+} from '@/types';
 import { SocketEvents, SocketData } from '../types';
 import { validateData, emitSystemMessage } from '../utils';
 import { handleServiceError } from '../error-handler';
@@ -60,7 +66,7 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
           meta: { candidateCount: result.pickerCandidates.length, reason: result.pickerReason, expiresAt },
         });
 
-        // Auto-select timeout: if host does not respond in LENS_PICKER_TIMEOUT_MS, emit video-set with winner
+        // Auto-select timeout
         const timeoutHandle = setTimeout(async () => {
           const stored = await redisService.picker.getPickerState(roomId);
           if (!stored) return; // Already resolved by host selection
@@ -93,7 +99,7 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
         // Clean up timeout handle if socket disconnects before timer fires
         socket.once('disconnect', () => clearTimeout(timeoutHandle));
       } else {
-        // Non-ambiguous capture: emit video-set immediately (unchanged path)
+        // Non-ambiguous capture: emit video-set immediately
         io.to(validatedData.roomId).emit('video-set', {
           videoUrl: result.playbackUrl,
           videoType: result.videoType,
@@ -247,7 +253,7 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
     }
   );
 
-  // Host-triggered manual URL refresh (re-dispatches original URL and broadcasts fresh uuid to room)
+  // Host-triggered manual URL refresh
   socket.on('video-url-refresh', async () => {
     try {
       if (!socket.data.isHost || !socket.data.roomId) return;
@@ -273,15 +279,12 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
 
   // Re-emit picker-required to reconnecting host if picker state is still active
   socket.on('join-room', async () => {
-    // This is a passive listener: the actual join logic is in room.ts
-    // Here we only check if a pending picker needs to be re-emitted to this socket
     if (!socket.data.isHost || !socket.data.roomId) return;
 
     const roomId = socket.data.roomId;
     try {
       const stored = await redisService.picker.getPickerState(roomId);
       if (!stored) return;
-      // Picker still active — re-emit to the reconnected host socket
       socket.emit('picker-required', {
         roomId,
         candidates: stored.candidates,
@@ -310,7 +313,7 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
   });
 
   // Host selects a candidate from the picker overlay
-  socket.on('picker-select', async (data) => {
+  socket.on('picker-select', async data => {
     try {
       const validatedData = validateData(PickerSelectDataSchema, data, socket);
       if (!validatedData) return;
@@ -324,7 +327,7 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
       const stored = await redisService.picker.getPickerState(roomId);
 
       if (!stored) {
-        // State expired or was already consumed — emit error to host only
+        // State expired or was already consumed
         socket.emit('error', { error: 'Picker session expired. The video was auto-selected.' });
         return;
       }
@@ -392,7 +395,7 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
           lensUuid: result.lensUuid,
           expiresAt: result.expiresAt,
           timestamp: Date.now(),
-          userSelectedUrl: validatedData.selectedUrl,  // PERS-01: store host's deliberate choice
+          userSelectedUrl: validatedData.selectedUrl,
         };
 
         await redisService.rooms.setVideoUrl(roomId, result.playbackUrl, result.videoType, updatedMeta);

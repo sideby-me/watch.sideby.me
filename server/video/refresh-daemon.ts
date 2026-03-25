@@ -58,7 +58,7 @@ export class LensRefreshDaemon {
           });
 
           // Re-dispatch without socket (no status relay for background refresh)
-          // Prefer userSelectedUrl as dispatch target when present (PERS-02)
+          // Prefer userSelectedUrl as dispatch target when present
           const userSelectedUrl = room.videoMeta.userSelectedUrl;
           const targetUrl = userSelectedUrl ?? room.videoMeta.originalUrl;
 
@@ -70,7 +70,7 @@ export class LensRefreshDaemon {
             usedUserSelected = !!userSelectedUrl;
           } catch (dispatchErr) {
             if (userSelectedUrl) {
-              // userSelectedUrl is unavailable — clear it and fall back to originalUrl
+              // userSelectedUrl is unavailable
               logEvent({
                 level: 'info',
                 domain: 'video',
@@ -93,7 +93,7 @@ export class LensRefreshDaemon {
               result = await dispatch(room.videoMeta.originalUrl);
               usedUserSelected = false;
             } else {
-              throw dispatchErr; // no userSelectedUrl — let outer catch handle
+              throw dispatchErr;
             }
           }
 
@@ -102,13 +102,14 @@ export class LensRefreshDaemon {
             ...room.videoMeta,
             playbackUrl: result.playbackUrl,
             lensUuid: result.lensUuid,
-            expiresAt: result.expiresAt, // always the fresh value; undefined if non-Lens dispatch
+            expiresAt: result.expiresAt, // always the fresh value, undefined if non-Lens dispatch
             timestamp: Date.now(),
             // Preserve userSelectedUrl if dispatch succeeded on that URL
-            ...(usedUserSelected ? { userSelectedUrl: room.videoMeta.userSelectedUrl } : { userSelectedUrl: undefined }),
+            ...(usedUserSelected
+              ? { userSelectedUrl: room.videoMeta.userSelectedUrl }
+              : { userSelectedUrl: undefined }),
           };
 
-          // Update Redis - uses the correct (roomId, url, type, meta) signature
           await redisService.rooms.setVideoUrl(room.id, result.playbackUrl, result.videoType, updatedMeta);
 
           // Emit to room clients
