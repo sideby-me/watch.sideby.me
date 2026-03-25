@@ -21,10 +21,11 @@ import { useState, useEffect, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { parseVideoUrl, getSupportedVideoFormats } from '@/src/lib/video-utils';
-import { isProxiedUrl, buildProxyUrl } from '@/src/lib/video-proxy-client';
+import { isProxiedUrl } from '@/src/lib/video-proxy-client';
 import { toast } from 'sonner';
 import { useSocket } from '@/src/core/socket';
 import { logClient, logDebug } from '@/src/core/logger';
+import type { PickerCandidate } from '@/types';
 
 interface VideoPlayerContainerProps {
   roomId?: string;
@@ -55,6 +56,8 @@ interface VideoPlayerContainerProps {
   onCastClick?: () => void;
   castPlayerRef?: React.RefObject<CastPlayerRef | null>;
   applyPendingSync?: () => void;
+  alternatives?: PickerCandidate[]; // alternatives from the current video-set payload; drives Wrong video? visibility
+  onWrongVideo?: () => void; // called when host clicks "Wrong video?" — parent handles reactive picker
 }
 
 export function VideoPlayerContainer({
@@ -85,6 +88,8 @@ export function VideoPlayerContainer({
   onCastClick,
   castPlayerRef,
   applyPendingSync,
+  alternatives,
+  onWrongVideo,
 }: VideoPlayerContainerProps) {
   const { socket } = useSocket();
   const [isChangeDialogOpen, setIsChangeDialogOpen] = useState(false);
@@ -97,22 +102,10 @@ export function VideoPlayerContainer({
   const [controlsVisible, setControlsVisible] = useState(true); // Start with controls visible
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [videoSourceValid, setVideoSourceValid] = useState<boolean | null>(true);
-  const [usingProxy, setUsingProxy] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const lastErrorReportRef = useRef<number>(0);
+
   const ERROR_REPORT_DEBOUNCE_MS = 4000;
-  const codecRetryAttemptedRef = useRef(false);
-
-  // Local proxy URL override for guests (doesn't affect room state)
-  const [localProxyUrl, setLocalProxyUrl] = useState<string | null>(null);
-  const guestProxyTriedRef = useRef(false);
-
-  // Initial load tracking for retry logic on very early errors
-  const isInitialLoadRef = useRef(true);
-  const initialLoadStartTimeRef = useRef<number>(Date.now());
-  const initialRetryAttemptedRef = useRef(false);
-  const [videoKey, setVideoKey] = useState(0);
-  const INITIAL_LOAD_GRACE_MS = 3000; // 3 second grace window
 
   // Check if video ref is ready
   useEffect(() => {
@@ -149,17 +142,8 @@ export function VideoPlayerContainer({
     }
     setVideoSourceValid(true);
     setPlaybackError(null);
-    setUsingProxy(videoUrl ? isProxiedUrl(videoUrl) : false);
-    // Reset guest local proxy state when room video URL changes
-    setLocalProxyUrl(null);
-    guestProxyTriedRef.current = false;
-    codecRetryAttemptedRef.current = false;
-    // Reset initial load tracking when video URL changes
-    isInitialLoadRef.current = true;
-    initialLoadStartTimeRef.current = Date.now();
-    initialRetryAttemptedRef.current = false;
-    setVideoKey(0);
   }, [videoUrl, videoType]);
+
 
   // Get video element ref for guest controls
   const getVideoElementRef = () => {
@@ -406,18 +390,17 @@ export function VideoPlayerContainer({
 
               setPlaybackError(
                 codecUnparsable
-                  ? `Your browser couldn't parse this HLS stream. It might be a niche codec—try another browser/device or a different link that sticks to common H.264/AAC.`
+                  ? `Your browser just choked on this stream's formatting. It's likely an exotic codec issue. Switching devices might help, but grabbing a standard H.264/AAC link is your safest bet.`
                   : `We couldn't load this HLS stream. It might be expired, behind a firewall (403), or just being a bit shy with our proxy. Time for a new link?`
               );
               setIsLoading(false);
               setVideoSourceValid(false);
-              setUsingProxy(isProxiedUrl(videoUrl));
               logClient({
                 level: 'error',
                 domain: 'video',
                 event: 'hls_error',
                 message: 'HLS reported fatal error',
-                meta: { err, codecUnparsable, usingProxy: isProxiedUrl(videoUrl) },
+                meta: { err, codecUnparsable },
               });
             }}
             isHost={isHost}
@@ -430,9 +413,8 @@ export function VideoPlayerContainer({
       default:
         return (
           <VideoPlayer
-            key={`video-${videoKey}`}
             ref={videoPlayerRef}
-            src={localProxyUrl || videoUrl}
+            src={videoUrl}
             onPlay={onPlay}
             onPause={onPause}
             onSeeked={onSeeked}
@@ -442,46 +424,15 @@ export function VideoPlayerContainer({
             className="h-full w-full"
             onReady={applyPendingSync}
             onError={err => {
+              const codecUnparsable = Boolean(err.codecUnparsable);
+
               logClient({
                 level: 'error',
                 domain: 'video',
                 event: 'player_error',
                 message: 'VideoPlayer reported error',
-                meta: {
-                  code: err.code,
-                  message: err.message,
-                  codecUnparsable: err.codecUnparsable,
-                  isHost,
-                  isInitialLoad: isInitialLoadRef.current,
-                  usingProxy,
-                  localProxy: Boolean(localProxyUrl),
-                },
+                meta: { code: err.code, message: err.message, codecUnparsable, isHost },
               });
-
-              // Check if we're within the initial load grace period for early retry
-              const isWithinGracePeriod =
-                isInitialLoadRef.current && Date.now() - initialLoadStartTimeRef.current < INITIAL_LOAD_GRACE_MS;
-
-              // For very early errors on initial load, attempt one retry before surfacing
-              if (isWithinGracePeriod && !initialRetryAttemptedRef.current && err.code === 4) {
-                logClient({
-                  level: 'info',
-                  domain: 'video',
-                  event: 'initial_load_retry',
-                  message: 'Retrying initial video load after early error (upstream might still be warming up)',
-                  meta: { code: err.code, elapsedMs: Date.now() - initialLoadStartTimeRef.current },
-                });
-                initialRetryAttemptedRef.current = true;
-                // Force component remount by changing key
-                setVideoKey(prev => prev + 1);
-                return;
-              }
-
-              // Mark initial load as complete after first real error handling
-              isInitialLoadRef.current = false;
-
-              // Only hosts should emit error reports to server (for room-level fallback)
-              const codecUnparsable = Boolean(err.codecUnparsable);
 
               if (isHost) {
                 const now = Date.now();
@@ -514,89 +465,21 @@ export function VideoPlayerContainer({
                 }
               }
 
-              // Keep alreadyProxy based on room videoUrl (not localProxyUrl)
-              const alreadyProxy = isProxiedUrl(videoUrl);
-
-              if (
-                codecUnparsable &&
-                (localProxyUrl || usingProxy) &&
-                !alreadyProxy &&
-                !codecRetryAttemptedRef.current
-              ) {
-                // One-time retry without proxy if we previously fell back to proxy locally and the demux/codec still fails.
-                codecRetryAttemptedRef.current = true;
-                logClient({
-                  level: 'info',
-                  domain: 'video',
-                  event: 'codec_retry_without_proxy',
-                  message: 'Retrying without proxy after codec/demux error',
-                  meta: { wasUsingProxy: usingProxy, hadLocalProxy: Boolean(localProxyUrl) },
-                });
-                setLocalProxyUrl(null);
-                setUsingProxy(false);
-                setVideoKey(prev => prev + 1);
-                return;
-              }
-
               if (codecUnparsable) {
                 setPlaybackError(
-                  usingProxy || localProxyUrl
-                    ? `Your browser couldn't parse this video format, even after a proxy detour. Try a different browser or device, or drop in another link that sticks to mainstream codecs.`
-                    : `Your browser couldn't parse this video format. It might be using a quirky codec—try a different browser/device or swap in another link that stays within the usual formats.`
+                  `Your browser couldn't parse this video format. It might be using a quirky codec-try a different browser/device or swap in another link that stays within the usual formats.`
                 );
-                setIsLoading(false);
-                setVideoSourceValid(false);
-                return;
-              }
-
-              if (err.code === 4 && !usingProxy && !alreadyProxy) {
-                if (isHost && onVideoChange) {
-                  // Host: trigger room-level fallback
-                  logClient({
-                    level: 'info',
-                    domain: 'video',
-                    event: 'proxy_switch',
-                    message: 'Host switching to proxy due to player error code 4',
-                  });
-                  const proxyUrl = buildProxyUrl(videoUrl);
-                  onVideoChange(proxyUrl);
-                  setUsingProxy(true);
-                  setPlaybackError(null);
-                } else if (!guestProxyTriedRef.current) {
-                  // Guest: silently switch to proxy locally (no room state change)
-                  logClient({
-                    level: 'info',
-                    domain: 'video',
-                    event: 'guest_local_proxy',
-                    message: 'Guest switching to local proxy after error code 4',
-                  });
-                  guestProxyTriedRef.current = true;
-                  const proxyUrl = buildProxyUrl(videoUrl);
-                  setLocalProxyUrl(proxyUrl);
-                  setUsingProxy(true);
-                  setPlaybackError(null);
-                } else {
-                  // Guest already tried proxy, show error
-                  setPlaybackError(
-                    `We threw the proxy at it, but your browser is still refusing the handshake. A refresh might clear the cache, otherwise try a different browser.`
-                  );
-                  setIsLoading(false);
-                  setVideoSourceValid(false);
-                }
+              } else if (isHost) {
+                setPlaybackError(
+                  `Oof, the player didn't like that one. The link might be broken, blocked, or just unsupported. Do you have a backup link?`
+                );
               } else {
-                // Differentiate messaging for hosts vs guests
-                if (isHost) {
-                  setPlaybackError(
-                    `Oof, the player didn't like that one. The link might be broken, blocked, or just unsupported. Do you have a backup link?`
-                  );
-                } else {
-                  setPlaybackError(
-                    `Your browser is having a disagreement with this video stream. The classic "turn it off and on again" (refresh) usually fixes it.`
-                  );
-                }
-                setIsLoading(false);
-                setVideoSourceValid(false);
+                setPlaybackError(
+                  `Your browser is having a disagreement with this video stream. The classic "turn it off and on again" (refresh) usually fixes it.`
+                );
               }
+              setIsLoading(false);
+              setVideoSourceValid(false);
             }}
           />
         );
@@ -683,6 +566,8 @@ export function VideoPlayerContainer({
               isCastAvailable={isCastAvailable}
               castDeviceName={castDeviceName}
               onCastClick={onCastClick}
+              alternativesCount={alternatives?.length ?? 0}
+              onWrongVideo={isHost ? onWrongVideo : undefined}
             />
           )}
 

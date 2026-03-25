@@ -1,10 +1,21 @@
 import { Socket, Server as IOServer } from 'socket.io';
-import { SetVideoDataSchema, VideoControlDataSchema, SyncCheckDataSchema, TimePingDataSchema } from '@/types';
+import {
+  SetVideoDataSchema,
+  VideoControlDataSchema,
+  SyncCheckDataSchema,
+  TimePingDataSchema,
+  PickerSelectDataSchema,
+} from '@/types';
 import { SocketEvents, SocketData } from '../types';
 import { validateData, emitSystemMessage } from '../utils';
 import { handleServiceError } from '../error-handler';
 import { VideoService, createSocketContext } from '@/server/services';
 import { logEvent } from '@/server/logger';
+import { redisService } from '@/server/redis';
+import type { PickerState } from '@/server/redis/handlers/picker';
+import { dispatch } from '@/server/video/dispatch';
+
+const LENS_PICKER_TIMEOUT_MS = Number(process.env.LENS_PICKER_TIMEOUT_MS ?? 60_000);
 
 export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents, object, SocketData>, io: IOServer) {
   // Set video URL
@@ -21,20 +32,93 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
 
       const result = await VideoService.setVideo(
         { roomId: validatedData.roomId, videoUrl: validatedData.videoUrl },
-        ctx
+        ctx,
+        socket
       );
 
-      io.to(validatedData.roomId).emit('video-set', {
-        videoUrl: result.playbackUrl,
-        videoType: result.videoType,
-        videoMeta: result.videoMeta,
-      });
-      emitSystemMessage(io, validatedData.roomId, 'Video source changed', 'video-change', {
-        videoUrl: result.playbackUrl,
-      });
+      if (result.pickerRequired && result.pickerCandidates && result.pickerReason) {
+        const roomId = validatedData.roomId;
+        const expiresAt = Date.now() + LENS_PICKER_TIMEOUT_MS;
+        const pickerState: PickerState = {
+          candidates: result.pickerCandidates,
+          winnerPlaybackUrl: result.playbackUrl,
+          expiresAt,
+          reason: result.pickerReason,
+          createdAt: Date.now(),
+        };
+
+        await redisService.picker.setPickerState(roomId, pickerState);
+
+        socket.emit('picker-required', {
+          roomId,
+          candidates: result.pickerCandidates,
+          winnerPlaybackUrl: result.playbackUrl,
+          expiresAt,
+          reason: result.pickerReason,
+        });
+
+        logEvent({
+          level: 'info',
+          domain: 'video',
+          event: 'picker-required-emitted',
+          message: `Picker required: waiting for host selection (${result.pickerReason})`,
+          roomId,
+          meta: { candidateCount: result.pickerCandidates.length, reason: result.pickerReason, expiresAt },
+        });
+
+        // Auto-select timeout
+        const timeoutHandle = setTimeout(async () => {
+          const stored = await redisService.picker.getPickerState(roomId);
+          if (!stored) return; // Already resolved by host selection
+
+          await redisService.picker.deletePickerState(roomId);
+
+          logEvent({
+            level: 'info',
+            domain: 'video',
+            event: 'picker-timeout-auto-select',
+            message: `Picker timeout: auto-selected winner after 60s`,
+            roomId,
+            meta: {
+              winnerUrl: stored.winnerPlaybackUrl,
+              expiresAt: stored.expiresAt,
+              reason: stored.reason,
+            },
+          });
+
+          io.to(roomId).emit('video-set', {
+            videoUrl: result.playbackUrl,
+            videoType: result.videoType,
+            videoMeta: result.videoMeta,
+          });
+          emitSystemMessage(io, roomId, 'Video source changed', 'video-change', {
+            videoUrl: result.playbackUrl,
+          });
+        }, LENS_PICKER_TIMEOUT_MS);
+
+        // Clean up timeout handle if socket disconnects before timer fires
+        socket.once('disconnect', () => clearTimeout(timeoutHandle));
+      } else {
+        // Non-ambiguous capture: emit video-set immediately
+        io.to(validatedData.roomId).emit('video-set', {
+          videoUrl: result.playbackUrl,
+          videoType: result.videoType,
+          videoMeta: result.videoMeta,
+        });
+        emitSystemMessage(io, validatedData.roomId, 'Video source changed', 'video-change', {
+          videoUrl: result.playbackUrl,
+        });
+      }
     } catch (error) {
+      const errMsg = (error as Error)?.message ?? '';
       const message =
-        (error as Error)?.message === 'Unsupported protocol' ? 'Only http/https video links are supported' : undefined;
+        errMsg === 'Unsupported protocol'
+          ? 'Only http/https video links are supported'
+          : errMsg.startsWith('DRM-protected content')
+            ? errMsg
+            : errMsg.includes('no-media-found')
+              ? "We couldn't find a playable stream on that page."
+              : undefined;
       if (message) {
         socket.emit('error', { error: message });
       } else {
@@ -158,45 +242,175 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
   socket.on(
     'video-error-report',
     async ({ roomId, code, message, currentSrc, currentTime, isHost, codecUnparsable }) => {
-      try {
+      logEvent({
+        level: 'warn',
+        domain: 'video',
+        event: 'error_report_received',
+        message: 'video.error: client reported playback error',
+        roomId,
+        meta: { code, message, currentSrc, currentTime, isHost, codecUnparsable },
+      });
+    }
+  );
+
+  // Host-triggered manual URL refresh
+  socket.on('video-url-refresh', async () => {
+    try {
+      if (!socket.data.isHost || !socket.data.roomId) return;
+      const roomId = socket.data.roomId;
+
+      const ctx = createSocketContext(socket.data);
+      if (!ctx) return;
+
+      const room = await (await import('@/server/redis')).redisService.rooms.getRoom(roomId);
+      if (!room?.videoMeta?.originalUrl) return;
+
+      const result = await VideoService.setVideo({ roomId, videoUrl: room.videoMeta.originalUrl }, ctx, socket);
+
+      io.to(roomId).emit('video-url-refresh', {
+        videoUrl: result.playbackUrl,
+        videoType: result.videoType,
+        videoMeta: result.videoMeta,
+      });
+    } catch (error) {
+      handleServiceError(error, socket);
+    }
+  });
+
+  // Re-emit picker-required to reconnecting host if picker state is still active
+  socket.on('join-room', async () => {
+    if (!socket.data.isHost || !socket.data.roomId) return;
+
+    const roomId = socket.data.roomId;
+    try {
+      const stored = await redisService.picker.getPickerState(roomId);
+      if (!stored) return;
+      socket.emit('picker-required', {
+        roomId,
+        candidates: stored.candidates,
+        winnerPlaybackUrl: stored.winnerPlaybackUrl,
+        expiresAt: stored.expiresAt,
+        reason: stored.reason,
+      });
+      logEvent({
+        level: 'info',
+        domain: 'video',
+        event: 'picker-reconnect-reemit',
+        message: `Re-emitted picker-required to reconnecting host`,
+        roomId,
+        meta: { expiresAt: stored.expiresAt },
+      });
+    } catch (err) {
+      logEvent({
+        level: 'warn',
+        domain: 'video',
+        event: 'picker-reconnect-error',
+        message: `Failed to check picker state on reconnect`,
+        roomId,
+        meta: { error: String(err) },
+      });
+    }
+  });
+
+  // Host selects a candidate from the picker overlay
+  socket.on('picker-select', async data => {
+    try {
+      const validatedData = validateData(PickerSelectDataSchema, data, socket);
+      if (!validatedData) return;
+
+      if (!socket.data.isHost || socket.data.roomId !== validatedData.roomId) {
+        socket.emit('error', { error: 'Only the host can make a picker selection' });
+        return;
+      }
+
+      const roomId = validatedData.roomId;
+      const stored = await redisService.picker.getPickerState(roomId);
+
+      if (!stored) {
+        // State expired or was already consumed
+        socket.emit('error', { error: 'Picker session expired. The video was auto-selected.' });
+        return;
+      }
+
+      const candidateUrls = stored.candidates.map(c => c.mediaUrl);
+      if (!candidateUrls.includes(validatedData.selectedUrl)) {
         logEvent({
           level: 'warn',
           domain: 'video',
-          event: 'error_report_received',
-          message: 'video.error: client reported playback error',
+          event: 'picker-invalid-selection',
+          message: `Host selected URL not in candidate list`,
           roomId,
-          meta: { code, message, currentTime, isHost, codecUnparsable },
+          meta: { selectedUrl: validatedData.selectedUrl, candidateUrls },
         });
+        socket.emit('error', { error: 'Selection not recognized. Please try again.' });
+        return;
+      }
 
-        const result = await VideoService.handleErrorReport({
-          roomId,
-          code,
-          message,
-          currentSrc,
-          currentTime,
-          codecUnparsable,
+      // Delete picker state first (consumed)
+      await redisService.picker.deletePickerState(roomId);
+
+      logEvent({
+        level: 'info',
+        domain: 'video',
+        event: 'picker-state-cleanup',
+        message: `Removed picker state from Redis`,
+        roomId,
+        meta: { reason: 'host-selection', duration_ms: Date.now() - stored.createdAt },
+      });
+
+      const isWinnerSelection = validatedData.selectedUrl === stored.winnerPlaybackUrl;
+
+      if (isWinnerSelection) {
+        // Winner selection: emit video-set with winner URL, no userSelectedUrl
+        const room = await redisService.rooms.getRoom(roomId);
+        const videoMeta = room?.videoMeta;
+
+        io.to(roomId).emit('video-set', {
+          videoUrl: stored.winnerPlaybackUrl,
+          videoType: 'm3u8' as const,
+          videoMeta: videoMeta ?? undefined,
         });
+        emitSystemMessage(io, roomId, 'Video source changed', 'video-change', {
+          videoUrl: stored.winnerPlaybackUrl,
+        });
+      } else {
+        // Alternative selection: dispatch the selected URL, store userSelectedUrl in VideoMeta
+        const result = await dispatch(validatedData.selectedUrl, socket);
 
-        if (result.fallbackApplied && result.newPlaybackUrl && result.videoMeta) {
-          io.to(roomId).emit('video-set', {
-            videoUrl: result.newPlaybackUrl,
-            videoType: result.videoType!,
-            videoMeta: result.videoMeta,
-          });
-          emitSystemMessage(io, roomId, 'Video source changed', 'video-change', {
-            videoUrl: result.newPlaybackUrl,
-          });
-        }
-      } catch (err) {
-        logEvent({
-          level: 'error',
-          domain: 'video',
-          event: 'error_report_failed',
-          message: 'video.error: failed to handle error report',
-          roomId,
-          meta: { error: String(err) },
+        const room = await redisService.rooms.getRoom(roomId);
+        const updatedMeta: import('@/types').VideoMeta = {
+          ...(room?.videoMeta ?? {
+            originalUrl: validatedData.selectedUrl,
+            playbackUrl: result.playbackUrl,
+            deliveryType: result.deliveryType,
+            videoType: result.videoType,
+            requiresProxy: result.deliveryType !== 'youtube',
+            decisionReasons: [`dispatch:${result.deliveryType}`],
+            probe: { status: 200 },
+            timestamp: Date.now(),
+          }),
+          playbackUrl: result.playbackUrl,
+          deliveryType: result.deliveryType,
+          videoType: result.videoType,
+          lensUuid: result.lensUuid,
+          expiresAt: result.expiresAt,
+          timestamp: Date.now(),
+          userSelectedUrl: validatedData.selectedUrl,
+        };
+
+        await redisService.rooms.setVideoUrl(roomId, result.playbackUrl, result.videoType, updatedMeta);
+
+        io.to(roomId).emit('video-set', {
+          videoUrl: result.playbackUrl,
+          videoType: result.videoType,
+          videoMeta: updatedMeta,
+        });
+        emitSystemMessage(io, roomId, 'Video source changed', 'video-change', {
+          videoUrl: result.playbackUrl,
         });
       }
+    } catch (error) {
+      handleServiceError(error, socket);
     }
-  );
+  });
 }

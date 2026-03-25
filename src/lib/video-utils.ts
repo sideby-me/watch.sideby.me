@@ -3,6 +3,26 @@ import { logVideo } from '@/src/core/logger/client-logger';
 
 type ParsedVideo = { type: VideoType | 'unknown'; embedUrl: string };
 
+const DRM_HOSTNAMES = new Set([
+  'netflix.com', 'www.netflix.com',
+  'disneyplus.com', 'www.disneyplus.com',
+  'hulu.com', 'www.hulu.com',
+  'primevideo.com', 'www.primevideo.com',
+  'tv.apple.com',
+  'play.max.com',
+  'www.peacocktv.com',
+  'www.paramountplus.com',
+]);
+
+export function isDrmHost(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return DRM_HOSTNAMES.has(hostname) || [...DRM_HOSTNAMES].some(h => hostname.endsWith(`.${h}`));
+  } catch {
+    return false;
+  }
+}
+
 export function parseVideoUrl(url: string): ParsedVideo | null {
   try {
     const urlObj = new URL(url);
@@ -30,49 +50,7 @@ export function parseVideoUrl(url: string): ParsedVideo | null {
       }
     }
 
-    const pathname = urlObj.pathname.toLowerCase();
-    const search = urlObj.search.toLowerCase();
-
-    const looksLikeHls =
-      /\.m3u8(\?.*)?$/i.test(pathname) ||
-      pathname.includes('/hls/') ||
-      pathname.includes('master.m3u8') ||
-      pathname.includes('manifest.m3u8') ||
-      pathname.includes('/live/');
-    if (looksLikeHls) {
-      return {
-        type: 'm3u8',
-        embedUrl: url,
-      };
-    }
-
-    // Direct video URLs (MP4, WebM, etc.)
-    if (/\.(mp4|webm|ogg|mov|avi|mkv)(\?.*)?$/i.test(pathname)) {
-      const isLikelyVideo =
-        pathname.includes('/video') ||
-        pathname.includes('/videos') ||
-        pathname.includes('/media') ||
-        pathname.includes('/assets');
-
-      if (isLikelyVideo || /\.(mp4|webm|ogg|mov)(\?.*)?$/i.test(pathname)) {
-        return {
-          type: 'mp4',
-          embedUrl: url,
-        };
-      }
-    }
-
-    // Extensionless or signed CDN URLs with tokens/expiry – allow and defer classification to server
-    const hasQueryToken = /(?:token|signature|sig|expires|expiry|exp)=/i.test(search);
-    if (!pathname.split('/').pop()?.includes('.')) {
-      return { type: 'unknown', embedUrl: url };
-    }
-
-    if (hasQueryToken) {
-      return { type: 'unknown', embedUrl: url };
-    }
-
-    return null;
+    return { type: 'unknown', embedUrl: url };
   } catch (error) {
     logVideo('parse_error', 'Error parsing video URL', { error: error instanceof Error ? error.message : error });
     return null;

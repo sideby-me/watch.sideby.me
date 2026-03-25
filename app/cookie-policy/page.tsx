@@ -29,12 +29,12 @@ export default function CookiePolicyPage() {
         <p>These are required for the Service to work properly:</p>
         <ul>
           <li>
-            <strong>Theme preference</strong> — Stores your light/dark mode preference using{' '}
+            <strong>Theme preference</strong> - Stores your light/dark mode preference using{' '}
             <code className="rounded bg-muted px-1.5 py-0.5 text-xs">localStorage</code> so we can remember your setting
             between visits.
           </li>
           <li>
-            <strong>Socket connection</strong> — Temporary in-memory data used by our real-time connection (Socket.IO)
+            <strong>Socket connection</strong> - Temporary in-memory data used by our real-time connection (Socket.IO)
             to maintain your session within a room. This is not persisted to disk.
           </li>
         </ul>

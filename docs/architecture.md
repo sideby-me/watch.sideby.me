@@ -9,7 +9,7 @@ At a high level:
 - Real-time features (rooms, chat, video sync, voice, video chat, subtitles) use typed Socket.IO events defined in `server/socket/types.ts` and shared types in `types/`.
 - Domain logic lives in `server/services/` (e.g. `RoomService`, `ChatService`, `VideoService`, `VoiceService`, `VideoChatService`).
 - Persistent state is stored in Redis via `server/redis/`, which exposes repository-style helpers for rooms, chat, and related data.
-- Video URLs are resolved and classified in `server/video/resolve-source.ts`, which decides whether to play directly, via HLS, or through a proxy.
+- Video URLs are dispatched and classified in `server/video/dispatch.ts`, which decides whether to play directly (YouTube), via the pipe proxy, or via Lens capture (headless browser extraction for auth-gated streams). The Lens client (`server/video/lens-client.ts`) streams SSE status events back to the room while capture is in progress.
 
 On the client:
 

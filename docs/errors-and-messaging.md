@@ -6,14 +6,14 @@ This guide explains how domain errors are modeled and surfaced to users.
 
 - All domain-specific errors extend `DomainError` from `server/errors.ts`.
 - Each error has a `code` and a user-facing message, for example:
-  - `NotFoundError` — "Hmm, we couldn't find what you're looking for."
-  - `PermissionError` — "You don't have permission to do that."
-  - `ValidationError` — "Something looks off with that request."
-  - `ConflictError` — "That conflicts with something already in place."
-  - `RateLimitError` — "Whoa there, slow down a bit!"
-  - `RoomLockedError` — "This room is currently locked. New guests cannot join."
-  - `PasscodeRequiredError` — "This room requires a passcode."
-  - `CapacityError` — "Whoa, it's a full house!"
+  - `NotFoundError` - "Hmm, we couldn't find what you're looking for."
+  - `PermissionError` - "You don't have permission to do that."
+  - `ValidationError` - "Something looks off with that request."
+  - `ConflictError` - "That conflicts with something already in place."
+  - `RateLimitError` - "Whoa there, slow down a bit!"
+  - `RoomLockedError` - "This room is currently locked. New guests cannot join."
+  - `PasscodeRequiredError` - "This room requires a passcode."
+  - `CapacityError` - "Whoa, it's a full house!"
 
 ## Where errors are thrown
 

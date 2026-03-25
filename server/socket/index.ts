@@ -9,6 +9,8 @@ import { registerVoiceHandlers } from './handlers/voice';
 import { registerVideoChatHandlers } from './handlers/videochat';
 import { handleDisconnect } from './handlers/disconnect';
 import { logEvent } from '@/server/logger';
+import { LensRefreshDaemon } from '@/server/video/refresh-daemon';
+import { redis } from '@/server/redis/client';
 
 let io: IOServer | undefined;
 
@@ -32,6 +34,9 @@ export function initSocketIO(httpServer: HTTPServer): IOServer {
     pingTimeout: 12000,
     perMessageDeflate: false,
   });
+
+  // Start Lens auto-refresh daemon
+  new LensRefreshDaemon(io, redis).start();
 
   io.on('connection', (socket: Socket<SocketEvents, SocketEvents, object, SocketData>) => {
     logEvent({

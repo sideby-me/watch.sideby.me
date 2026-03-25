@@ -115,6 +115,10 @@ export const VideoMetaSchema = z.object({
     acceptRanges: z.boolean().optional(),
   }),
   timestamp: z.number(),
+  // Lens integration fields
+  lensUuid: z.string().uuid().optional(),
+  expiresAt: z.number().optional(),
+  userSelectedUrl: z.string().url().optional(),
 });
 
 export const RoomSchema = z.object({
@@ -463,6 +467,45 @@ export const VideoSetResponseSchema = z.object({
   videoMeta: RoomSchema.shape.videoMeta.optional(),
 });
 
+// Lens: daemon-triggered URL refresh (same shape as video-set)
+export const VideoUrlRefreshResponseSchema = z.object({
+  videoUrl: VideoUrlSchema,
+  videoType: z.enum(['youtube', 'mp4', 'm3u8']),
+  videoMeta: RoomSchema.shape.videoMeta.optional(),
+});
+
+// Lens: loading status relayed from Lens SSE during capture
+export const VideoLoadingStatusResponseSchema = z.object({
+  status: z.string(),
+  message: z.string().optional(),
+});
+
+// Picker: candidate entry for picker-required event
+export const PickerCandidateSchema = z.object({
+  mediaUrl: z.string().url(),
+  mediaType: z.enum(['video/mp4', 'application/x-mpegURL', 'application/dash+xml']),
+  durationSec: z.number().nullable(),
+  bitrate: z.number().nullable(),
+  isLive: z.boolean().optional(),
+  headers: z.record(z.string(), z.string()),
+  isWinner: z.boolean(),
+});
+
+// Picker: picker-required event (server → host socket only)
+export const PickerRequiredResponseSchema = z.object({
+  roomId: RoomIdSchema,
+  candidates: z.array(PickerCandidateSchema).min(1),
+  winnerPlaybackUrl: z.string().url(),
+  expiresAt: z.number().positive(),
+  reason: z.enum(['lowConfidence', 'ambiguous', 'both']).optional(),
+});
+
+// Picker: picker-select event (host → server)
+export const PickerSelectDataSchema = z.object({
+  roomId: RoomIdSchema,
+  selectedUrl: z.string().url(),
+});
+
 export const VideoEventResponseSchema = z.object({
   currentTime: z.number().min(0),
   timestamp: z.number().positive(),
@@ -549,6 +592,8 @@ export type ReactionUpdatedResponse = z.infer<typeof ReactionUpdatedResponseSche
 export type TypingEventResponse = z.infer<typeof TypingEventResponseSchema>;
 export type ErrorResponse = z.infer<typeof ErrorResponseSchema>;
 export type VideoErrorReport = z.infer<typeof VideoErrorReportSchema>;
+export type VideoUrlRefreshResponse = z.infer<typeof VideoUrlRefreshResponseSchema>;
+export type VideoLoadingStatusResponse = z.infer<typeof VideoLoadingStatusResponseSchema>;
 
 // Voice chat types
 export type VoiceJoinData = z.infer<typeof VoiceJoinDataSchema>;
@@ -590,3 +635,6 @@ export type SubtitleSearchRequest = z.infer<typeof SubtitleSearchRequestSchema>;
 export type SubtitleSearchResponse = z.infer<typeof SubtitleSearchResponseSchema>;
 export type SubtitleDownloadRequest = z.infer<typeof SubtitleDownloadRequestSchema>;
 export type SubtitleDownloadResponse = z.infer<typeof SubtitleDownloadResponseSchema>;
+export type PickerCandidate = z.infer<typeof PickerCandidateSchema>;
+export type PickerRequiredResponse = z.infer<typeof PickerRequiredResponseSchema>;
+export type PickerSelectData = z.infer<typeof PickerSelectDataSchema>;

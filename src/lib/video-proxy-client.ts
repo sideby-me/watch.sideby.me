@@ -12,6 +12,12 @@ export function buildProxyUrl(targetUrl: string): string {
   return `${VIDEO_PROXY_URL}?${params.toString()}`;
 }
 
+// Build a pipe uuid= playback URL for a Lens-captured media payload.
+export function buildLensPlaybackUrl(uuid: string): string {
+  if (!PROXY_ENABLED) throw new Error('NEXT_PUBLIC_VIDEO_PROXY_URL is not set - cannot build Lens playback URL');
+  return `${VIDEO_PROXY_URL}?uuid=${uuid}`;
+}
+
 export function isProxiedUrl(url: string): boolean {
   if (!PROXY_ENABLED || !url) return false;
   return url.startsWith(VIDEO_PROXY_URL);

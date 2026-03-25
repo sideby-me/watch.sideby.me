@@ -2,7 +2,7 @@
 
 This guide summarizes how to write UI copy for watch.sideby.me.
 
-The persona: **a smart, nerdy friend who actually gets it** — someone who's genuinely passionate about real‑time tech and online collaboration, and refreshingly honest about why most tools in this space kind of suck.
+The persona: **a smart, nerdy friend who actually gets it** - someone who's genuinely passionate about real‑time tech and online collaboration, and refreshingly honest about why most tools in this space kind of suck.
 
 ---
 
@@ -44,7 +44,7 @@ The persona: **a smart, nerdy friend who actually gets it** — someone who's ge
 
 - Be honest about what works well and what doesn’t (yet).
 - Explain technical trade‑offs in human terms (e.g. latency vs reliability).
-- "Show your work" when it helps—surface enough of the engineering thinking to feel real, not magical.
+- "Show your work" when it helps-surface enough of the engineering thinking to feel real, not magical.
 
 ### Respectful Competence
 
@@ -67,12 +67,12 @@ The persona: **a smart, nerdy friend who actually gets it** — someone who's ge
 Make technical failures feel like shared frustrations, not user failures.
 
 - Bad: "Connection failed. Retry?"
-- Good: "Oof, the internet gremlins got us. WebRTC can be finicky sometimes—want to give it another shot?"
+- Good: "Oof, the internet gremlins got us. WebRTC can be finicky sometimes-want to give it another shot?"
 
 Room‑specific examples:
 
 - Locked room: "This room is locked right now. The host isn’t letting new people in (yet)."
-- Passcode: "This room needs a passcode. Ask your host nicely—or very dramatically, your call."
+- Passcode: "This room needs a passcode. Ask your host nicely-or very dramatically, your call."
 - Capacity: "Whoa, it’s a full house. Someone needs to leave before you can hop in."
 
 ### Feature Announcements
@@ -107,7 +107,7 @@ Set expectations like a good host.
 
 - Entertainment collaboration: "Finally, a watch party that doesn’t require a degree in network engineering to set up."
 - Productivity collaboration: "Making screen sharing and sync actually work on the first try. Revolutionary, we know."
-- Creative collaboration: "Built for people who know a ‘quick sync’ is never actually quick—but should at least be possible."
+- Creative collaboration: "Built for people who know a ‘quick sync’ is never actually quick-but should at least be possible."
 
 Use these as patterns, not as the only allowed lines.
 

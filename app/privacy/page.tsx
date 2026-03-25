@@ -3,7 +3,7 @@ import { LegalLayout } from '@/components/layout/legal-layout';
 
 export const metadata: Metadata = {
   title: 'Privacy Policy',
-  description: 'How sideby.me handles your data — spoiler: we keep it minimal.',
+  description: 'How sideby.me handles your data - spoiler: we keep it minimal.',
 };
 
 export default function PrivacyPolicyPage() {

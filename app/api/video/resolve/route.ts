@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { resolveSource } from '@/server/video/resolve-source';
 import { logVideoEvent } from '@/server/logger';
 import { createRateLimiter } from '@/server/rate-limiter';
+import { isBlocked } from '@/server/video/blocklist';
 
-// 20 requests per minute per IP for video resolution.
+// 20 requests per minute per IP for video pre-validation.
 const limiter = createRateLimiter({ windowMs: 60_000, maxRequests: 20 });
 
 export const runtime = 'nodejs';
@@ -34,54 +34,57 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing or invalid url' }, { status: 400 });
     }
 
-    // Basic protocol check
-    const protocol = new URL(url).protocol;
-    if (!['http:', 'https:'].includes(protocol)) {
-      return NextResponse.json({ error: 'Unsupported protocol' }, { status: 400 });
-    }
-
-    const meta = await resolveSource(url);
-
-    // Log preflight resolution result
-    logVideoEvent({
-      level: 'info',
-      event: 'preflight-resolve',
-      message: `Resolved video source -> ${meta.deliveryType}`,
-      meta: {
-        deliveryType: meta.deliveryType,
-        requiresProxy: meta.requiresProxy,
-        confidence: meta.confidence,
-        confidenceReason: meta.confidenceReason,
-      },
-    });
-
-    const response = NextResponse.json({ meta });
-    response.headers.set('Access-Control-Allow-Origin', '*');
-    return response;
-  } catch (error) {
-    if (error instanceof Error && error.message === 'Unsupported protocol') {
+    // Protocol check
+    const parsed = new URL(url);
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
       return NextResponse.json(
-        { error: 'Unsupported protocol' },
+        { error: 'Only http/https video links are supported' },
         { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } }
       );
     }
 
-    if (error instanceof Error && error.message.startsWith('URL is blocked')) {
+    // Blocklist check
+    const blockCheck = isBlocked(url);
+    if (blockCheck.blocked) {
       return NextResponse.json(
         { error: 'This URL cannot be used.' },
         { status: 403, headers: { 'Access-Control-Allow-Origin': '*' } }
       );
     }
 
-    // Log playback error
+    logVideoEvent({
+      level: 'info',
+      event: 'preflight-validate',
+      message: 'URL pre-validated (dispatch happens server-side over socket)',
+      meta: { url },
+    });
+
+    // Return stable meta shape - callers key on `meta.deliveryType`
+    const response = NextResponse.json({
+      meta: {
+        deliveryType: 'unknown',
+        playbackUrl: url,
+        requiresProxy: false,
+      },
+    });
+    response.headers.set('Access-Control-Allow-Origin', '*');
+    return response;
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('Invalid URL')) {
+      return NextResponse.json(
+        { error: 'Invalid URL' },
+        { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } }
+      );
+    }
+
     logVideoEvent({
       level: 'error',
       event: 'preflight-error',
-      message: error instanceof Error ? error.message : 'Unknown resolve error',
+      message: error instanceof Error ? error.message : 'Unknown preflight error',
       meta: { error },
     });
     return NextResponse.json(
-      { error: 'Failed to resolve video source' },
+      { error: 'Failed to validate video URL' },
       { status: 500, headers: { 'Access-Control-Allow-Origin': '*' } }
     );
   }
