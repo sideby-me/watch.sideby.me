@@ -251,7 +251,7 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
                   peerId: id,
                   attempt: nextAttempt,
                 });
-              forceTurnReconnect(id, initiator).catch(() => {});
+              getOrCreatePeer(id, initiator, true).catch(() => {});
             }
           },
           useOptimizedStrategy ? 5000 : nextAttempt === 1 ? 4000 : nextAttempt === 2 ? 3000 : 2000
@@ -300,7 +300,7 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
               pc.restartIce();
               setTimeout(() => {
                 if (pc.connectionState === 'failed' || pc.iceConnectionState === 'failed') {
-                  forceTurnReconnect(id, true).catch(() => {});
+                  getOrCreatePeer(id, true, true).catch(() => {});
                 }
               }, 1000);
               return;
@@ -309,7 +309,7 @@ export function useWebRTC(options: UseWebRTCOptions = {}): UseWebRTCReturn {
           if (entry.connectionAttempt < 3) {
             // Immediate escalation for optimized strategy
             const delay = entry.useOptimizedStrategy ? 100 : entry.connectionAttempt === 1 ? 200 : 300;
-            setTimeout(() => forceTurnReconnect(id, true).catch(() => {}), delay);
+            setTimeout(() => getOrCreatePeer(id, true, true).catch(() => {}), delay);
           }
         }
       };

@@ -30,34 +30,7 @@ export function PickerCandidateRow({ candidate, isCurrentlyPlaying, onSelect }: 
 
   const formatLabel = MEDIA_TYPE_LABELS[mediaType] ?? mediaType;
 
-  const metadataParts: string[] = [formatLabel];
-
-  let durationElement: React.ReactNode = null;
-  if (isLive) {
-    durationElement = (
-      <Badge variant="secondary" className="text-xs">
-        LIVE
-      </Badge>
-    );
-  } else if (durationSec !== null && durationSec !== undefined) {
-    metadataParts.push(formatDuration(durationSec));
-  }
-
-  if (bitrate !== null && bitrate !== undefined) {
-    metadataParts.push(`${(bitrate / 1_000_000).toFixed(1)} Mbps`);
-  }
-
   const isLikelyAd = durationSec !== null && durationSec !== undefined && durationSec < 90 && !isLive;
-
-  // Build metadata display: format · [duration or LIVE] · bitrate
-  // When isLive, we render format as text and LIVE as a badge
-  const textParts: string[] = [formatLabel];
-  if (!isLive && durationSec !== null && durationSec !== undefined) {
-    textParts.push(formatDuration(durationSec));
-  }
-  if (bitrate !== null && bitrate !== undefined) {
-    textParts.push(`${(bitrate / 1_000_000).toFixed(1)} Mbps`);
-  }
 
   return (
     <div className="flex min-h-[44px] cursor-default items-center justify-between border-b border-border px-4 py-2 transition-colors last:border-b-0 hover:bg-secondary/20">

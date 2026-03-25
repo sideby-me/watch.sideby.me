@@ -133,7 +133,11 @@ export function useVoiceChat({
           const speaking = avg > SPEAKING_DETECTION_THRESHOLD;
           setSpeakingUserIds(prev => {
             const next = new Set(prev);
-            speaking ? next.add(peerId) : next.delete(peerId);
+            if (speaking) {
+              next.add(peerId);
+            } else {
+              next.delete(peerId);
+            }
             return next;
           });
           const entry = analyserNodesRef.current.get(peerId);
@@ -280,7 +284,11 @@ export function useVoiceChat({
           const speaking = avg > SPEAKING_DETECTION_THRESHOLD;
           setSpeakingUserIds(prev => {
             const next = new Set(prev);
-            speaking ? next.add(uid) : next.delete(uid);
+            if (speaking) {
+              next.add(uid);
+            } else {
+              next.delete(uid);
+            }
             return next;
           });
           const id = requestAnimationFrame(tick);
@@ -334,7 +342,7 @@ export function useVoiceChat({
     }
     joinAttemptRef.current = false;
     cleanupAll();
-  }, [socket, isEnabled, roomId, cleanupAll, clearSoloTimeout]);
+  }, [socket, isEnabled, roomId, cleanupAll, clearSoloTimeout, currentUser?.id]);
 
   // (Bandwidth Patrol) schedule forced disconnect if alone for too long
   const startSoloTimeout = useCallback(() => {
@@ -468,6 +476,10 @@ export function useVoiceChat({
     cleanupPeer,
     startSoloTimeout,
     clearSoloTimeout,
+    createOfferForPeer,
+    acceptOfferFromPeer,
+    acceptAnswerFromPeer,
+    safeAddRemoteCandidate,
   ]);
 
   useEffect(

@@ -27,7 +27,7 @@ export function PickerOverlay({
   onOpenChange,
   mode,
   candidates,
-  winnerPlaybackUrl,
+  winnerPlaybackUrl: _winnerPlaybackUrl,
   reason,
   onSelect,
   onDismiss,

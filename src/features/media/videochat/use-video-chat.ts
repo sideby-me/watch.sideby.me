@@ -232,7 +232,7 @@ export function useVideoChat({
     setPublicParticipantCount(0);
     appliedRemoteAnswerRef.current.clear();
     fallbackInProgressRef.current.clear();
-  }, [closeAll]);
+  }, [closeAll, clearSoloTimeout]);
 
   // Start video chat
   const enable = useCallback(async () => {
@@ -259,7 +259,7 @@ export function useVideoChat({
     joinAttemptRef.current = false;
     clearSoloTimeout();
     cleanupAll();
-  }, [socket, isEnabled, roomId, cleanupAll]);
+  }, [socket, isEnabled, roomId, cleanupAll, clearSoloTimeout]);
   disableRef.current = disable;
 
   // UI mute for camera track
@@ -421,6 +421,10 @@ export function useVideoChat({
     cleanupPeer,
     startSoloTimeout,
     clearSoloTimeout,
+    createOfferForPeer,
+    acceptOfferFromPeer,
+    acceptAnswerFromPeer,
+    safeAddRemoteCandidate,
   ]);
 
   useEffect(

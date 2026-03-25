@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { MessageCircle } from 'lucide-react';
@@ -92,24 +92,27 @@ export function ChatShell({
   const { enabled: soundEnabled, toggleEnabled: toggleSound, playNotification } = useNotificationSound();
 
   // Helper function to scroll to bottom
-  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
-    if (scrollAreaRef.current) {
-      if (mode === 'sidebar') {
-        const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
-        if (scrollContainer) {
-          scrollContainer.scrollTo({
-            top: scrollContainer.scrollHeight,
+  const scrollToBottom = useCallback(
+    (behavior: ScrollBehavior = 'smooth') => {
+      if (scrollAreaRef.current) {
+        if (mode === 'sidebar') {
+          const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+          if (scrollContainer) {
+            scrollContainer.scrollTo({
+              top: scrollContainer.scrollHeight,
+              behavior,
+            });
+          }
+        } else {
+          scrollAreaRef.current.scrollTo({
+            top: scrollAreaRef.current.scrollHeight,
             behavior,
           });
         }
-      } else {
-        scrollAreaRef.current.scrollTo({
-          top: scrollAreaRef.current.scrollHeight,
-          behavior,
-        });
       }
-    }
-  };
+    },
+    [mode]
+  );
 
   // Wrapper for onToggleReaction that scrolls after reacting
   const handleToggleReaction = (messageId: string, emoji: string) => {
@@ -134,14 +137,14 @@ export function ChatShell({
       }
     }
     setPreviousMessageCount(messages.length);
-  }, [messages, previousMessageCount, currentUserId, playNotification, mode]);
+  }, [messages, previousMessageCount, currentUserId, playNotification, scrollToBottom]);
 
   // Scroll to bottom when typing users change
   useEffect(() => {
     if (typingUsers.length > 0) {
       scrollToBottom();
     }
-  }, [typingUsers, mode]);
+  }, [typingUsers, scrollToBottom]);
 
   // Handle typing indicators
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {

@@ -274,7 +274,7 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
           hlsRef.current = null;
         }
       };
-    }, [src]);
+    }, [src, onError]);
 
     const handlePlay = () => {
       logVideo('hls_play', 'HLS video started playing', { programmatic: programmaticActionRef.current, isHost });
