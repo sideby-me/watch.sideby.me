@@ -144,7 +144,6 @@ export function VideoPlayerContainer({
     setPlaybackError(null);
   }, [videoUrl, videoType]);
 
-
   // Get video element ref for guest controls
   const getVideoElementRef = () => {
     if (videoType === 'mp4' && videoPlayerRef.current) {

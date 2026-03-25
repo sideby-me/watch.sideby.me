@@ -44,7 +44,7 @@ interface VideoControlsProps {
   onCastClick?: () => void;
   // Picker controls
   alternativesCount?: number; // number of alternatives; 0 or undefined = hide button
-  onWrongVideo?: () => void;  // called when host clicks "Wrong video?"
+  onWrongVideo?: () => void; // called when host clicks "Wrong video?"
 }
 
 export function VideoControls({

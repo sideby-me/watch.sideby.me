@@ -113,7 +113,9 @@ export const RoomVideoSection = memo(function RoomVideoSection({
       setPickerOpen(true);
     };
     socket.on('picker-required', handlePickerRequired);
-    return () => { socket.off('picker-required', handlePickerRequired); };
+    return () => {
+      socket.off('picker-required', handlePickerRequired);
+    };
   }, [socket, isHost]);
 
   const handlePickerSelect = (selectedUrl: string) => {

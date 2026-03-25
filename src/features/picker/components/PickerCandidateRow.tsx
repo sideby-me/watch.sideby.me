@@ -60,9 +60,9 @@ export function PickerCandidateRow({ candidate, isCurrentlyPlaying, onSelect }: 
   }
 
   return (
-    <div className="flex items-center justify-between min-h-[44px] py-2 px-4 border-b border-border last:border-b-0 hover:bg-secondary/20 transition-colors cursor-default">
+    <div className="flex min-h-[44px] cursor-default items-center justify-between border-b border-border px-4 py-2 transition-colors last:border-b-0 hover:bg-secondary/20">
       {/* Left side: metadata */}
-      <div className="flex items-center gap-2 text-sm flex-wrap">
+      <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="text-primary-foreground">{formatLabel}</span>
         {isLive ? (
           <>
@@ -86,14 +86,14 @@ export function PickerCandidateRow({ candidate, isCurrentlyPlaying, onSelect }: 
       </div>
 
       {/* Right side: badges and select button */}
-      <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+      <div className="ml-2 flex flex-shrink-0 items-center gap-2">
         {isCurrentlyPlaying && (
           <Badge variant="secondary" className="text-xs">
             Playing now
           </Badge>
         )}
         {isLikelyAd && (
-          <Badge variant="outline" className="text-xs text-yellow-400 border-yellow-400/50">
+          <Badge variant="outline" className="border-yellow-400/50 text-xs text-yellow-400">
             ⚠ likely ad
           </Badge>
         )}

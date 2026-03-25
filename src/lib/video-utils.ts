@@ -4,10 +4,14 @@ import { logVideo } from '@/src/core/logger/client-logger';
 type ParsedVideo = { type: VideoType | 'unknown'; embedUrl: string };
 
 const DRM_HOSTNAMES = new Set([
-  'netflix.com', 'www.netflix.com',
-  'disneyplus.com', 'www.disneyplus.com',
-  'hulu.com', 'www.hulu.com',
-  'primevideo.com', 'www.primevideo.com',
+  'netflix.com',
+  'www.netflix.com',
+  'disneyplus.com',
+  'www.disneyplus.com',
+  'hulu.com',
+  'www.hulu.com',
+  'primevideo.com',
+  'www.primevideo.com',
   'tv.apple.com',
   'play.max.com',
   'www.peacocktv.com',

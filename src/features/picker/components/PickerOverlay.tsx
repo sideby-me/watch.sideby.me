@@ -61,13 +61,11 @@ export function PickerOverlay({
           <DialogTitle className="text-base font-semibold">
             {mode === 'proactive' ? 'Pick a stream' : 'Switch stream'}
           </DialogTitle>
-          {subtitle && (
-            <DialogDescription className="text-sm text-muted-foreground">{subtitle}</DialogDescription>
-          )}
+          {subtitle && <DialogDescription className="text-sm text-muted-foreground">{subtitle}</DialogDescription>}
         </DialogHeader>
 
-        <ScrollArea className="max-h-[320px] mt-4">
-          {candidates.map((candidate) => (
+        <ScrollArea className="mt-4 max-h-[320px]">
+          {candidates.map(candidate => (
             <PickerCandidateRow
               key={candidate.mediaUrl}
               candidate={candidate}
