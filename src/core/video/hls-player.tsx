@@ -274,7 +274,8 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
           hlsRef.current = null;
         }
       };
-    }, [src, onError]);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [src]);
 
     const handlePlay = () => {
       logVideo('hls_play', 'HLS video started playing', { programmatic: programmaticActionRef.current, isHost });
