@@ -140,6 +140,29 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
               logVideo('hls_manifest_parsed', 'HLS manifest loaded');
             });
 
+            // Diagnostic: log segment load events for debugging buffer issues
+            hls.on(Hls.Events.FRAG_LOADED, (_event, data) => {
+              logVideo('hls_frag_loaded', 'Segment loaded', {
+                frag: data.frag?.url,
+                duration: data.frag?.duration,
+              });
+            });
+
+            // Diagnostic: log buffer emergency aborts (indicates playback stalling)
+            hls.on(Hls.Events.FRAG_LOAD_EMERGENCY_ABORTED, (_event, data) => {
+              logVideo('hls_emergency_abort', 'Buffer emergency - segment load aborted', {
+                frag: data.frag?.url,
+              });
+            });
+
+            // Diagnostic: log buffer appends to track buffer health
+            hls.on(Hls.Events.BUFFER_APPENDED, (_event, data) => {
+              logVideo('hls_buffer_appended', 'Buffer appended', {
+                timeRanges: video.buffered.length,
+                bufferType: data.type,
+              });
+            });
+
             hls.on(Hls.Events.LEVEL_SWITCHING, (_event: unknown, data: unknown) => {
               const levelData = data as { level?: number };
               logVideo('hls_level_switch', 'HLS quality level switching', {
