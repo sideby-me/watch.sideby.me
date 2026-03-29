@@ -3,6 +3,7 @@ import { parse } from 'url';
 import next from 'next';
 import { initSocketIO } from './server/socket';
 import { logEvent } from './server/logger';
+import { initializeTelemetry } from './server/telemetry/bootstrap';
 
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = 'localhost';
@@ -11,7 +12,27 @@ const port = parseInt(process.env.PORT || '3000');
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
-app.prepare().then(() => {
+app.prepare().then(async () => {
+  await initializeTelemetry({
+    logger: {
+      warn: (message, meta) =>
+        logEvent({
+          level: 'warn',
+          domain: 'other',
+          event: 'telemetry_bootstrap_warning',
+          message,
+          meta,
+        }),
+      info: message =>
+        logEvent({
+          level: 'info',
+          domain: 'other',
+          event: 'telemetry_bootstrap',
+          message,
+        }),
+    },
+  });
+
   const httpServer = createServer(async (req, res) => {
     try {
       if (req.url && (req.url === '/_health' || req.url.startsWith('/_health?'))) {
