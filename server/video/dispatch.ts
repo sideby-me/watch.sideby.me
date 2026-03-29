@@ -49,6 +49,15 @@ export interface DispatchResult {
   pickerReason?: 'lowConfidence' | 'ambiguous' | 'both';
 }
 
+export interface DispatchLogContext {
+  requestId?: string;
+  dispatchId?: string;
+  traceId?: string;
+  spanId?: string;
+  roomId?: string;
+  userId?: string;
+}
+
 //DRM-protected streaming services that cannot be proxied
 const DRM_HOSTS = new Set([
   'netflix.com',
@@ -166,7 +175,7 @@ function buildPickerCandidates(result: import('./lens-client').LensCaptureResult
 const lensClient = new LensClient();
 
 // Dispatch a raw video URL to the correct delivery path.
-export async function dispatch(rawUrl: string, socket?: Socket): Promise<DispatchResult> {
+export async function dispatch(rawUrl: string, socket?: Socket, context?: DispatchLogContext): Promise<DispatchResult> {
   let parsed: URL;
   try {
     parsed = new URL(rawUrl);
@@ -197,6 +206,12 @@ export async function dispatch(rawUrl: string, socket?: Socket): Promise<Dispatc
       domain: 'video',
       event: 'dispatch_youtube',
       message: `dispatch: YouTube → direct`,
+      requestId: context?.requestId,
+      dispatchId: context?.dispatchId,
+      traceId: context?.traceId,
+      spanId: context?.spanId,
+      roomId: context?.roomId,
+      userId: context?.userId,
       meta: { url: rawUrl },
     });
     return {
@@ -224,6 +239,12 @@ export async function dispatch(rawUrl: string, socket?: Socket): Promise<Dispatc
       domain: 'video',
       event: 'dispatch_proxied',
       message: `dispatch: already proxied → as-is (${vType})`,
+      requestId: context?.requestId,
+      dispatchId: context?.dispatchId,
+      traceId: context?.traceId,
+      spanId: context?.spanId,
+      roomId: context?.roomId,
+      userId: context?.userId,
       meta: { url: rawUrl },
     });
     return {
@@ -245,6 +266,12 @@ export async function dispatch(rawUrl: string, socket?: Socket): Promise<Dispatc
           domain: 'video',
           event: 'dispatch_direct',
           message: `dispatch: direct ${vType} → file-direct (permissive CORS)`,
+          requestId: context?.requestId,
+          dispatchId: context?.dispatchId,
+          traceId: context?.traceId,
+          spanId: context?.spanId,
+          roomId: context?.roomId,
+          userId: context?.userId,
           meta: { url: rawUrl },
         });
         return {
@@ -259,6 +286,12 @@ export async function dispatch(rawUrl: string, socket?: Socket): Promise<Dispatc
           domain: 'video',
           event: 'dispatch_direct',
           message: `dispatch: direct ${vType} → file-proxy (restrictive/no CORS)`,
+          requestId: context?.requestId,
+          dispatchId: context?.dispatchId,
+          traceId: context?.traceId,
+          spanId: context?.spanId,
+          roomId: context?.roomId,
+          userId: context?.userId,
           meta: { url: rawUrl },
         });
         return {
@@ -281,6 +314,12 @@ export async function dispatch(rawUrl: string, socket?: Socket): Promise<Dispatc
       domain: 'video',
       event: 'dispatch_direct_fallback',
       message: `dispatch: HEAD probe ${probe ? probe.status : 'failed'} → falling through to Lens`,
+      requestId: context?.requestId,
+      dispatchId: context?.dispatchId,
+      traceId: context?.traceId,
+      spanId: context?.spanId,
+      roomId: context?.roomId,
+      userId: context?.userId,
       meta: { url: rawUrl },
     });
   }
@@ -291,6 +330,12 @@ export async function dispatch(rawUrl: string, socket?: Socket): Promise<Dispatc
     domain: 'video',
     event: 'dispatch_lens',
     message: `dispatch: → Lens capture`,
+    requestId: context?.requestId,
+    dispatchId: context?.dispatchId,
+    traceId: context?.traceId,
+    spanId: context?.spanId,
+    roomId: context?.roomId,
+    userId: context?.userId,
     meta: { url: rawUrl },
   });
 
