@@ -176,6 +176,25 @@ const lensClient = new LensClient();
 
 // Dispatch a raw video URL to the correct delivery path.
 export async function dispatch(rawUrl: string, socket?: Socket, context?: DispatchLogContext): Promise<DispatchResult> {
+  const hasCoreCorrelation = Boolean(context?.requestId || context?.dispatchId || context?.traceId || context?.spanId);
+  const missingCorrelationKeys = [!context?.roomId ? 'room_id' : null, !context?.userId ? 'user_id' : null].filter(Boolean);
+
+  if (hasCoreCorrelation && missingCorrelationKeys.length > 0) {
+    logEvent({
+      level: 'warn',
+      domain: 'video',
+      event: 'dispatch_missing_non_core_ids',
+      message: 'Dispatch received missing non-core correlation IDs',
+      requestId: context?.requestId,
+      dispatchId: context?.dispatchId,
+      traceId: context?.traceId,
+      spanId: context?.spanId,
+      roomId: context?.roomId,
+      userId: context?.userId,
+      meta: { missingCorrelationKeys },
+    });
+  }
+
   let parsed: URL;
   try {
     parsed = new URL(rawUrl);
