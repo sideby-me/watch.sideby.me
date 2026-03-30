@@ -6,6 +6,7 @@ import type { VideoState, VideoMeta } from '@/types';
 import type { SocketContext } from './SocketContext';
 import { NotFoundError, PermissionError } from '../errors';
 import type { Socket } from 'socket.io';
+import type { DispatchLogContext } from '@/server/video/dispatch';
 
 export interface SetVideoRequest {
   roomId: string;
@@ -38,7 +39,12 @@ class VideoServiceImpl {
   private lastPauseEmitTime: Record<string, number> = {};
 
   // Set video URL for a room.
-  async setVideo(request: SetVideoRequest, ctx: SocketContext, socket?: Socket): Promise<SetVideoResult> {
+  async setVideo(
+    request: SetVideoRequest,
+    ctx: SocketContext,
+    socket?: Socket,
+    correlation?: DispatchLogContext
+  ): Promise<SetVideoResult> {
     const { roomId, videoUrl } = request;
 
     const room = await redisService.rooms.getRoom(roomId);
@@ -52,7 +58,7 @@ class VideoServiceImpl {
     }
 
     // 6-tier dispatch
-    const result = await dispatch(videoUrl, socket);
+    const result = await dispatch(videoUrl, socket, correlation);
 
     // Build VideoMeta from dispatch result
     const meta: VideoMeta = {

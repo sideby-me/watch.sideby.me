@@ -13,9 +13,29 @@ import { VideoService, createSocketContext } from '@/server/services';
 import { logEvent } from '@/server/logger';
 import { redisService } from '@/server/redis';
 import type { PickerState } from '@/server/redis/handlers/picker';
-import { dispatch } from '@/server/video/dispatch';
+import { dispatch, type DispatchLogContext } from '@/server/video/dispatch';
+import { randomUUID } from 'crypto';
+import { trace } from '@opentelemetry/api';
 
 const LENS_PICKER_TIMEOUT_MS = Number(process.env.LENS_PICKER_TIMEOUT_MS ?? 60_000);
+
+function randomHexId(bytes: number): string {
+  return randomUUID().replace(/-/g, '').slice(0, bytes * 2);
+}
+
+export function createSetVideoCorrelation(socketData: SocketData): DispatchLogContext {
+  const activeSpan = trace.getActiveSpan();
+  const spanContext = activeSpan?.spanContext();
+
+  return {
+    requestId: randomUUID(),
+    dispatchId: randomUUID(),
+    traceId: spanContext?.traceId ?? randomHexId(16),
+    spanId: spanContext?.spanId,
+    roomId: socketData.roomId ?? undefined,
+    userId: socketData.userId ?? undefined,
+  };
+}
 
 export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents, object, SocketData>, io: IOServer) {
   // Set video URL
@@ -30,10 +50,33 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
         return;
       }
 
+      const correlation = createSetVideoCorrelation(socket.data);
+      const missingCorrelationKeys = [
+        !correlation.roomId ? 'room_id' : null,
+        !correlation.userId ? 'user_id' : null,
+      ].filter(Boolean);
+
+      if (missingCorrelationKeys.length > 0) {
+        logEvent({
+          level: 'warn',
+          domain: 'video',
+          event: 'socket_entry_missing_non_core_ids',
+          message: 'Socket set-video entry missing non-core correlation IDs',
+          requestId: correlation.requestId,
+          dispatchId: correlation.dispatchId,
+          traceId: correlation.traceId,
+          spanId: correlation.spanId,
+          roomId: correlation.roomId,
+          userId: correlation.userId,
+          meta: { missingCorrelationKeys },
+        });
+      }
+
       const result = await VideoService.setVideo(
         { roomId: validatedData.roomId, videoUrl: validatedData.videoUrl },
         ctx,
-        socket
+        socket,
+        correlation
       );
 
       if (result.pickerRequired && result.pickerCandidates && result.pickerReason) {
