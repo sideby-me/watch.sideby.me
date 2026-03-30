@@ -1,6 +1,19 @@
 import { context, propagation } from '@opentelemetry/api';
 import type { CorrelationContext } from './correlation';
 
+function serializeBaggage(activeBaggage: ReturnType<typeof propagation.getBaggage>): string | undefined {
+  if (!activeBaggage) {
+    return undefined;
+  }
+
+  const parts: string[] = [];
+  for (const [key, entry] of activeBaggage.getAllEntries()) {
+    parts.push(`${key}=${entry.value}`);
+  }
+
+  return parts.length > 0 ? parts.join(',') : undefined;
+}
+
 /**
  * Inject W3C trace context + canonical IDs into HTTP headers.
  * Preserves inbound traceparent/baggage if already present on the carrier.
@@ -13,13 +26,28 @@ export function injectCorrelationHeaders(
 
   if (headers.traceparent) {
     seedCarrier.traceparent = headers.traceparent;
+  } else if (correlation.traceparent) {
+    seedCarrier.traceparent = correlation.traceparent;
   }
   if (headers.baggage) {
     seedCarrier.baggage = headers.baggage;
+  } else if (correlation.baggage) {
+    seedCarrier.baggage = correlation.baggage;
   }
 
   const extractedContext = propagation.extract(context.active(), seedCarrier);
   propagation.inject(extractedContext, headers);
+  const activeBaggage = serializeBaggage(propagation.getBaggage(extractedContext));
+
+  // Keep fail-open behavior if no global propagator is configured.
+  if (!headers.traceparent && seedCarrier.traceparent) {
+    headers.traceparent = seedCarrier.traceparent;
+  }
+  if (!headers.baggage && seedCarrier.baggage) {
+    headers.baggage = seedCarrier.baggage;
+  } else if (!headers.baggage && activeBaggage) {
+    headers.baggage = activeBaggage;
+  }
 
   headers['x-request-id'] = correlation.request_id ?? '';
   headers['x-dispatch-id'] = correlation.dispatch_id ?? '';

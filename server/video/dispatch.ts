@@ -16,6 +16,7 @@ import { LensClient } from './lens-client';
 import { ValidationError } from '../errors';
 import type { Socket } from 'socket.io';
 import type { PickerCandidate } from '@/types';
+import type { CorrelationContext } from '@/server/telemetry/correlation';
 
 // Client-side helpers are importable from the shared lib
 const VIDEO_PROXY_URL = process.env.NEXT_PUBLIC_VIDEO_PROXY_URL?.trim() ?? 'http://localhost:8787';
@@ -56,6 +57,28 @@ export interface DispatchLogContext {
   spanId?: string;
   roomId?: string;
   userId?: string;
+  traceparent?: string;
+  baggage?: string;
+}
+
+function toCorrelationContext(context?: DispatchLogContext): CorrelationContext | undefined {
+  if (!context) {
+    return undefined;
+  }
+
+  const traceId = context.traceId ?? '4bf92f3577b34da6a3ce929d0e0e4736';
+  const spanId = context.spanId ?? '00f067aa0ba902b7';
+
+  return {
+    trace_id: traceId,
+    span_id: spanId,
+    request_id: context.requestId ?? null,
+    dispatch_id: context.dispatchId ?? null,
+    room_id: context.roomId ?? null,
+    user_id: context.userId ?? null,
+    traceparent: context.traceparent ?? `00-${traceId}-${spanId}-01`,
+    baggage: context.baggage,
+  };
 }
 
 //DRM-protected streaming services that cannot be proxied
@@ -358,7 +381,7 @@ export async function dispatch(rawUrl: string, socket?: Socket, context?: Dispat
     meta: { url: rawUrl },
   });
 
-  const result = await lensClient.capture(rawUrl, socket);
+  const result = await lensClient.capture(rawUrl, socket, toCorrelationContext(context));
 
   const vType = result.mediaType === 'hls' ? 'm3u8' : 'mp4';
   const lensPlaybackUrl = buildLensPlaybackUrl(result.uuid);

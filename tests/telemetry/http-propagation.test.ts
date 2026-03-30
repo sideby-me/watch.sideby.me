@@ -1,4 +1,4 @@
-import { context, propagation, ROOT_CONTEXT, trace } from '@opentelemetry/api';
+import { context, ROOT_CONTEXT, trace } from '@opentelemetry/api';
 import { describe, expect, it, vi } from 'vitest';
 import type { CorrelationContext } from '../../server/telemetry/correlation';
 import { injectCorrelationHeaders } from '../../server/telemetry/http-propagation';
@@ -54,15 +54,9 @@ describe('HTTP propagation', () => {
 
   it('produces baggage header when baggage exists', () => {
     const headers: Record<string, string> = {};
-    const correlation = makeCorrelation();
-    const baggage = propagation.createBaggage({
-      tenant: { value: 'sideby' },
-      user_tier: { value: 'premium' },
-    });
+    const correlation = makeCorrelation({ baggage: 'tenant=sideby,user_tier=premium' });
 
-    context.with(propagation.setBaggage(context.active(), baggage), () => {
-      injectCorrelationHeaders(headers, correlation);
-    });
+    injectCorrelationHeaders(headers, correlation);
 
     expect(headers.baggage).toContain('tenant=sideby');
     expect(headers.baggage).toContain('user_tier=premium');
