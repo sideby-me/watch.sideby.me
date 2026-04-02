@@ -14,6 +14,7 @@ import { logEvent } from '@/server/logger';
 import { isBlocked } from './blocklist';
 import { LensClient } from './lens-client';
 import { ValidationError } from '../errors';
+import { recordDispatchStart, recordDispatchOutcome, recordDispatchError } from '../telemetry/metrics';
 import type { Socket } from 'socket.io';
 import type { PickerCandidate } from '@/types';
 import type { CorrelationContext } from '@/server/telemetry/correlation';
@@ -199,163 +200,191 @@ const lensClient = new LensClient();
 
 // Dispatch a raw video URL to the correct delivery path.
 export async function dispatch(rawUrl: string, socket?: Socket, context?: DispatchLogContext): Promise<DispatchResult> {
-  const hasCoreCorrelation = Boolean(context?.requestId || context?.dispatchId || context?.traceId || context?.spanId);
-  const missingCorrelationKeys = [!context?.roomId ? 'room_id' : null, !context?.userId ? 'user_id' : null].filter(Boolean);
+  const stopTimer = recordDispatchStart('set-video');
 
-  if (hasCoreCorrelation && missingCorrelationKeys.length > 0) {
-    logEvent({
-      level: 'warn',
-      domain: 'video',
-      event: 'dispatch_missing_non_core_ids',
-      message: 'Dispatch received missing non-core correlation IDs',
-      requestId: context?.requestId,
-      dispatchId: context?.dispatchId,
-      traceId: context?.traceId,
-      spanId: context?.spanId,
-      roomId: context?.roomId,
-      userId: context?.userId,
-      meta: { missingCorrelationKeys },
-    });
-  }
-
-  let parsed: URL;
   try {
-    parsed = new URL(rawUrl);
-  } catch {
-    throw new Error(`Invalid URL: ${rawUrl}`);
-  }
+    const hasCoreCorrelation = Boolean(context?.requestId || context?.dispatchId || context?.traceId || context?.spanId);
+    const missingCorrelationKeys = [!context?.roomId ? 'room_id' : null, !context?.userId ? 'user_id' : null].filter(Boolean);
 
-  // Tier a: Non-http/https
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    throw new Error('Unsupported protocol');
-  }
+    if (hasCoreCorrelation && missingCorrelationKeys.length > 0) {
+      logEvent({
+        level: 'warn',
+        domain: 'video',
+        event: 'dispatch_missing_non_core_ids',
+        message: 'Dispatch received missing non-core correlation IDs',
+        requestId: context?.requestId,
+        dispatchId: context?.dispatchId,
+        traceId: context?.traceId,
+        spanId: context?.spanId,
+        roomId: context?.roomId,
+        userId: context?.userId,
+        meta: { missingCorrelationKeys },
+      });
+    }
 
-  // Tier b: DRM hosts
-  if (isDrmHost(parsed.hostname)) {
-    throw new Error(`DRM-protected content from ${parsed.hostname} cannot be played - use the native app instead.`);
-  }
-
-  // Check blocklist
-  const blockCheck = isBlocked(rawUrl);
-  if (blockCheck.blocked) {
-    throw new ValidationError(`URL is blocked: ${blockCheck.reason}`);
-  }
-
-  // Tier c: YouTube
-  if (isYouTubeHost(parsed.hostname)) {
-    logEvent({
-      level: 'info',
-      domain: 'video',
-      event: 'dispatch_youtube',
-      message: `dispatch: YouTube → direct`,
-      requestId: context?.requestId,
-      dispatchId: context?.dispatchId,
-      traceId: context?.traceId,
-      spanId: context?.spanId,
-      roomId: context?.roomId,
-      userId: context?.userId,
-      meta: { url: rawUrl },
-    });
-    return {
-      playbackUrl: rawUrl,
-      videoType: 'youtube',
-      deliveryType: 'youtube',
-      originalUrl: rawUrl,
-    };
-  }
-
-  // Tier d: Already proxied
-  if (isProxiedUrl(rawUrl)) {
-    // Infer videoType from the embedded url= param; uuid= paths are Lens output (predominantly HLS)
-    let vType: 'mp4' | 'm3u8' = 'mp4';
+    let parsed: URL;
     try {
-      const inner = new URL(rawUrl);
-      const innerUrl = inner.searchParams.get('url');
-      if (innerUrl) vType = videoTypeFromUrl(new URL(innerUrl).pathname);
-      else if (inner.searchParams.has('uuid')) vType = 'm3u8';
+      parsed = new URL(rawUrl);
     } catch {
-      /* leave as 'mp4' */
+      throw new Error(`Invalid URL: ${rawUrl}`);
     }
-    logEvent({
-      level: 'info',
-      domain: 'video',
-      event: 'dispatch_proxied',
-      message: `dispatch: already proxied → as-is (${vType})`,
-      requestId: context?.requestId,
-      dispatchId: context?.dispatchId,
-      traceId: context?.traceId,
-      spanId: context?.spanId,
-      roomId: context?.roomId,
-      userId: context?.userId,
-      meta: { url: rawUrl },
-    });
-    return {
-      playbackUrl: rawUrl,
-      videoType: vType,
-      deliveryType: 'file-proxy',
-      originalUrl: rawUrl,
-    };
-  }
 
-  // Tier e: Direct media extension without signed params → HEAD probe to decide delivery
-  if (hasDirectMediaExt(parsed.pathname) && !hasSignedParams(parsed.searchParams)) {
-    const probe = await headProbe(rawUrl);
-    if (probe && probe.status >= 200 && probe.status < 300) {
-      const vType = videoTypeFromUrl(parsed.pathname);
-      if (probe.cors === 'permissive') {
-        logEvent({
-          level: 'info',
-          domain: 'video',
-          event: 'dispatch_direct',
-          message: `dispatch: direct ${vType} → file-direct (permissive CORS)`,
-          requestId: context?.requestId,
-          dispatchId: context?.dispatchId,
-          traceId: context?.traceId,
-          spanId: context?.spanId,
-          roomId: context?.roomId,
-          userId: context?.userId,
-          meta: { url: rawUrl },
-        });
-        return {
-          playbackUrl: rawUrl,
-          videoType: vType,
-          deliveryType: 'file-direct',
-          originalUrl: rawUrl,
-        };
-      } else {
-        logEvent({
-          level: 'info',
-          domain: 'video',
-          event: 'dispatch_direct',
-          message: `dispatch: direct ${vType} → file-proxy (restrictive/no CORS)`,
-          requestId: context?.requestId,
-          dispatchId: context?.dispatchId,
-          traceId: context?.traceId,
-          spanId: context?.spanId,
-          roomId: context?.roomId,
-          userId: context?.userId,
-          meta: { url: rawUrl },
-        });
-        return {
-          playbackUrl: buildProxyUrl(rawUrl),
-          videoType: vType,
-          deliveryType: vType === 'm3u8' ? 'hls' : 'file-proxy',
-          originalUrl: rawUrl,
-        };
+    // Tier a: Non-http/https
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw new Error('Unsupported protocol');
+    }
+
+    // Tier b: DRM hosts
+    if (isDrmHost(parsed.hostname)) {
+      throw new Error(`DRM-protected content from ${parsed.hostname} cannot be played - use the native app instead.`);
+    }
+
+    // Check blocklist
+    const blockCheck = isBlocked(rawUrl);
+    if (blockCheck.blocked) {
+      throw new ValidationError(`URL is blocked: ${blockCheck.reason}`);
+    }
+
+    // Tier c: YouTube
+    if (isYouTubeHost(parsed.hostname)) {
+      logEvent({
+        level: 'info',
+        domain: 'video',
+        event: 'dispatch_youtube',
+        message: `dispatch: YouTube → direct`,
+        requestId: context?.requestId,
+        dispatchId: context?.dispatchId,
+        traceId: context?.traceId,
+        spanId: context?.spanId,
+        roomId: context?.roomId,
+        userId: context?.userId,
+        meta: { url: rawUrl },
+      });
+      stopTimer();
+      recordDispatchOutcome('set-video', 'success');
+      return {
+        playbackUrl: rawUrl,
+        videoType: 'youtube',
+        deliveryType: 'youtube',
+        originalUrl: rawUrl,
+      };
+    }
+
+    // Tier d: Already proxied
+    if (isProxiedUrl(rawUrl)) {
+      // Infer videoType from the embedded url= param; uuid= paths are Lens output (predominantly HLS)
+      let vType: 'mp4' | 'm3u8' = 'mp4';
+      try {
+        const inner = new URL(rawUrl);
+        const innerUrl = inner.searchParams.get('url');
+        if (innerUrl) vType = videoTypeFromUrl(new URL(innerUrl).pathname);
+        else if (inner.searchParams.has('uuid')) vType = 'm3u8';
+      } catch {
+        /* leave as 'mp4' */
       }
+      logEvent({
+        level: 'info',
+        domain: 'video',
+        event: 'dispatch_proxied',
+        message: `dispatch: already proxied → as-is (${vType})`,
+        requestId: context?.requestId,
+        dispatchId: context?.dispatchId,
+        traceId: context?.traceId,
+        spanId: context?.spanId,
+        roomId: context?.roomId,
+        userId: context?.userId,
+        meta: { url: rawUrl },
+      });
+      stopTimer();
+      recordDispatchOutcome('set-video', 'success');
+      return {
+        playbackUrl: rawUrl,
+        videoType: vType,
+        deliveryType: 'file-proxy',
+        originalUrl: rawUrl,
+      };
     }
-    // 401/403/405/non-2xx or timeout → for M3U8 playlists, reject immediately (Lens can't help)
-    // For other media types (mp4/webm), fall through to Lens which may find a stream via page context
-    if (videoTypeFromUrl(parsed.pathname) === 'm3u8') {
-      throw new ValidationError(
-        `This M3U8 stream returned ${probe ? probe.status : 'no response'} — it likely requires a signed or authenticated URL. Grab the full signed link from the source page.`
-      );
+
+    // Tier e: Direct media extension without signed params → HEAD probe to decide delivery
+    if (hasDirectMediaExt(parsed.pathname) && !hasSignedParams(parsed.searchParams)) {
+      const probe = await headProbe(rawUrl);
+      if (probe && probe.status >= 200 && probe.status < 300) {
+        const vType = videoTypeFromUrl(parsed.pathname);
+        if (probe.cors === 'permissive') {
+          logEvent({
+            level: 'info',
+            domain: 'video',
+            event: 'dispatch_direct',
+            message: `dispatch: direct ${vType} → file-direct (permissive CORS)`,
+            requestId: context?.requestId,
+            dispatchId: context?.dispatchId,
+            traceId: context?.traceId,
+            spanId: context?.spanId,
+            roomId: context?.roomId,
+            userId: context?.userId,
+            meta: { url: rawUrl },
+          });
+          stopTimer();
+          recordDispatchOutcome('set-video', 'success');
+          return {
+            playbackUrl: rawUrl,
+            videoType: vType,
+            deliveryType: 'file-direct',
+            originalUrl: rawUrl,
+          };
+        } else {
+          logEvent({
+            level: 'info',
+            domain: 'video',
+            event: 'dispatch_direct',
+            message: `dispatch: direct ${vType} → file-proxy (restrictive/no CORS)`,
+            requestId: context?.requestId,
+            dispatchId: context?.dispatchId,
+            traceId: context?.traceId,
+            spanId: context?.spanId,
+            roomId: context?.roomId,
+            userId: context?.userId,
+            meta: { url: rawUrl },
+          });
+          stopTimer();
+          recordDispatchOutcome('set-video', 'success');
+          return {
+            playbackUrl: buildProxyUrl(rawUrl),
+            videoType: vType,
+            deliveryType: vType === 'm3u8' ? 'hls' : 'file-proxy',
+            originalUrl: rawUrl,
+          };
+        }
+      }
+      // 401/403/405/non-2xx or timeout → for M3U8 playlists, reject immediately (Lens can't help)
+      // For other media types (mp4/webm), fall through to Lens which may find a stream via page context
+      if (videoTypeFromUrl(parsed.pathname) === 'm3u8') {
+        recordDispatchError('set-video', 'validation-error');
+        throw new ValidationError(
+          `This M3U8 stream returned ${probe ? probe.status : 'no response'} — it likely requires a signed or authenticated URL. Grab the full signed link from the source page.`
+        );
+      }
+      logEvent({
+        level: 'info',
+        domain: 'video',
+        event: 'dispatch_direct_fallback',
+        message: `dispatch: HEAD probe ${probe ? probe.status : 'failed'} → falling through to Lens`,
+        requestId: context?.requestId,
+        dispatchId: context?.dispatchId,
+        traceId: context?.traceId,
+        spanId: context?.spanId,
+        roomId: context?.roomId,
+        userId: context?.userId,
+        meta: { url: rawUrl },
+      });
     }
+
+    // Tier f: Everything else → Lens
     logEvent({
       level: 'info',
       domain: 'video',
-      event: 'dispatch_direct_fallback',
-      message: `dispatch: HEAD probe ${probe ? probe.status : 'failed'} → falling through to Lens`,
+      event: 'dispatch_lens',
+      message: `dispatch: → Lens capture`,
       requestId: context?.requestId,
       dispatchId: context?.dispatchId,
       traceId: context?.traceId,
@@ -364,46 +393,43 @@ export async function dispatch(rawUrl: string, socket?: Socket, context?: Dispat
       userId: context?.userId,
       meta: { url: rawUrl },
     });
+
+    const result = await lensClient.capture(rawUrl, socket, toCorrelationContext(context));
+
+    const vType = result.mediaType === 'hls' ? 'm3u8' : 'mp4';
+    const lensPlaybackUrl = buildLensPlaybackUrl(result.uuid);
+    const needsPicker = result.lowConfidence || result.ambiguous;
+
+    stopTimer();
+    recordDispatchOutcome('set-video', 'success');
+    return {
+      playbackUrl: lensPlaybackUrl,
+      videoType: vType,
+      deliveryType: result.mediaType === 'hls' ? 'hls' : 'file-proxy',
+      lensUuid: result.uuid,
+      expiresAt: result.expiresAt,
+      originalUrl: rawUrl,
+      ...(needsPicker
+        ? {
+            pickerRequired: true,
+            pickerCandidates: buildPickerCandidates(result),
+            pickerReason: (result.lowConfidence && result.ambiguous
+              ? 'both'
+              : result.lowConfidence
+                ? 'lowConfidence'
+                : 'ambiguous') as 'lowConfidence' | 'ambiguous' | 'both',
+          }
+        : {}),
+    };
+  } catch (error) {
+    // Categorize error type for metrics
+    if (error instanceof ValidationError) {
+      recordDispatchError('set-video', 'validation-error');
+    } else if (error instanceof Error && error.message.includes('timeout')) {
+      recordDispatchError('set-video', 'timeout');
+    } else {
+      recordDispatchError('set-video', 'upstream-error');
+    }
+    throw error;
   }
-
-  // Tier f: Everything else → Lens
-  logEvent({
-    level: 'info',
-    domain: 'video',
-    event: 'dispatch_lens',
-    message: `dispatch: → Lens capture`,
-    requestId: context?.requestId,
-    dispatchId: context?.dispatchId,
-    traceId: context?.traceId,
-    spanId: context?.spanId,
-    roomId: context?.roomId,
-    userId: context?.userId,
-    meta: { url: rawUrl },
-  });
-
-  const result = await lensClient.capture(rawUrl, socket, toCorrelationContext(context));
-
-  const vType = result.mediaType === 'hls' ? 'm3u8' : 'mp4';
-  const lensPlaybackUrl = buildLensPlaybackUrl(result.uuid);
-  const needsPicker = result.lowConfidence || result.ambiguous;
-
-  return {
-    playbackUrl: lensPlaybackUrl,
-    videoType: vType,
-    deliveryType: result.mediaType === 'hls' ? 'hls' : 'file-proxy',
-    lensUuid: result.uuid,
-    expiresAt: result.expiresAt,
-    originalUrl: rawUrl,
-    ...(needsPicker
-      ? {
-          pickerRequired: true,
-          pickerCandidates: buildPickerCandidates(result),
-          pickerReason: (result.lowConfidence && result.ambiguous
-            ? 'both'
-            : result.lowConfidence
-              ? 'lowConfidence'
-              : 'ambiguous') as 'lowConfidence' | 'ambiguous' | 'both',
-        }
-      : {}),
-  };
 }
