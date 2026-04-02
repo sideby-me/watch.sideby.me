@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { metrics } from '@opentelemetry/api';
+import { metrics, Counter, Histogram } from '@opentelemetry/api';
 
 describe('dispatch metrics', () => {
   let mockMeter: ReturnType<typeof metrics.getMeter>;
-  let mockCounters: Map<string, ReturnType<typeof mockMeter.createCounter>>;
-  let mockHistograms: Map<string, ReturnType<typeof mockMeter.createHistogram>>;
+  let mockCounters: Map<string, Counter>;
+  let mockHistograms: Map<string, Histogram>;
 
   beforeEach(() => {
     mockCounters = new Map();
@@ -13,14 +13,14 @@ describe('dispatch metrics', () => {
       createCounter: vi.fn((name: string) => {
         const counter = {
           add: vi.fn(),
-        };
+        } as unknown as Counter;
         mockCounters.set(name, counter);
         return counter;
       }),
       createHistogram: vi.fn((name: string) => {
         const histogram = {
           record: vi.fn(),
-        };
+        } as unknown as Histogram;
         mockHistograms.set(name, histogram);
         return histogram;
       }),
@@ -105,9 +105,12 @@ describe('dispatch metrics', () => {
       createDispatchMetrics();
 
       // Make the histogram throw
-      mockHistograms.get('dispatch_latency_ms')!.record.mockImplementation(() => {
-        throw new Error('metrics backend unavailable');
-      });
+      const histogram = mockHistograms.get('dispatch_latency_ms');
+      if (histogram) {
+        (histogram as unknown as { record: ReturnType<typeof vi.fn> }).record.mockImplementation(() => {
+          throw new Error('metrics backend unavailable');
+        });
+      }
 
       const stopTimer = recordDispatchStart('set-video');
 
@@ -149,9 +152,12 @@ describe('dispatch metrics', () => {
       const { createDispatchMetrics, recordDispatchOutcome } = await import('../../server/telemetry/metrics.js');
       createDispatchMetrics();
 
-      mockCounters.get('dispatch_requests_total')!.add.mockImplementation(() => {
-        throw new Error('metrics backend unavailable');
-      });
+      const counter = mockCounters.get('dispatch_requests_total');
+      if (counter) {
+        (counter as unknown as { add: ReturnType<typeof vi.fn> }).add.mockImplementation(() => {
+          throw new Error('metrics backend unavailable');
+        });
+      }
 
       expect(() => recordDispatchOutcome('set-video', 'success')).not.toThrow();
     });
@@ -175,7 +181,7 @@ describe('dispatch metrics', () => {
       createDispatchMetrics();
 
       // Test all valid error_type values
-      const errorTypes = ['upstream-error', 'timeout', 'validation-error'];
+      const errorTypes: Array<'upstream-error' | 'timeout' | 'validation-error'> = ['upstream-error', 'timeout', 'validation-error'];
 
       for (const errorType of errorTypes) {
         recordDispatchError('set-video', errorType);
@@ -190,9 +196,12 @@ describe('dispatch metrics', () => {
       const { createDispatchMetrics, recordDispatchError } = await import('../../server/telemetry/metrics.js');
       createDispatchMetrics();
 
-      mockCounters.get('dispatch_errors_total')!.add.mockImplementation(() => {
-        throw new Error('metrics backend unavailable');
-      });
+      const counter = mockCounters.get('dispatch_errors_total');
+      if (counter) {
+        (counter as unknown as { add: ReturnType<typeof vi.fn> }).add.mockImplementation(() => {
+          throw new Error('metrics backend unavailable');
+        });
+      }
 
       expect(() => recordDispatchError('set-video', 'upstream-error')).not.toThrow();
     });

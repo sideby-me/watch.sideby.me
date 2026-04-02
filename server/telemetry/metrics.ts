@@ -7,15 +7,15 @@
  * All metric calls are wrapped in try/catch for fail-open behavior.
  */
 
-import { metrics } from '@opentelemetry/api';
+import { metrics, Counter, Histogram } from '@opentelemetry/api';
 
 type DispatchOutcome = 'success' | 'failure' | 'timeout' | 'degraded';
 type DispatchErrorType = 'upstream-error' | 'timeout' | 'validation-error';
 
 interface DispatchMetrics {
-  requestsTotal: ReturnType<typeof metrics.getMeter>['createCounter'] extends () => infer R ? R : never;
-  latencyMs: ReturnType<typeof metrics.getMeter>['createHistogram'] extends () => infer R ? R : never;
-  errorsTotal: ReturnType<typeof metrics.getMeter>['createCounter'] extends () => infer R ? R : never;
+  requestsTotal: Counter;
+  latencyMs: Histogram;
+  errorsTotal: Counter;
 }
 
 let dispatchMetrics: DispatchMetrics | null = null;
