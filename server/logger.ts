@@ -14,6 +14,52 @@ interface LogEventRecord {
   meta?: Record<string, unknown>;
 }
 
+const REDACTED = '[REDACTED]';
+const PRESERVE_KEYS = new Set(['trace_id', 'span_id', 'request_id', 'dispatch_id', 'room_id', 'user_id']);
+const SENSITIVE_KEY_PATTERNS = [
+  /email/i,
+  /^ip$/i,
+  /ipaddress/i,
+  /message(text)?/i,
+  /^text$/i,
+  /authorization/i,
+  /cookie/i,
+  /token/i,
+  /set-cookie/i,
+];
+
+function isSensitiveKey(key: string): boolean {
+  if (PRESERVE_KEYS.has(key)) return false;
+  return SENSITIVE_KEY_PATTERNS.some(pattern => pattern.test(key));
+}
+
+function redactValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(item => redactValue(item));
+  }
+
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+
+  const out: Record<string, unknown> = {};
+  for (const [key, nestedValue] of Object.entries(value as Record<string, unknown>)) {
+    if (isSensitiveKey(key)) {
+      out[key] = REDACTED;
+      continue;
+    }
+
+    out[key] = redactValue(nestedValue);
+  }
+
+  return out;
+}
+
+function redactMeta(meta?: Record<string, unknown>): Record<string, unknown> | undefined {
+  if (!meta) return undefined;
+  return redactValue(meta) as Record<string, unknown>;
+}
+
 export function logEvent(record: LogEventRecord) {
   const shouldWarnMissingNonCore = Boolean(record.requestId || record.dispatchId || record.traceId || record.spanId);
 
@@ -47,6 +93,7 @@ export function logEvent(record: LogEventRecord) {
     span_id: record.spanId,
     room_id: record.roomId ?? null,
     user_id: record.userId ?? null,
+    meta: redactMeta(record.meta),
     service: 'watch',
     ts: Date.now(),
   };
@@ -65,7 +112,6 @@ export function logEvent(record: LogEventRecord) {
   }
 }
 
-// Legacy helper for video-specific logs; prefer logEvent going forward.
 export function logVideoEvent(record: Omit<LogEventRecord, 'domain'>) {
   logEvent({ ...record, domain: 'video' });
 }

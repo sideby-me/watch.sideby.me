@@ -107,4 +107,36 @@ describe('watch telemetry correlation contract', () => {
     expect(payload.trace_id).toBe('trace-abc');
     expect(payload.span_id).toBe('span-xyz');
   });
+
+  it('redacts sensitive metadata while preserving correlation keys', () => {
+    const infoSpy = vi.spyOn(console, 'log').mockImplementation(() => {
+      return;
+    });
+
+    logEvent({
+      level: 'info',
+      domain: 'video',
+      event: 'redaction_enrichment',
+      message: 'sensitive values masked',
+      requestId: 'req-keep',
+      traceId: 'trace-keep',
+      meta: {
+        email: 'user@example.com',
+        ip: '203.0.113.10',
+        authorization: 'Bearer secret-token',
+        messageText: 'private payload',
+      },
+    });
+
+    const line = String(infoSpy.mock.calls[0]?.[1] ?? '{}');
+    const payload = JSON.parse(line) as Record<string, unknown>;
+    const serialized = JSON.stringify(payload);
+
+    expect(serialized).not.toContain('user@example.com');
+    expect(serialized).not.toContain('203.0.113.10');
+    expect(serialized).not.toContain('Bearer secret-token');
+    expect(serialized).toContain('[REDACTED]');
+    expect(payload.request_id).toBe('req-keep');
+    expect(payload.trace_id).toBe('trace-keep');
+  });
 });
