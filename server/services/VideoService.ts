@@ -81,8 +81,19 @@ class VideoServiceImpl {
       domain: 'video',
       event: 'video_set',
       message: `video.set: new source queued up (${result.deliveryType})`,
+      requestId: correlation?.requestId,
+      dispatchId: correlation?.dispatchId,
+      traceId: correlation?.traceId,
+      spanId: correlation?.spanId,
       roomId,
-      meta: { deliveryType: result.deliveryType, lensUuid: result.lensUuid },
+      userId: ctx.userId,
+      meta: {
+        deliveryType: result.deliveryType,
+        dispatchTier: result.deliveryType,
+        videoType: result.videoType,
+        requiresProxy: result.deliveryType !== 'youtube',
+        lensUuid: result.lensUuid,
+      },
     });
 
     return {

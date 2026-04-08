@@ -5,6 +5,9 @@ export interface SocketData {
   userName: string;
   roomId?: string;
   isHost?: boolean;
+  requestId?: string;
+  traceId?: string;
+  spanId?: string;
 }
 
 export type SocketEvents = ImportedSocketEvents;

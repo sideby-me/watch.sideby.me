@@ -6,14 +6,24 @@ import { initializeTelemetry, resolveTelemetryResourceAttributes } from '../../s
 describe('watch telemetry bootstrap contract', () => {
   it('exposes required resource attributes', () => {
     const attributes = resolveTelemetryResourceAttributes({
-      NODE_ENV: 'test',
+      DEPLOYMENT_ENVIRONMENT: 'staging',
+      NODE_ENV: 'production',
       npm_package_version: '1.2.3',
       OTEL_SERVICE_NAME: 'watch-test',
     });
 
     expect(attributes['service.name']).toBe('watch-test');
     expect(attributes['service.version']).toBe('1.2.3');
-    expect(attributes['deployment.environment']).toBe('test');
+    expect(attributes['deployment.environment']).toBe('staging');
+  });
+
+  it('normalizes unknown environment values to development', () => {
+    const attributes = resolveTelemetryResourceAttributes({
+      DEPLOYMENT_ENVIRONMENT: 'development',
+      NODE_ENV: 'development',
+    });
+
+    expect(attributes['deployment.environment']).toBe('development');
   });
 
   it('keeps startup fail-open when exporter initialization fails', async () => {

@@ -11,8 +11,13 @@ import { handleDisconnect } from './handlers/disconnect';
 import { logEvent } from '@/server/logger';
 import { LensRefreshDaemon } from '@/server/video/refresh-daemon';
 import { redis } from '@/server/redis/client';
+import { randomUUID } from 'crypto';
 
 let io: IOServer | undefined;
+
+function randomHexId(bytes: number): string {
+  return randomUUID().replace(/-/g, '').slice(0, bytes * 2);
+}
 
 export function initSocketIO(httpServer: HTTPServer): IOServer {
   if (io) {
@@ -39,11 +44,22 @@ export function initSocketIO(httpServer: HTTPServer): IOServer {
   new LensRefreshDaemon(io, redis).start();
 
   io.on('connection', (socket: Socket<SocketEvents, SocketEvents, object, SocketData>) => {
+    const requestId = randomUUID();
+    const traceId = randomHexId(16);
+    const spanId = randomHexId(8);
+
+    socket.data.requestId = requestId;
+    socket.data.traceId = traceId;
+    socket.data.spanId = spanId;
+
     logEvent({
       level: 'info',
       domain: 'room',
       event: 'user_connected',
       message: 'socket.connect: new connection established',
+      requestId,
+      traceId,
+      spanId,
       meta: { socketId: socket.id },
     });
 

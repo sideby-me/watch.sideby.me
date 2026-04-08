@@ -66,7 +66,11 @@ export function handleServiceError(
     domain: 'other',
     event: 'unexpected_error',
     message: 'socket.error: unexpected service error',
-    meta: { error: String(err), errorType: (err as Error)?.constructor?.name },
+    meta: {
+      error: String(err),
+      errorType: (err as Error)?.constructor?.name,
+      stack: err instanceof Error ? err.stack : undefined,
+    },
   });
   socket.emit(defaultEvent, { error: 'Something tripped over the cables. Try again in a sec.' });
 }

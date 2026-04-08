@@ -28,10 +28,10 @@ export function createSetVideoCorrelation(socketData: SocketData): DispatchLogCo
   const spanContext = activeSpan?.spanContext();
 
   return {
-    requestId: randomUUID(),
+    requestId: socketData.requestId ?? randomUUID(),
     dispatchId: randomUUID(),
-    traceId: spanContext?.traceId ?? randomHexId(16),
-    spanId: spanContext?.spanId,
+    traceId: spanContext?.traceId ?? socketData.traceId ?? randomHexId(16),
+    spanId: spanContext?.spanId ?? socketData.spanId ?? randomHexId(8),
     roomId: socketData.roomId ?? undefined,
     userId: socketData.userId ?? undefined,
   };

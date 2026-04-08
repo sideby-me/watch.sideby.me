@@ -1,4 +1,7 @@
+import { emitWatchTelemetryLog } from './telemetry/logs';
+
 type LogLevel = 'info' | 'warn' | 'error';
+type TelemetryAttributeValue = string | number | boolean;
 
 interface LogEventRecord {
   level: LogLevel;
@@ -60,37 +63,81 @@ function redactMeta(meta?: Record<string, unknown>): Record<string, unknown> | u
   return redactValue(meta) as Record<string, unknown>;
 }
 
+function addStringAttribute(
+  attributes: Record<string, TelemetryAttributeValue>,
+  key: string,
+  value: string | null | undefined
+): void {
+  if (value && value.trim().length > 0) {
+    attributes[key] = value;
+  }
+}
+
+function buildTelemetryAttributes(payload: {
+  domain: string;
+  event: string;
+  request_id: string | null;
+  dispatch_id: string | null;
+  trace_id: string | null;
+  span_id: string | null;
+  room_id: string | null;
+  user_id: string | null;
+}): Record<string, TelemetryAttributeValue> {
+  const attributes: Record<string, TelemetryAttributeValue> = {
+    domain: payload.domain,
+    event: payload.event,
+  };
+
+  addStringAttribute(attributes, 'request_id', payload.request_id);
+  addStringAttribute(attributes, 'dispatch_id', payload.dispatch_id);
+  addStringAttribute(attributes, 'trace_id', payload.trace_id);
+  addStringAttribute(attributes, 'span_id', payload.span_id);
+  addStringAttribute(attributes, 'room_id', payload.room_id);
+  addStringAttribute(attributes, 'user_id', payload.user_id);
+
+  return attributes;
+}
+
 export function logEvent(record: LogEventRecord) {
   const shouldWarnMissingNonCore = Boolean(record.requestId || record.dispatchId || record.traceId || record.spanId);
 
   if (shouldWarnMissingNonCore && (!record.roomId || !record.userId)) {
     const missingKeys = [!record.roomId ? 'room_id' : null, !record.userId ? 'user_id' : null].filter(Boolean);
+    const warningPayload = {
+      level: 'warn',
+      domain: record.domain,
+      event: 'telemetry_missing_non_core_ids',
+      message: 'Missing non-core telemetry correlation keys',
+      request_id: record.requestId ?? null,
+      dispatch_id: record.dispatchId ?? null,
+      trace_id: record.traceId ?? null,
+      span_id: record.spanId ?? null,
+      room_id: record.roomId ?? null,
+      user_id: record.userId ?? null,
+      missing_keys: missingKeys,
+      service: 'watch',
+      ts: Date.now(),
+    };
+    const warningLine = JSON.stringify(warningPayload);
+
+    emitWatchTelemetryLog({
+      level: 'warn',
+      body: warningLine,
+      attributes: buildTelemetryAttributes(warningPayload),
+    });
+
     console.warn(
       '[watch]',
-      JSON.stringify({
-        level: 'warn',
-        domain: record.domain,
-        event: 'telemetry_missing_non_core_ids',
-        message: 'Missing non-core telemetry correlation keys',
-        request_id: record.requestId,
-        dispatch_id: record.dispatchId,
-        trace_id: record.traceId,
-        span_id: record.spanId,
-        room_id: record.roomId ?? null,
-        user_id: record.userId ?? null,
-        missing_keys: missingKeys,
-        service: 'watch',
-        ts: Date.now(),
-      })
+      warningLine
     );
   }
 
   const payload = {
     ...record,
-    request_id: record.requestId,
-    dispatch_id: record.dispatchId,
-    trace_id: record.traceId,
-    span_id: record.spanId,
+    request_id: record.requestId ?? null,
+    dispatch_id: record.dispatchId ?? null,
+    trace_id: record.traceId ?? null,
+    span_id: record.spanId ?? null,
     room_id: record.roomId ?? null,
     user_id: record.userId ?? null,
     meta: redactMeta(record.meta),
@@ -99,6 +146,12 @@ export function logEvent(record: LogEventRecord) {
   };
 
   const line = JSON.stringify(payload);
+
+  emitWatchTelemetryLog({
+    level: record.level,
+    body: line,
+    attributes: buildTelemetryAttributes(payload),
+  });
 
   switch (record.level) {
     case 'warn':
