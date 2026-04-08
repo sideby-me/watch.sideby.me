@@ -14,10 +14,7 @@ function serializeBaggage(activeBaggage: ReturnType<typeof propagation.getBaggag
   return parts.length > 0 ? parts.join(',') : undefined;
 }
 
-/**
- * Inject W3C trace context + canonical IDs into HTTP headers.
- * Preserves inbound traceparent/baggage if already present on the carrier.
- */
+// Inject W3C trace context + canonical IDs into HTTP headers
 export function injectCorrelationHeaders(
   headers: Record<string, string>,
   correlation: CorrelationContext
@@ -39,7 +36,7 @@ export function injectCorrelationHeaders(
   propagation.inject(extractedContext, headers);
   const activeBaggage = serializeBaggage(propagation.getBaggage(extractedContext));
 
-  // Keep fail-open behavior if no global propagator is configured.
+  // Keep fail-open behavior if no global propagator is configured
   if (!headers.traceparent && seedCarrier.traceparent) {
     headers.traceparent = seedCarrier.traceparent;
   }
@@ -62,9 +59,7 @@ export function injectCorrelationHeaders(
   return headers;
 }
 
-/**
- * Extract canonical correlation IDs from HTTP headers.
- */
+// Extract canonical correlation IDs from HTTP headers
 export function extractCorrelationFromHeaders(
   headers: Record<string, string | string[] | undefined>
 ): Partial<CorrelationContext> {
