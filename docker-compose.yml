@@ -1,7 +1,9 @@
+name: ${COMPOSE_PROJECT_NAME:-sidebyme}
+
 services:
   redis:
     image: redis:7-alpine
-    container_name: sideby-me-redis
+    container_name: ${COMPOSE_PROJECT_NAME:-sidebyme}-redis
     ports:
       - '6379:6379'
     volumes:

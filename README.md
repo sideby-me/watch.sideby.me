@@ -32,11 +32,15 @@ https://sideby.me/
 
 ```bash
 # Configure your environment variables
+DEPLOYMENT_ENVIRONMENT=development
 REDIS_URL=redis://localhost:6379
 NEXT_PUBLIC_SOCKET_URL=http://localhost:3000
 
 # Optional: OpenSubtitles API
 OPENSUBTITLES_API_KEY=your_api_key
+
+# Optional: OTLP telemetry endpoint
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 ```
 
 **2. Available Scripts**

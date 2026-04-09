@@ -2,6 +2,8 @@
 
 import type { Socket } from 'socket.io';
 import { logEvent } from '@/server/logger';
+import type { CorrelationContext } from '@/server/telemetry/correlation';
+import { injectCorrelationHeaders } from '@/server/telemetry/http-propagation';
 
 const LENS_TIMEOUT_MS = 35_000; // 5s buffer over 30s capture abort
 
@@ -24,7 +26,7 @@ export interface LensCaptureResult {
 
 export class LensClient {
   //  Post a capture request to Lens and stream the SSE response. Relays status events to the socket if provided.
-  async capture(url: string, socket?: Socket): Promise<LensCaptureResult> {
+  async capture(url: string, socket?: Socket, correlation?: CorrelationContext): Promise<LensCaptureResult> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), LENS_TIMEOUT_MS);
 
@@ -32,12 +34,18 @@ export class LensClient {
     const lensSecret = process.env.LENS_SHARED_SECRET ?? '';
 
     try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        ...(lensSecret ? { 'X-Lens-Secret': lensSecret } : {}),
+      };
+
+      if (correlation) {
+        injectCorrelationHeaders(headers, correlation);
+      }
+
       const res = await fetch(`${lensUrl}/capture`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(lensSecret ? { 'X-Lens-Secret': lensSecret } : {}),
-        },
+        headers,
         body: JSON.stringify({ url }),
         signal: controller.signal,
       });
