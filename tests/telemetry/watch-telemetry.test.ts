@@ -67,7 +67,7 @@ describe('watch telemetry correlation contract', () => {
     });
 
     const payloads = logSpy.mock.calls
-      .map(call => String(call[1] ?? ''))
+      .map(call => String(call[0] ?? ''))
       .filter(Boolean)
       .map(line => JSON.parse(line) as Record<string, unknown>);
 
@@ -111,7 +111,7 @@ describe('watch telemetry correlation contract', () => {
       spanId: 'span-xyz',
     });
 
-    const line = String(infoSpy.mock.calls[0]?.[1] ?? '{}');
+    const line = String(infoSpy.mock.calls[0]?.[0] ?? '{}');
     const payload = JSON.parse(line) as Record<string, unknown>;
 
     expect(payload.trace_id).toBe('trace-abc');
@@ -138,7 +138,7 @@ describe('watch telemetry correlation contract', () => {
       },
     });
 
-    const line = String(infoSpy.mock.calls[0]?.[1] ?? '{}');
+    const line = String(infoSpy.mock.calls[0]?.[0] ?? '{}');
     const payload = JSON.parse(line) as Record<string, unknown>;
     const serialized = JSON.stringify(payload);
 
@@ -148,5 +148,12 @@ describe('watch telemetry correlation contract', () => {
     expect(serialized).toContain('[REDACTED]');
     expect(payload.request_id).toBe('req-keep');
     expect(payload.trace_id).toBe('trace-keep');
+
+    // Regression: camelCase keys must not leak from record spread
+    expect(Object.keys(payload)).not.toContain('requestId');
+    expect(Object.keys(payload)).not.toContain('traceId');
+    expect(Object.keys(payload)).not.toContain('dispatchId');
+    expect(Object.keys(payload)).not.toContain('roomId');
+    expect(Object.keys(payload)).not.toContain('userId');
   });
 });

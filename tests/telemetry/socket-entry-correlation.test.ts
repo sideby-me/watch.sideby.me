@@ -40,7 +40,7 @@ describe('socket entry correlation', () => {
     });
 
     const payloads = logSpy.mock.calls
-      .map(call => String(call[1] ?? ''))
+      .map(call => String(call[0] ?? ''))
       .filter(Boolean)
       .map(line => JSON.parse(line) as Record<string, unknown>);
 
@@ -65,7 +65,7 @@ describe('socket entry correlation', () => {
     });
 
     const payloads = logSpy.mock.calls
-      .map(call => String(call[1] ?? ''))
+      .map(call => String(call[0] ?? ''))
       .filter(Boolean)
       .map(line => JSON.parse(line) as Record<string, unknown>);
 
@@ -92,7 +92,7 @@ describe('socket entry correlation', () => {
     });
 
     const payloads = logSpy.mock.calls
-      .map(call => String(call[1] ?? ''))
+      .map(call => String(call[0] ?? ''))
       .filter(Boolean)
       .map(line => JSON.parse(line) as Record<string, unknown>);
 
@@ -117,7 +117,7 @@ describe('socket entry correlation', () => {
     ).resolves.toBeDefined();
 
     const warnPayloads = warnSpy.mock.calls
-      .map(call => String(call[1] ?? ''))
+      .map(call => String(call[0] ?? ''))
       .filter(Boolean)
       .map(line => JSON.parse(line) as Record<string, unknown>);
 

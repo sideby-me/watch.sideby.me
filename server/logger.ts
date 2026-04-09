@@ -126,14 +126,12 @@ export function logEvent(record: LogEventRecord) {
       attributes: buildTelemetryAttributes(warningPayload),
     });
 
-    console.warn(
-      '[watch]',
-      warningLine
-    );
+    console.warn(warningLine);
   }
 
+  const { traceId, spanId, requestId, dispatchId, roomId, userId, ...restRecord } = record;
   const payload = {
-    ...record,
+    ...restRecord,
     request_id: record.requestId ?? null,
     dispatch_id: record.dispatchId ?? null,
     trace_id: record.traceId ?? null,
@@ -155,13 +153,13 @@ export function logEvent(record: LogEventRecord) {
 
   switch (record.level) {
     case 'warn':
-      console.warn('[watch]', line);
+      console.warn(line);
       break;
     case 'error':
-      console.error('[watch]', line);
+      console.error(line);
       break;
     default:
-      console.log('[watch]', line);
+      console.log(line);
   }
 }
 

@@ -63,7 +63,13 @@ app.prepare().then(async () => {
 
   httpServer
     .once('error', err => {
-      console.error(err);
+      logEvent({
+        level: 'error',
+        domain: 'other',
+        event: 'http_server_error',
+        message: err instanceof Error ? err.message : String(err),
+        meta: { stack: err instanceof Error ? err.stack : undefined },
+      });
       process.exit(1);
     })
     .listen(port, () => {
