@@ -11,7 +11,10 @@ export interface SocketCorrelationEnvelope {
   };
 }
 
-export function withCorrelation<T extends object>(payload: T, context: CorrelationContext): T & SocketCorrelationEnvelope {
+export function withCorrelation<T extends object>(
+  payload: T,
+  context: CorrelationContext
+): T & SocketCorrelationEnvelope {
   const carrier = buildCorrelationEnvelope(context);
 
   return {

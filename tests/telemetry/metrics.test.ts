@@ -181,7 +181,11 @@ describe('dispatch metrics', () => {
       createDispatchMetrics();
 
       // Test all valid error_type values
-      const errorTypes: Array<'upstream-error' | 'timeout' | 'validation-error'> = ['upstream-error', 'timeout', 'validation-error'];
+      const errorTypes: Array<'upstream-error' | 'timeout' | 'validation-error'> = [
+        'upstream-error',
+        'timeout',
+        'validation-error',
+      ];
 
       for (const errorType of errorTypes) {
         recordDispatchError('set-video', errorType);

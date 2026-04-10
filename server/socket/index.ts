@@ -16,7 +16,9 @@ import { randomUUID } from 'crypto';
 let io: IOServer | undefined;
 
 function randomHexId(bytes: number): string {
-  return randomUUID().replace(/-/g, '').slice(0, bytes * 2);
+  return randomUUID()
+    .replace(/-/g, '')
+    .slice(0, bytes * 2);
 }
 
 export function initSocketIO(httpServer: HTTPServer): IOServer {

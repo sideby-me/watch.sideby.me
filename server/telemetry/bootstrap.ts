@@ -89,10 +89,30 @@ export async function initializeTelemetry(options: InitializeTelemetryOptions = 
     options.logger ??
     ({
       warn: (message: string, meta?: Record<string, unknown>) => {
-        console.warn(JSON.stringify({ level: 'warn', service: 'watch', domain: 'other', event: 'telemetry_bootstrap_warning', message, ts: Date.now(), meta: meta ?? {} }));
+        console.warn(
+          JSON.stringify({
+            level: 'warn',
+            service: 'watch',
+            domain: 'other',
+            event: 'telemetry_bootstrap_warning',
+            message,
+            ts: Date.now(),
+            meta: meta ?? {},
+          })
+        );
       },
       info: (message: string, meta?: Record<string, unknown>) => {
-        console.log(JSON.stringify({ level: 'info', service: 'watch', domain: 'other', event: 'telemetry_bootstrap', message, ts: Date.now(), meta: meta ?? {} }));
+        console.log(
+          JSON.stringify({
+            level: 'info',
+            service: 'watch',
+            domain: 'other',
+            event: 'telemetry_bootstrap',
+            message,
+            ts: Date.now(),
+            meta: meta ?? {},
+          })
+        );
       },
     } as TelemetryLogger);
 

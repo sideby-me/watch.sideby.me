@@ -203,8 +203,12 @@ export async function dispatch(rawUrl: string, socket?: Socket, context?: Dispat
   const stopTimer = recordDispatchStart('set-video');
 
   try {
-    const hasCoreCorrelation = Boolean(context?.requestId || context?.dispatchId || context?.traceId || context?.spanId);
-    const missingCorrelationKeys = [!context?.roomId ? 'room_id' : null, !context?.userId ? 'user_id' : null].filter(Boolean);
+    const hasCoreCorrelation = Boolean(
+      context?.requestId || context?.dispatchId || context?.traceId || context?.spanId
+    );
+    const missingCorrelationKeys = [!context?.roomId ? 'room_id' : null, !context?.userId ? 'user_id' : null].filter(
+      Boolean
+    );
 
     if (hasCoreCorrelation && missingCorrelationKeys.length > 0) {
       logEvent({
