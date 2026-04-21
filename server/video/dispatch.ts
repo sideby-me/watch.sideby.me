@@ -23,9 +23,9 @@ import type { CorrelationContext } from '@/server/telemetry/correlation';
 const VIDEO_PROXY_URL = process.env.NEXT_PUBLIC_VIDEO_PROXY_URL?.trim() ?? 'http://localhost:8787';
 const PROXY_ENABLED = Boolean(VIDEO_PROXY_URL);
 
-function buildProxyUrl(targetUrl: string): string {
+function buildProxyUrl(targetUrl: string, extra?: Record<string, string>): string {
   if (!PROXY_ENABLED) return targetUrl; // serve direct when proxy not configured
-  const params = new URLSearchParams({ url: targetUrl });
+  const params = new URLSearchParams({ url: targetUrl, ...extra });
   return `${VIDEO_PROXY_URL}?${params.toString()}`;
 }
 
@@ -60,6 +60,7 @@ export interface DispatchLogContext {
   userId?: string;
   traceparent?: string;
   baggage?: string;
+  pageUrl?: string;
 }
 
 function toCorrelationContext(context?: DispatchLogContext): CorrelationContext | undefined {
@@ -135,9 +136,13 @@ function hasSignedParams(searchParams: URLSearchParams): boolean {
 interface HeadProbeResult {
   status: number;
   cors: 'permissive' | 'restrictive';
+  contentType?: string;
 }
 
-async function headProbe(url: string): Promise<HeadProbeResult | null> {
+const BROWSER_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+
+async function headProbe(url: string, userAgent?: string): Promise<HeadProbeResult | null> {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 5000);
@@ -145,6 +150,7 @@ async function headProbe(url: string): Promise<HeadProbeResult | null> {
       const appOrigin = process.env.NEXT_PUBLIC_APP_URL?.trim() || 'http://localhost:3000';
       const isM3u8 = url.toLowerCase().includes('.m3u8');
       const probeHeaders: Record<string, string> = isM3u8 ? {} : { Origin: appOrigin };
+      if (userAgent) probeHeaders['User-Agent'] = userAgent;
       const res = await fetch(url, {
         method: 'HEAD',
         headers: probeHeaders,
@@ -153,13 +159,32 @@ async function headProbe(url: string): Promise<HeadProbeResult | null> {
       });
       const acao = res.headers.get('access-control-allow-origin');
       const cors: 'permissive' | 'restrictive' = acao === '*' ? 'permissive' : 'restrictive';
-      return { status: res.status, cors };
+      const contentType = res.headers.get('content-type') ?? undefined;
+      return { status: res.status, cors, contentType };
     } finally {
       clearTimeout(timer);
     }
   } catch {
     return null; // timeout or network error → treat as non-2xx
   }
+}
+
+const HLS_CONTENT_TYPES = new Set([
+  'application/x-mpegurl',
+  'application/vnd.apple.mpegurl',
+  'application/vnd.apple.mpegURL',
+  'audio/mpegurl',
+  'audio/x-mpegurl',
+]);
+
+const MP4_CONTENT_TYPES = new Set(['video/mp4', 'video/webm', 'video/ogg', 'video/quicktime']);
+
+function mediaTypeFromContentType(contentType: string): 'mp4' | 'm3u8' | null {
+  const base = contentType.split(';')[0].trim().toLowerCase();
+  if (HLS_CONTENT_TYPES.has(base)) return 'm3u8';
+  if (base === 'application/dash+xml') return 'mp4'; // treat DASH as mp4 for player routing
+  if (MP4_CONTENT_TYPES.has(base)) return 'mp4';
+  return null;
 }
 
 function videoTypeFromUrl(pathname: string): 'mp4' | 'm3u8' {
@@ -310,8 +335,10 @@ export async function dispatch(rawUrl: string, socket?: Socket, context?: Dispat
     }
 
     // Tier e: Direct media extension without signed params → HEAD probe to decide delivery
+    let tierEProbe: HeadProbeResult | null = null;
     if (hasDirectMediaExt(parsed.pathname) && !hasSignedParams(parsed.searchParams)) {
       const probe = await headProbe(rawUrl);
+      tierEProbe = probe;
       if (probe && probe.status >= 200 && probe.status < 300) {
         const vType = videoTypeFromUrl(parsed.pathname);
         if (probe.cors === 'permissive') {
@@ -383,22 +410,93 @@ export async function dispatch(rawUrl: string, socket?: Socket, context?: Dispat
       });
     }
 
+    // Tier e.5: No media extension but unsigned — probe content-type before paying Lens latency.
+    // Handles raw HLS/MP4 endpoints that serve media directly without a file extension in the path.
+    // Some origins (e.g. Cloudflare Workers) do UA-based bot detection and return text/html to plain
+    // Node.js fetch — a second probe with a browser UA reveals the real content-type.
+    if (!hasSignedParams(parsed.searchParams)) {
+      let ctProbe = tierEProbe ?? (await headProbe(rawUrl));
+      let needsBrowserUa = false;
+
+      // If the initial probe got text/html (bot gate), retry with a browser UA
+      if (ctProbe && ctProbe.status >= 200 && ctProbe.status < 300 &&
+          ctProbe.contentType?.toLowerCase().includes('text/html')) {
+        const retryProbe = await headProbe(rawUrl, BROWSER_UA);
+        if (retryProbe && retryProbe.status >= 200 && retryProbe.status < 300) {
+          const retryType = mediaTypeFromContentType(retryProbe.contentType ?? '');
+          if (retryType) {
+            ctProbe = retryProbe;
+            needsBrowserUa = true;
+          }
+        }
+      }
+
+      if (ctProbe && ctProbe.status >= 200 && ctProbe.status < 300 && ctProbe.contentType) {
+        const vType = mediaTypeFromContentType(ctProbe.contentType);
+        if (vType) {
+          // Bot-protected origins must always go through pipe with a browser UA profile
+          const proxyExtra = needsBrowserUa ? { pipe_ua: 'desktop' } : undefined;
+          const deliveryType = vType === 'm3u8' ? 'hls' : ctProbe.cors === 'permissive' && !needsBrowserUa ? 'file-direct' : 'file-proxy';
+          logEvent({
+            level: 'info',
+            domain: 'video',
+            event: 'dispatch_content_type',
+            message: `dispatch: content-type ${ctProbe.contentType} → ${deliveryType}${needsBrowserUa ? ' (browser-ua)' : ''}`,
+            requestId: context?.requestId,
+            dispatchId: context?.dispatchId,
+            traceId: context?.traceId,
+            spanId: context?.spanId,
+            roomId: context?.roomId,
+            userId: context?.userId,
+            meta: { url: rawUrl, contentType: ctProbe.contentType, needsBrowserUa },
+          });
+          stopTimer();
+          recordDispatchOutcome('set-video', 'success');
+          const playbackUrl = ctProbe.cors === 'permissive' && vType !== 'm3u8' && !needsBrowserUa
+            ? rawUrl
+            : buildProxyUrl(rawUrl, proxyExtra);
+          return {
+            playbackUrl,
+            videoType: vType,
+            deliveryType,
+            originalUrl: rawUrl,
+          };
+        }
+      }
+      logEvent({
+        level: 'info',
+        domain: 'video',
+        event: 'dispatch_content_type_miss',
+        message: `dispatch: content-type probe miss (status=${ctProbe?.status ?? 'null'} ct=${ctProbe?.contentType ?? 'none'}) → Lens`,
+        requestId: context?.requestId,
+        dispatchId: context?.dispatchId,
+        traceId: context?.traceId,
+        spanId: context?.spanId,
+        roomId: context?.roomId,
+        userId: context?.userId,
+        meta: { url: rawUrl, probeStatus: ctProbe?.status ?? null, contentType: ctProbe?.contentType ?? null },
+      });
+    }
+
     // Tier f: Everything else → Lens
+    // If a page URL is available (the original site that served this media), open that instead
+    // so Lens can capture with full browser context (cookies, player JS, auth headers).
+    const lensTargetUrl = context?.pageUrl ?? rawUrl;
     logEvent({
       level: 'info',
       domain: 'video',
       event: 'dispatch_lens',
-      message: `dispatch: → Lens capture`,
+      message: `dispatch: → Lens capture${lensTargetUrl !== rawUrl ? ' (page-url)' : ''}`,
       requestId: context?.requestId,
       dispatchId: context?.dispatchId,
       traceId: context?.traceId,
       spanId: context?.spanId,
       roomId: context?.roomId,
       userId: context?.userId,
-      meta: { url: rawUrl },
+      meta: { url: lensTargetUrl, mediaUrl: rawUrl },
     });
 
-    const result = await lensClient.capture(rawUrl, socket, toCorrelationContext(context));
+    const result = await lensClient.capture(lensTargetUrl, socket, toCorrelationContext(context));
 
     const vType = result.mediaType === 'hls' ? 'm3u8' : 'mp4';
     const lensPlaybackUrl = buildLensPlaybackUrl(result.uuid);

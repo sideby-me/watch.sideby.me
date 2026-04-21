@@ -366,6 +366,7 @@ export function RoomShell({ roomId }: RoomShellProps) {
     setShowJoinDialog: ui.setShowJoinDialog,
     setPendingUserName,
     initialVideoUrl: searchParams.get('videoUrl'),
+    initialPageUrl: searchParams.get('source'),
     autoplayParam: searchParams.get('autoplay'),
     initialVideoAppliedRef,
     autoplayTriggeredRef,

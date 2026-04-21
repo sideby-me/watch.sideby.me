@@ -42,7 +42,7 @@ interface UseVideoSyncReturn {
   handleVideoPause: () => void;
   handleVideoSeek: () => void;
   handleYouTubeStateChange: (state: number) => void;
-  handleSetVideo: (videoUrl: string) => void;
+  handleSetVideo: (videoUrl: string, pageUrl?: string | null) => void;
   handleVideoControlAttempt: () => void;
   applyPendingSync: () => void;
 }
@@ -361,9 +361,9 @@ export function useVideoSync({
   );
 
   const handleSetVideo = useCallback(
-    (videoUrl: string) => {
+    (videoUrl: string, pageUrl?: string | null) => {
       if (!socket || !currentUser?.isHost) return;
-      socket.emit('set-video', { roomId, videoUrl });
+      socket.emit('set-video', { roomId, videoUrl, ...(pageUrl ? { pageUrl } : {}) });
     },
     [socket, currentUser?.isHost, roomId]
   );

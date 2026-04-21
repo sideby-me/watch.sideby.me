@@ -21,10 +21,11 @@ export interface UseRoomInitializationOptions {
   setPendingUserName: (v: string) => void;
   // For initial video & autoplay
   initialVideoUrl: string | null;
+  initialPageUrl: string | null;
   autoplayParam: string | null;
   initialVideoAppliedRef: React.MutableRefObject<boolean>;
   autoplayTriggeredRef: React.MutableRefObject<boolean>;
-  handleSetVideo: (url: string) => void;
+  handleSetVideo: (url: string, pageUrl?: string | null) => void;
   getActivePlayer: () => { play?: () => void | Promise<void> } | null;
   handleVideoPlay: () => void;
 }
@@ -43,6 +44,7 @@ export function useRoomInitialization(options: UseRoomInitializationOptions): vo
     setShowJoinDialog,
     setPendingUserName,
     initialVideoUrl,
+    initialPageUrl,
     autoplayParam,
     initialVideoAppliedRef,
     autoplayTriggeredRef,
@@ -142,10 +144,10 @@ export function useRoomInitialization(options: UseRoomInitializationOptions): vo
         message: 'Applying initial video from query params',
         meta: { initialVideoUrl, roomJoined: !!room, timestamp: Date.now() },
       });
-      handleSetVideo(initialVideoUrl);
+      handleSetVideo(initialVideoUrl, initialPageUrl);
       initialVideoAppliedRef.current = true;
     }
-  }, [room, currentUser, initialVideoUrl, initialVideoAppliedRef, handleSetVideo]);
+  }, [room, currentUser, initialVideoUrl, initialPageUrl, initialVideoAppliedRef, handleSetVideo]);
 
   // Autoplay if autoplay=1 query param (host only)
   useEffect(() => {

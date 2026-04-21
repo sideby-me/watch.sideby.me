@@ -150,6 +150,7 @@ export const JoinRoomDataSchema = z.object({
 export const SetVideoDataSchema = z.object({
   roomId: RoomIdSchema,
   videoUrl: VideoUrlSchema,
+  pageUrl: z.string().url().optional(),
 });
 
 export const VideoControlDataSchema = z.object({

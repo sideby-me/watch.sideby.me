@@ -53,6 +53,7 @@ export function registerVideoHandlers(socket: Socket<SocketEvents, SocketEvents,
       }
 
       const correlation = createSetVideoCorrelation(socket.data);
+      if (validatedData.pageUrl) correlation.pageUrl = validatedData.pageUrl;
       const missingCorrelationKeys = [
         !correlation.roomId ? 'room_id' : null,
         !correlation.userId ? 'user_id' : null,
