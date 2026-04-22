@@ -419,8 +419,12 @@ export async function dispatch(rawUrl: string, socket?: Socket, context?: Dispat
       let needsBrowserUa = false;
 
       // If the initial probe got text/html (bot gate), retry with a browser UA
-      if (ctProbe && ctProbe.status >= 200 && ctProbe.status < 300 &&
-          ctProbe.contentType?.toLowerCase().includes('text/html')) {
+      if (
+        ctProbe &&
+        ctProbe.status >= 200 &&
+        ctProbe.status < 300 &&
+        ctProbe.contentType?.toLowerCase().includes('text/html')
+      ) {
         const retryProbe = await headProbe(rawUrl, BROWSER_UA);
         if (retryProbe && retryProbe.status >= 200 && retryProbe.status < 300) {
           const retryType = mediaTypeFromContentType(retryProbe.contentType ?? '');
@@ -436,7 +440,8 @@ export async function dispatch(rawUrl: string, socket?: Socket, context?: Dispat
         if (vType) {
           // Bot-protected origins must always go through pipe with a browser UA profile
           const proxyExtra = needsBrowserUa ? { pipe_ua: 'desktop' } : undefined;
-          const deliveryType = vType === 'm3u8' ? 'hls' : ctProbe.cors === 'permissive' && !needsBrowserUa ? 'file-direct' : 'file-proxy';
+          const deliveryType =
+            vType === 'm3u8' ? 'hls' : ctProbe.cors === 'permissive' && !needsBrowserUa ? 'file-direct' : 'file-proxy';
           logEvent({
             level: 'info',
             domain: 'video',
@@ -452,9 +457,10 @@ export async function dispatch(rawUrl: string, socket?: Socket, context?: Dispat
           });
           stopTimer();
           recordDispatchOutcome('set-video', 'success');
-          const playbackUrl = ctProbe.cors === 'permissive' && vType !== 'm3u8' && !needsBrowserUa
-            ? rawUrl
-            : buildProxyUrl(rawUrl, proxyExtra);
+          const playbackUrl =
+            ctProbe.cors === 'permissive' && vType !== 'm3u8' && !needsBrowserUa
+              ? rawUrl
+              : buildProxyUrl(rawUrl, proxyExtra);
           return {
             playbackUrl,
             videoType: vType,
