@@ -6,6 +6,8 @@ import type { CorrelationContext } from '@/server/telemetry/correlation';
 import { injectCorrelationHeaders } from '@/server/telemetry/http-propagation';
 
 const LENS_TIMEOUT_MS = 35_000; // 5s buffer over 30s capture abort
+const LENS_RETRY_LIMIT = 2; // up to 3 total attempts on transient connection errors
+const LENS_RETRY_DELAY_MS = 1_500;
 
 export interface LensCaptureResult {
   uuid: string;
@@ -24,9 +26,37 @@ export interface LensCaptureResult {
   }>;
 }
 
+function isTransientLensError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const msg = error.message.toLowerCase();
+  return (
+    msg === 'fetch failed' ||
+    msg.includes('terminated') ||
+    msg.includes('econnrefused') ||
+    msg.includes('econnreset') ||
+    msg.includes('network error')
+  );
+}
+
 export class LensClient {
-  //  Post a capture request to Lens and stream the SSE response. Relays status events to the socket if provided.
+  // Post a capture request to Lens and stream the SSE response. Relays status events to the socket if provided.
   async capture(url: string, socket?: Socket, correlation?: CorrelationContext): Promise<LensCaptureResult> {
+    let lastError: Error = new Error('Lens capture failed');
+    for (let attempt = 0; attempt <= LENS_RETRY_LIMIT; attempt++) {
+      if (attempt > 0) {
+        await new Promise<void>(resolve => setTimeout(resolve, LENS_RETRY_DELAY_MS));
+      }
+      try {
+        return await this._attempt(url, socket, correlation);
+      } catch (error) {
+        if (error instanceof Error && !isTransientLensError(error)) throw error;
+        lastError = error instanceof Error ? error : new Error(String(error));
+      }
+    }
+    throw lastError;
+  }
+
+  private async _attempt(url: string, socket?: Socket, correlation?: CorrelationContext): Promise<LensCaptureResult> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), LENS_TIMEOUT_MS);
 
