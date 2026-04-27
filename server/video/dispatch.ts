@@ -1,13 +1,17 @@
 /**
- * 6-tier dispatch: decides how to deliver a video URL.
+ * 7-tier dispatch: decides how to deliver a video URL.
  *
  * Tiers (first match wins):
- *  a. Non-http/https protocol → throw ValidationError
- *  b. DRM hostname match → throw ValidationError
- *  c. YouTube hostname → direct playback
- *  d. Already a pipe URL (isProxiedUrl) → return as-is
- *  e. Direct media extension without signed params → HEAD probe → file-direct / file-proxy / Lens
- *  f. Everything else → Lens capture
+ *  A. Non-http/https protocol → reject
+ *  B. DRM hostname → reject
+ *  C. YouTube hostname → direct playback
+ *  D. Already a pipe URL → pass-through
+ *  E. Direct media extension (.mp4/.webm/.m3u8/.mpd):
+ *       signed params → pipe directly (auth is in the URL, no probe needed)
+ *       unsigned + m3u8 → HEAD probe: 2xx → pipe; non-2xx → Lens
+ *       unsigned + mp4/webm → HEAD probe: 2xx+permissive CORS → file-direct; 2xx+restrictive → pipe; non-2xx → Lens
+ *  F. No media extension, unsigned → content-type probe (+ browser-UA retry on text/html) → route or Lens
+ *  G. Everything else → Lens capture
  */
 
 import { logEvent } from '@/server/logger';
@@ -334,14 +338,45 @@ export async function dispatch(rawUrl: string, socket?: Socket, context?: Dispat
       };
     }
 
-    // Tier e: Direct media extension without signed params → HEAD probe to decide delivery
+    // Tier E: Direct media extension (.mp4 / .webm / .m3u8 / .mpd)
     let tierEProbe: HeadProbeResult | null = null;
-    if (hasDirectMediaExt(parsed.pathname) && !hasSignedParams(parsed.searchParams)) {
+    if (hasDirectMediaExt(parsed.pathname)) {
+      const vType = videoTypeFromUrl(parsed.pathname);
+      const signed = hasSignedParams(parsed.searchParams);
+
+      if (signed) {
+        // Auth is embedded in the URL - pipe it directly without probing.
+        // Lens is wrong for direct media files: Chromium downloads them instead of navigating,
+        // immediately closing the page ("Target page, context or browser has been closed").
+        logEvent({
+          level: 'info',
+          domain: 'video',
+          event: 'dispatch_direct',
+          message: `dispatch: direct ${vType} → file-proxy (signed URL)`,
+          requestId: context?.requestId,
+          dispatchId: context?.dispatchId,
+          traceId: context?.traceId,
+          spanId: context?.spanId,
+          roomId: context?.roomId,
+          userId: context?.userId,
+          meta: { url: rawUrl },
+        });
+        stopTimer();
+        recordDispatchOutcome('set-video', 'success');
+        return {
+          playbackUrl: buildProxyUrl(rawUrl),
+          videoType: vType,
+          deliveryType: vType === 'm3u8' ? 'hls' : 'file-proxy',
+          originalUrl: rawUrl,
+        };
+      }
+
+      // Unsigned - HEAD probe to decide delivery.
+      // M3U8 always goes through pipe even with permissive CORS: pipe rewrites segment URLs and avoids the HEAD/GET header discrepancy (HEAD omits Origin/UA, so ACAO:* on HEAD doesn't guarantee the browser's GET will succeed).
       const probe = await headProbe(rawUrl);
       tierEProbe = probe;
       if (probe && probe.status >= 200 && probe.status < 300) {
-        const vType = videoTypeFromUrl(parsed.pathname);
-        if (probe.cors === 'permissive') {
+        if (probe.cors === 'permissive' && vType !== 'm3u8') {
           logEvent({
             level: 'info',
             domain: 'video',
@@ -364,11 +399,12 @@ export async function dispatch(rawUrl: string, socket?: Socket, context?: Dispat
             originalUrl: rawUrl,
           };
         } else {
+          const reason = vType === 'm3u8' ? 'hls (always proxied)' : 'restrictive/no CORS';
           logEvent({
             level: 'info',
             domain: 'video',
             event: 'dispatch_direct',
-            message: `dispatch: direct ${vType} → file-proxy (restrictive/no CORS)`,
+            message: `dispatch: direct ${vType} → file-proxy (${reason})`,
             requestId: context?.requestId,
             dispatchId: context?.dispatchId,
             traceId: context?.traceId,
@@ -387,14 +423,8 @@ export async function dispatch(rawUrl: string, socket?: Socket, context?: Dispat
           };
         }
       }
-      // 401/403/405/non-2xx or timeout → for M3U8 playlists, reject immediately (Lens can't help)
-      // For other media types (mp4/webm), fall through to Lens which may find a stream via page context
-      if (videoTypeFromUrl(parsed.pathname) === 'm3u8') {
-        recordDispatchError('set-video', 'validation-error');
-        throw new ValidationError(
-          `This M3U8 stream returned ${probe ? probe.status : 'no response'} — it likely requires a signed or authenticated URL. Grab the full signed link from the source page.`
-        );
-      }
+      // non-2xx or timeout → fall through to Lens. A real browser may succeed where the plain
+      // Node.js HEAD probe failed (UA checks, Referer requirements, cookie gates).
       logEvent({
         level: 'info',
         domain: 'video',
@@ -410,15 +440,14 @@ export async function dispatch(rawUrl: string, socket?: Socket, context?: Dispat
       });
     }
 
-    // Tier e.5: No media extension but unsigned — probe content-type before paying Lens latency.
-    // Handles raw HLS/MP4 endpoints that serve media directly without a file extension in the path.
-    // Some origins (e.g. Cloudflare Workers) do UA-based bot detection and return text/html to plain
-    // Node.js fetch — a second probe with a browser UA reveals the real content-type.
+    // Tier F: No media extension, unsigned — content-type probe before paying Lens latency.
+    // Handles raw HLS/MP4 endpoints with no file extension, and extensionless page URLs that
+    // Tier E already probed (reuse tierEProbe to avoid a second round-trip).
+    // Some origins do UA-based bot detection and return text/html to plain Node.js fetch - a second probe with a browser UA reveals the real content-type.
     if (!hasSignedParams(parsed.searchParams)) {
       let ctProbe = tierEProbe ?? (await headProbe(rawUrl));
       let needsBrowserUa = false;
 
-      // If the initial probe got text/html (bot gate), retry with a browser UA
       if (
         ctProbe &&
         ctProbe.status >= 200 &&
@@ -438,7 +467,6 @@ export async function dispatch(rawUrl: string, socket?: Socket, context?: Dispat
       if (ctProbe && ctProbe.status >= 200 && ctProbe.status < 300 && ctProbe.contentType) {
         const vType = mediaTypeFromContentType(ctProbe.contentType);
         if (vType) {
-          // Bot-protected origins must always go through pipe with a browser UA profile
           const proxyExtra = needsBrowserUa ? { pipe_ua: 'desktop' } : undefined;
           const deliveryType =
             vType === 'm3u8' ? 'hls' : ctProbe.cors === 'permissive' && !needsBrowserUa ? 'file-direct' : 'file-proxy';
@@ -484,9 +512,7 @@ export async function dispatch(rawUrl: string, socket?: Socket, context?: Dispat
       });
     }
 
-    // Tier f: Everything else → Lens
-    // If a page URL is available (the original site that served this media), open that instead
-    // so Lens can capture with full browser context (cookies, player JS, auth headers).
+    // Tier G: Lens - open the source page (or raw URL as fallback) with full browser context.
     const lensTargetUrl = context?.pageUrl ?? rawUrl;
     logEvent({
       level: 'info',

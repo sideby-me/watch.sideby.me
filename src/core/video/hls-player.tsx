@@ -233,8 +233,10 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
                 codecUnparsable,
               });
 
-              // Attempt media error recovery before giving up
-              if (errorData.type === 'mediaError' && errorData.fatal) {
+              // Attempt media error recovery before giving up.
+              // bufferAddCodecError = addSourceBuffer() threw (unsupported codec) - unrecoverable, skip straight to fatal.
+              const isCodecError = errorData.details === 'bufferAddCodecError';
+              if (!isCodecError && errorData.type === 'mediaError' && errorData.fatal) {
                 if (mediaErrorRecoveryRef.current < MAX_MEDIA_ERROR_RECOVERIES) {
                   mediaErrorRecoveryRef.current++;
                   logVideo('hls_media_recovery', 'Attempting HLS media error recovery', {
