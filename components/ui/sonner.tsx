@@ -1,12 +1,11 @@
 'use client';
 
-import { useTheme } from 'next-themes';
 import { Toaster as Sonner, ToasterProps } from 'sonner';
 import * as React from 'react';
 import { cn } from '@/src/lib/utils';
 
 const Toaster = ({ className, ...props }: ToasterProps) => {
-  const { theme = 'system' } = useTheme();
+  const theme = 'dark';
 
   return (
     <Sonner

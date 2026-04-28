@@ -5,7 +5,6 @@ import { Navigation } from '@/components/layout/navigation';
 import { Footer } from '@/components/layout/footer';
 import { SocketProvider } from '@/src/core/socket';
 import { Toaster } from '@/components/ui/sonner';
-import { ThemeProvider } from '@/src/core/config';
 import './globals.css';
 
 const spaceGrotesk = Space_Grotesk({
@@ -118,16 +117,14 @@ export default function RootLayout({
     <html lang="en" className="dark" suppressHydrationWarning>
       <body className={`${spaceGrotesk.variable} ${spaceMono.variable} antialiased`}>
         <NextTopLoader color="#ffffff" height={4} showSpinner={false} shadow="0 0 20px #ffffff, 0 0 40px #ffffff" />
-        <ThemeProvider>
-          <SocketProvider>
-            <div className="mx-auto flex min-h-screen max-w-screen-4xl flex-col bg-background">
-              <Navigation />
-              <main className="flex-1 py-6">{children}</main>
-              <Footer />
-            </div>
-            <Toaster richColors />
-          </SocketProvider>
-        </ThemeProvider>
+        <SocketProvider>
+          <div className="mx-auto flex min-h-screen max-w-screen-4xl flex-col bg-background">
+            <Navigation />
+            <main className="flex-1 py-6">{children}</main>
+            <Footer />
+          </div>
+          <Toaster richColors />
+        </SocketProvider>
       </body>
     </html>
   );
