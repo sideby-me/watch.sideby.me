@@ -491,7 +491,7 @@ export function RoomShell({ roomId }: RoomShellProps) {
   const youTubeId = effectiveVideoType === 'youtube' ? extractYouTubeId(effectiveVideoUrl) : undefined;
 
   return (
-    <div className="mx-auto max-w-screen-2xl space-y-6 4xl:max-w-screen-3xl">
+    <div className="mx-auto max-w-screen-2xl space-y-6 px-4 md:px-6 2xl:px-0 4xl:max-w-screen-3xl">
       {/* Room Header */}
       <RoomHeader
         roomId={roomId}
@@ -515,7 +515,7 @@ export function RoomShell({ roomId }: RoomShellProps) {
         />
       )}
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-6 md:gap-0 xl:grid-cols-4 2xl:gap-6">
         {/* Main Content */}
         <div className="col-span-full xl:col-span-3">
           <RoomVideoSection
