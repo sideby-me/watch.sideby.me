@@ -40,7 +40,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
 
     logRoom('socket_init', 'Initializing socket...');
 
-    const socketUrl = process.env.NODE_ENV === 'production' ? undefined : 'http://localhost:3000';
+    const socketUrl = process.env.NEXT_PUBLIC_SYNC_URL || 'http://localhost:3001';
 
     const socketInstance = io(socketUrl, {
       path: '/api/socket/io',

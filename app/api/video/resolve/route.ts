@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { logVideoEvent } from '@/server/logger';
-import { createRateLimiter } from '@/server/rate-limiter';
-import { isBlocked } from '@/server/video/blocklist';
+import { logVideoEvent } from '@/src/lib/logger';
+import { createRateLimiter } from '@/src/lib/rate-limiter';
+import { isBlocked } from '@/src/lib/video/blocklist';
 
 // 20 requests per minute per IP for video pre-validation.
 const limiter = createRateLimiter({ windowMs: 60_000, maxRequests: 20 });

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { SubtitleDownloadResponse } from '@/types';
-import { logEvent } from '@/server/logger';
-import { createRateLimiter } from '@/server/rate-limiter';
+import { logEvent } from '@/src/lib/logger';
+import { createRateLimiter } from '@/src/lib/rate-limiter';
 
 // 20 requests per minute per IP for subtitle downloads.
 const limiter = createRateLimiter({ windowMs: 60_000, maxRequests: 20 });

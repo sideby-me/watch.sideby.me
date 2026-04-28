@@ -5,8 +5,8 @@ import {
   OpenSubtitlesResult,
   SubtitleSearchResponse,
 } from '@/types';
-import { logEvent } from '@/server/logger';
-import { createRateLimiter } from '@/server/rate-limiter';
+import { logEvent } from '@/src/lib/logger';
+import { createRateLimiter } from '@/src/lib/rate-limiter';
 
 // 30 requests per minute per IP for subtitle searches.
 const limiter = createRateLimiter({ windowMs: 60_000, maxRequests: 30 });

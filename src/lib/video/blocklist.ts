@@ -2,7 +2,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { logEvent } from '@/server/logger';
+import { logEvent } from '../logger';
 
 export interface BlocklistEntry {
   pattern: string;
