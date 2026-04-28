@@ -129,7 +129,15 @@ export function logEvent(record: LogEventRecord) {
     console.warn(warningLine);
   }
 
-  const { traceId: _traceId, spanId: _spanId, requestId: _requestId, dispatchId: _dispatchId, roomId: _roomId, userId: _userId, ...restRecord } = record;
+  const {
+    traceId: _traceId,
+    spanId: _spanId,
+    requestId: _requestId,
+    dispatchId: _dispatchId,
+    roomId: _roomId,
+    userId: _userId,
+    ...restRecord
+  } = record;
   const payload = {
     ...restRecord,
     request_id: record.requestId ?? null,
