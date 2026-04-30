@@ -1,31 +1,34 @@
 # Logging and Observability
 
-This guide describes how logging works in watch.sideby.me.
+This guide describes how client-side logging works in watch.sideby.me.
 
-## Server logging
-
-- Use `logEvent` from `server/logger.ts`:
-  - `level`: `info` | `warn` | `error`.
-  - `domain`: `video` | `room` | `chat` | `voice` | `videochat` | `subtitles` | `other`.
-  - `event`: short machine-readable event name (e.g. `room_joined`, `video_resolved`).
-  - `message`: human-readable description.
-  - Optional: `roomId`, `userId`, `requestId`, `meta`.
-- Logs are emitted as JSON lines, prefixed with `[watch]`.
-- Prefer `logEvent` over legacy helpers such as `logVideoEvent`.
+For server-side logging, see [`sync.sideby.me/docs/logging-and-observability.md`](https://github.com/sideby-me/sync.sideby.me/docs/logging-and-observability.md).
 
 ## Client logging
 
-- Use helpers from `src/core/logger`:
-  - `logRoom`, `logVideo`, `logChat`, `logVoice`, `logVideoChat`, `logSubtitles`, `logCast`, `logDebug`.
-- `logDebug` and other `debug`-level logs are automatically suppressed in production builds.
-- Include a clear `event` and `message`, with `meta` when additional context is useful.
+Use helpers from `src/core/logger/`:
+
+- `logRoom` — room lifecycle events (join, leave, host changes)
+- `logVideo` — video player events (load, error, source change)
+- `logChat` — chat events (send, receive, typing)
+- `logVoice` — voice call events (join, leave, reconnect)
+- `logVideoChat` — video call events
+- `logSubtitles` — subtitle load/search events
+- `logCast` — Google Cast events
+- `logDebug` — debug-only logging (suppressed in production builds)
+
+Include a clear `event` name and human-readable `message`. Add `meta` when additional context is useful.
 
 ## When to log
 
-- Room lifecycle events (creation, join, leave, host changes, locks, passcodes, capacity issues).
-- Chat events (message send/receive, typing indicators, system messages).
-- Video resolution decisions (direct vs proxy, errors resolving URLs).
-- Video sync events (host/guest sync, major jumps, repeated corrections).
-- Media/WebRTC events (voice/videochat joins/leaves, failures, reconnections).
+- Socket connection state changes (connect, disconnect, reconnect).
+- Room join/leave and socket initialization.
+- Video player errors and source changes.
+- WebRTC connection failures and reconnections.
+- Subtitle load errors.
 
-Logging should make it easy to understand what happened in a room without exposing sensitive content.
+Avoid logging sensitive content (chat message text, user names, video URLs with auth tokens).
+
+## OTEL
+
+Client telemetry is set up in `src/lib/telemetry/`. Configure `OTEL_EXPORTER_OTLP_ENDPOINT` to forward logs and traces to an observability backend.

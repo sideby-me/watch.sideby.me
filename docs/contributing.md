@@ -1,6 +1,6 @@
 # Contributing to watch.sideby.me
 
-This guide explains how to work on the watch.sideby.me app.
+This guide explains how to work on the watch.sideby.me frontend.
 
 ## Before you start
 
@@ -15,29 +15,25 @@ This guide explains how to work on the watch.sideby.me app.
 - **Cross-cutting client infrastructure** (socket provider, logger, notifications, video primitives, config):
   - Add or extend modules under `src/core/`.
 - **Reusable utilities**:
-  - Add to `src/lib/` and re-export from the appropriate barrel if needed.
-- **Server-side domain logic**:
-  - Add or update services under `server/services/`.
-  - Add or update Redis helpers under `server/redis/`.
-  - Add or update socket handlers under `server/socket/handlers/`.
+  - Add to `src/lib/`.
+- **Backend changes** (socket handlers, services, Redis, video dispatch):
+  - Those live in [`sync.sideby.me`](https://github.com/sideby-me/sync.sideby.me/). See its contributing guide.
 
 ## Working with sockets
 
-- Define or extend event types in the shared socket contracts (see `server/socket/types.ts` and `types/`).
-- Keep handlers thin:
-  - Validate input with shared schemas.
-  - Call services.
-  - Emit typed events.
+- The client connects to `sync.sideby.me` via `src/core/socket/socket-provider.tsx`.
+- Use the `useSocket()` hook from `src/core/socket/` to access the socket instance.
+- Socket event types are defined in `types/` (`SocketEvents`). Extend these when adding new events.
+- Keep feature hooks thin: bind to events in hooks, update local state, and emit via the socket.
 
-## Working with logging and errors
+## Working with client logging
 
-- Use `logEvent` from `server/logger.ts` on the server.
-- Use helpers from `src/core/logger` on the client.
-- Throw `DomainError` subclasses from services and let the socket error handler map them to events and user messages.
+- Use helpers from `src/core/logger/` (`logRoom`, `logVideo`, `logChat`, `logVoice`, `logVideoChat`, `logSubtitles`, `logCast`, `logDebug`).
+- `logDebug` is suppressed in production automatically.
 
 ## Submitting changes
 
-- Keep pull requests focused on a specific feature or concern.
+- Keep pull requests focused on a single feature or concern.
 - Follow the naming and style guide.
-- Update or add docs in this folder when you introduce new patterns, services, or workflows.
-- Make sure the app still runs locally and any existing tests pass.
+- Update docs in this folder when you introduce new patterns or workflows.
+- Make sure the app runs locally and existing tests pass.

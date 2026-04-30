@@ -3,21 +3,36 @@
 This is a high-level overview of the watch.sideby.me file structure as implemented today.
 
 - `app/`
-  - Next.js App Router entrypoints. Routes are generally thin and delegate to feature modules in `src/features/` (for example, `app/room/[roomId]/page.tsx` renders the `RoomShell` from `src/features/room`).
+  - Next.js App Router routes. Kept thin; delegate to `src/features/` (e.g. `app/room/[roomId]/page.tsx` renders `RoomShell` from `src/features/room`).
+  - `app/api/subtitles/` — OpenSubtitles proxy (search + download).
+  - Legal pages: `privacy`, `terms`, `cookie-policy`, `legal`.
 - `components/`
-  - Generic layout and UI components shared across the app (e.g. `components/layout/*`, `components/ui/*`). Domain-specific UI lives under `src/features/` instead.
-- `server/`
-  - `errors.ts` - domain error types used by services and socket handlers.
-  - `logger.ts` - structured server-side logging (`logEvent`) with domains such as `room`, `video`, `chat`, `voice`, `videochat`, `subtitles`, `other`.
-  - `redis/` - Redis client and repository-like helpers for rooms, chat, and related state.
-  - `services/` - domain services for rooms, chat, video, voice, and video chat.
-  - `socket/` - Socket.IO setup, typed event contracts, and per-domain handlers.
-  - `video/` - video source resolution and proxying.
+  - Generic layout and UI components shared across the app (`components/layout/*`, `components/ui/*`). Domain-specific UI lives under `src/features/` instead.
 - `src/core/`
-  - Cross-cutting client infrastructure: socket provider/hooks, client logger, notifications, video primitives, configuration, and other app-wide utilities.
+  - Cross-cutting client infrastructure:
+    - `socket/` — `SocketProvider`, `useSocket()` hook, Socket.IO connection management.
+    - `logger/` — Client-side structured logging helpers (`logRoom`, `logVideo`, `logChat`, etc.).
+    - `video/` — HLS player (hls.js), YouTube iframe player.
+    - `config/` — Theme provider, app-wide configuration.
+    - `input/` — Keyboard shortcut handling.
+    - `notifications/` — Sound notification system.
 - `src/features/`
-  - Feature modules for room, chat, video sync, media (voice/videochat/WebRTC), subtitles, etc. Each feature owns its components and hooks.
+  - Feature modules, each owning its own components and hooks:
+    - `room/` — Room shell, member list, host controls.
+    - `chat/` — Real-time chat, reactions, typing indicators.
+    - `video-sync/` — Playback sync controls (play/pause/seek/speed).
+    - `media/`
+      - `videochat/` — WebRTC video call UI.
+      - `voice/` — Voice chat UI.
+      - `webrtc/` — WebRTC hooks and utilities.
+      - `cast/` — Google Cast integration.
+    - `picker/` — Video source picker UI.
+    - `subtitles/` — Subtitle upload and OpenSubtitles search.
 - `src/lib/`
-  - Domain-agnostic utility functions and helpers imported by features and core.
+  - Domain-agnostic utility functions:
+    - `telemetry/` — OTEL client setup.
+    - `video/` — Video URL utilities and helpers.
 - `types/`
-  - Shared TypeScript types and schemas (including socket event contracts) used by both client and server.
+  - Zod schemas and TypeScript types for socket event contracts and shared data structures.
+- `public/`
+  - Static assets.

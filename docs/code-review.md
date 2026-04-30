@@ -6,36 +6,34 @@ This guide lists what reviewers look for in changes to watch.sideby.me.
 
 - New code lives in the right place:
   - Feature UI and hooks under `src/features/<feature>/`.
-  - Cross-cutting infra under `src/core/`.
+  - Cross-cutting client infra under `src/core/`.
   - Utilities under `src/lib/`.
-  - Services, Redis helpers, and socket handlers under `server/`.
 - Routes in `app/` remain thin and delegate to features.
+- Backend changes (services, Redis helpers, socket handlers) belong in `sync.sideby.me`, not here.
 
 ## Naming and style
 
-- Component, hook, service, and error names follow the naming and style guide.
-- Socket event names extend the existing typed events instead of inventing untyped strings.
+- Component, hook, and helper names follow the naming and style guide.
+- Socket event names extend `SocketEvents` in `types/` instead of using untyped strings.
 
 ## Types and schemas
 
-- New socket payloads and responses are typed and validated via shared types/schemas.
-- Client and server use the same contracts, imported from `types/` or `server/socket/types.ts`.
+- New socket payloads are typed via `SocketEvents` in `types/`.
+- Client does not duplicate type shapes that already exist in `types/`.
 
-## Logging and errors
+## Logging
 
-- Important domain actions are logged using `logEvent` (server) or `src/core/logger` (client).
-- Business rule violations use `DomainError` subclasses, not plain `Error`.
-- Errors are mapped to clear, user-friendly messages.
+- Client-side logging uses helpers from `src/core/logger/`.
+- No ad-hoc `console.log` in shipped code.
 
 ## Performance and reliability
 
-- Changes in hot paths (socket handlers, services, video resolution, media/WebRTC) are mindful of:
-  - Number of network calls.
-  - Redis access patterns.
+- Changes in hot paths (video sync events, WebRTC, chat) are mindful of:
   - Event volume and debouncing.
-- Long-running operations are instrumented with logging where helpful.
+  - Unnecessary re-renders.
+- Long-running or async operations are handled gracefully.
 
 ## Documentation
 
-- Relevant docs in `docs/` are updated when introducing new patterns, services, or workflows.
-- New public APIs (events, services) are documented briefly in the appropriate guide.
+- Relevant docs in this folder are updated when introducing new patterns or workflows.
+- New events or client-side features are briefly described.

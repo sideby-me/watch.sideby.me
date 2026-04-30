@@ -4,19 +4,40 @@ This guide explains how to run watch.sideby.me locally.
 
 ## Prerequisites
 
-- Node.js (see `package.json` for the supported version).
-- Docker (for running Redis via `docker-compose.yml`).
+- Node.js 18+
+- [`sync.sideby.me`](https://github.com/sideby-me/sync.sideby.me/) running (the Socket.IO backend — see its `local-development.md`)
+
+watch.sideby.me does not require Redis or Docker directly; those are dependencies of `sync.sideby.me`.
 
 ## Setup
 
 1. Install dependencies:
-   - `npm install` (or the package manager used by the project).
-2. Start Redis:
-   - `docker-compose up` from the project root (or from `watch.sideby.me` if configured there).
-3. Configure environment variables:
-   - Copy `.env.example` to `.env.local` and adjust values as needed (e.g. Redis URL, socket URL, any third-party keys used by the app).
+   ```bash
+   npm install
+   ```
+2. Copy `.env.example` to `.env.local` and configure:
+   ```bash
+   NEXT_PUBLIC_SYNC_URL=http://localhost:3001    # sync.sideby.me
+   NEXT_PUBLIC_VIDEO_PROXY_URL=http://localhost:8787  # pipe.sideby.me (optional)
+   OPENSUBTITLES_API_KEY=your_key               # optional, for subtitle search
+   ```
 
 ## Running the app
 
-- Start the development server using the scripts defined in `package.json`.
-- The custom `server.ts` entry point wires Socket.IO into the Next.js app; follow the existing scripts/config to run it the same way in development and production.
+```bash
+npm run dev      # Next.js dev server on http://localhost:3000
+```
+
+The app connects to `sync.sideby.me` via `NEXT_PUBLIC_SYNC_URL`. Make sure `sync.sideby.me` is running first, otherwise the socket will fail to connect.
+
+## Available scripts
+
+```bash
+npm run dev           # Development server
+npm run build         # Production build
+npm start             # Run production build
+npm run test          # Vitest
+npm run lint          # ESLint
+npm run format        # Prettier
+npm run format:check  # Check formatting without writing
+```

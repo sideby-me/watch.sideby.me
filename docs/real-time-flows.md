@@ -1,27 +1,29 @@
 # Real-time Flows
 
-This guide summarizes how real-time features are wired end to end.
+This guide summarizes how real-time features are wired on the client side.
 
-## Socket contracts
+For the server-side event handling (handlers, services, Redis), see [`sync.sideby.me/docs/real-time-flows.md`](https://github.com/sideby-me/sync.sideby.me/docs/real-time-flows.md).
 
-- Socket event types are defined in `server/socket/types.ts` and shared `types/`.
-- Both client and server import these shared contracts to stay in sync.
+## Socket connection
 
-## Handlers and services
+The `SocketProvider` in `src/core/socket/socket-provider.tsx` creates a Socket.IO client connected to `NEXT_PUBLIC_SYNC_URL` (default `http://localhost:3001`). It exposes the socket instance via `useSocket()`.
 
-- For each domain (room, chat, video sync, voice, videochat, subtitles):
-  - Socket handlers in `server/socket/handlers/` parse and validate incoming events.
-  - Services in `server/services/` implement domain behavior and use Redis helpers.
-  - Handlers emit typed success and error events back to clients.
+## Socket event contracts
 
-## Client features
+Socket events are typed via `SocketEvents` in `types/`. Both client hooks and the `SocketProvider` use this type to ensure event names and payload shapes match `sync.sideby.me`.
 
-- Features under `src/features/` subscribe to and emit events using shared socket hooks from `src/core/socket`.
-- Hooks encapsulate binding to specific events and updating local state (e.g. room state, chat messages, video sync, media participants).
+## How feature hooks work
+
+Feature hooks (e.g. in `src/features/room/hooks/`, `src/features/chat/hooks/`) follow the same pattern:
+
+1. Get the socket from `useSocket()`.
+2. Register `socket.on(...)` listeners in a `useEffect` (cleaned up on unmount).
+3. Update local React state when events arrive.
+4. Expose emit functions (e.g. `sendMessage`, `setVideo`) that call `socket.emit(...)`.
 
 ## Adding or changing events
 
-1. Extend the shared event types in `server/socket/types.ts` and `types/`.
-2. Implement or update a handler in `server/socket/handlers/`.
-3. Add or update a service in `server/services/` if needed.
-4. Update client hooks/components under `src/features/` to use the new or changed event.
+1. Add or extend the event in `types/` (`SocketEvents`).
+2. Add the corresponding handler in `sync.sideby.me` (see its contributing guide).
+3. Add or update the client hook in the relevant `src/features/<feature>/hooks/` file.
+4. Update any UI components that need to render the new state.

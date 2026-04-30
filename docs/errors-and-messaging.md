@@ -1,33 +1,35 @@
 # Errors and User Messaging
 
-This guide explains how domain errors are modeled and surfaced to users.
+This guide explains how the client handles errors from `sync.sideby.me` and surfaces them to users.
 
-## Domain errors
+## How errors arrive
 
-- All domain-specific errors extend `DomainError` from `server/errors.ts`.
-- Each error has a `code` and a user-facing message, for example:
-  - `NotFoundError` - "Hmm, we couldn't find what you're looking for."
-  - `PermissionError` - "You don't have permission to do that."
-  - `ValidationError` - "Something looks off with that request."
-  - `ConflictError` - "That conflicts with something already in place."
-  - `RateLimitError` - "Whoa there, slow down a bit!"
-  - `RoomLockedError` - "This room is currently locked. New guests cannot join."
-  - `PasscodeRequiredError` - "This room requires a passcode."
-  - `CapacityError` - "Whoa, it's a full house!"
+`sync.sideby.me` maps all domain errors to structured socket error events before sending them to the client. The client receives typed error events — not raw exceptions.
 
-## Where errors are thrown
+Error codes the client may receive and their default messages:
 
-- Services in `server/services/` enforce business rules and throw the appropriate `DomainError` subclass.
-- Socket handlers in `server/socket/handlers/` call services and let errors bubble up.
+| Code                | Message                                                  |
+| ------------------- | -------------------------------------------------------- |
+| `NOT_FOUND`         | "Hmm, we couldn't find what you're looking for."         |
+| `PERMISSION_DENIED` | "You don't have permission to do that."                  |
+| `VALIDATION_ERROR`  | "Something looks off with that request."                 |
+| `CONFLICT`          | "That conflicts with something already in place."        |
+| `RATE_LIMITED`      | "Whoa there, slow down a bit!"                           |
+| `ROOM_LOCKED`       | "This room is currently locked. New guests cannot join." |
+| `PASSCODE_REQUIRED` | "This room requires a passcode."                         |
+| `CAPACITY_EXCEEDED` | "Whoa, it's a full house!"                               |
 
-## Mapping to socket events
-
-- The socket error handler in `server/socket` maps domain errors to typed socket error events.
-- Clients receive structured error events instead of raw exception messages.
+The domain error model itself (how these are thrown and mapped on the server) is documented in [`sync.sideby.me/docs/errors-and-messaging.md`](https://github.com/sideby-me/sync.sideby.me/docs/errors-and-messaging.md).
 
 ## Client UX
 
-- Client code should convert error events into user-friendly UI:
-  - Toasts or banners for transient issues.
-  - Dialogs or inline messages for blocking errors (e.g. locked rooms, passcode requirements, capacity limits).
-- Do not show raw error codes to users; use the friendly messages or tailored copy that matches the app's tone.
+Convert error events into appropriate UI:
+
+- **Toasts / banners** — transient issues (rate limits, validation errors, generic failures).
+- **Dialogs or inline messages** — blocking errors that require user action (locked rooms, passcode prompts, capacity limits).
+
+Do not display raw error codes to users. Use the message strings or write tailored copy that matches the app's tone (see `ui-copy-and-language.md`).
+
+## Logging errors on the client
+
+Use `logDebug` or the appropriate domain logger from `src/core/logger/` when handling error events, so failures are traceable without noise in production.
