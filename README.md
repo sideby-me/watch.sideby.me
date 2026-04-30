@@ -1,6 +1,6 @@
 # `watch.sideby.me`
 
-The web frontend for Sideby.me — synchronized watch parties with real-time chat, voice/video, and multi-source video support.
+The web frontend for Sideby.me - synchronized watch parties with real-time chat, voice/video, and multi-source video support.
 
 > _what are you gonna watch btw? very sus 👀_
 
@@ -17,14 +17,14 @@ https://sideby.me/
 
 ## Architecture
 
-This is a **frontend-only** Next.js 15 app (App Router). All real-time state lives in [`sync.sideby.me`](../sync.sideby.me/), a separate Socket.IO server this app connects to via `NEXT_PUBLIC_SYNC_URL`. Video proxying is handled by [`pipe.sideby.me`](../pipe.sideby.me/).
+This is a **frontend-only** Next.js 15 app (App Router). All real-time state lives in [`sync.sideby.me`](https://github.com/sideby-me/sync.sideby.me), a separate Socket.IO server this app connects to via `NEXT_PUBLIC_SYNC_URL`. Video proxying is handled by [`pipe.sideby.me`](https://github.com/sideby-me/pipe.sideby.me).
 
 ## Getting Started
 
 ### Prerequisites
 
 - Node.js 18+
-- [`sync.sideby.me`](../sync.sideby.me/) running (Socket.IO backend)
+- [`sync.sideby.me`](https://github.com/sideby-me/sync.sideby.me) running (Socket.IO backend)
 
 ### Environment Setup
 
