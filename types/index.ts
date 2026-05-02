@@ -62,6 +62,7 @@ import type {
   VideoLoadingStatusResponse,
   PickerRequiredResponse,
   PickerSelectData,
+  VideoStaleData,
 } from './schemas';
 
 export interface SocketEvents {
@@ -116,6 +117,8 @@ export interface SocketEvents {
   'video-loading-status': (data: VideoLoadingStatusResponse) => void;
   // Lens: daemon-triggered URL refresh
   'video-url-refresh': (data: VideoUrlRefreshResponse) => void;
+  // Lens: client signals a stale CDN URL (4xx on a uuid= pipe URL) — triggers reactive re-extraction
+  'video-stale': (data: VideoStaleData) => void;
   // Picker: host receives required picker event (server -> host only)
   'picker-required': (data: PickerRequiredResponse) => void;
   // Picker: host sends selection back to server (client -> server)

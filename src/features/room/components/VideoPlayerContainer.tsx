@@ -103,7 +103,10 @@ export function VideoPlayerContainer({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [videoSourceValid, setVideoSourceValid] = useState<boolean | null>(true);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [isStaleReconnecting, setIsStaleReconnecting] = useState(false);
   const lastErrorReportRef = useRef<number>(0);
+  const staleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const staleEmittedRef = useRef(false);
 
   const ERROR_REPORT_DEBOUNCE_MS = 4000;
 
@@ -143,6 +146,19 @@ export function VideoPlayerContainer({
     setVideoSourceValid(true);
     setPlaybackError(null);
   }, [videoUrl, videoType]);
+
+  // When the video URL changes (successful stale re-extraction), clear reconnecting state
+  useEffect(() => {
+    if (isStaleReconnecting) {
+      setIsStaleReconnecting(false);
+      staleEmittedRef.current = false;
+      if (staleTimeoutRef.current) {
+        clearTimeout(staleTimeoutRef.current);
+        staleTimeoutRef.current = null;
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoUrl]);
 
   // Get video element ref for guest controls
   const getVideoElementRef = () => {
@@ -356,14 +372,40 @@ export function VideoPlayerContainer({
             onError={err => {
               const codecUnparsable = Boolean(err?.codecUnparsable);
               const responseCode = err?.responseCode;
+              const effectiveRoomId =
+                roomId || (typeof window !== 'undefined' ? window.location.pathname.split('/').pop() || '' : '');
+
+              // Stale Lens UUID detection: 403/401/410 on a pipe ?uuid= URL triggers reactive re-extraction
+              const isStaleCode = responseCode === 403 || responseCode === 401 || responseCode === 410;
+              const isLensUuidUrl = videoUrl.includes('uuid=');
+              if (isStaleCode && isLensUuidUrl && effectiveRoomId && socket && !staleEmittedRef.current) {
+                staleEmittedRef.current = true;
+                setIsStaleReconnecting(true);
+                socket.emit('video-stale', { roomId: effectiveRoomId });
+                logClient({
+                  level: 'info',
+                  domain: 'video',
+                  event: 'hls_stale_detected',
+                  message: 'Stale Lens URL detected, triggering re-extraction',
+                  meta: { responseCode, videoUrl },
+                });
+                // Fallback: if no refresh arrives within 20s, surface the error
+                staleTimeoutRef.current = setTimeout(() => {
+                  setIsStaleReconnecting(false);
+                  staleEmittedRef.current = false;
+                  setPlaybackError(
+                    `The stream token expired and we couldn't refresh it automatically. Try setting a new link.`
+                  );
+                  setVideoSourceValid(false);
+                }, 20_000);
+                return;
+              }
 
               if (isHost) {
                 const now = Date.now();
                 if (socket && now - lastErrorReportRef.current > ERROR_REPORT_DEBOUNCE_MS) {
                   lastErrorReportRef.current = now;
                   try {
-                    const effectiveRoomId =
-                      roomId || (typeof window !== 'undefined' ? window.location.pathname.split('/').pop() || '' : '');
                     if (effectiveRoomId) {
                       socket.emit('video-error-report', {
                         roomId: effectiveRoomId,
@@ -511,7 +553,12 @@ export function VideoPlayerContainer({
 
           {!isCasting && renderPlayer()}
 
-          {playbackError ? (
+          {isStaleReconnecting ? (
+            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/70 px-4 text-center text-sm text-primary-foreground">
+              <div className="text-xl font-semibold tracking-tighter">Refreshing stream&hellip;</div>
+              <div className="mt-2 max-w-lg text-neutral">The stream token expired. Getting a fresh one&mdash;hang tight.</div>
+            </div>
+          ) : playbackError ? (
             <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/70 px-4 text-center text-sm text-primary-foreground">
               <div className="text-xl font-semibold tracking-tighter">Playback hit a snag</div>
               <div className="mt-2 max-w-lg text-neutral">{playbackError}</div>
