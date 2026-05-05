@@ -556,7 +556,9 @@ export function VideoPlayerContainer({
           {isStaleReconnecting ? (
             <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/70 px-4 text-center text-sm text-primary-foreground">
               <div className="text-xl font-semibold tracking-tighter">Refreshing stream&hellip;</div>
-              <div className="mt-2 max-w-lg text-neutral">The stream token expired. Getting a fresh one&mdash;hang tight.</div>
+              <div className="mt-2 max-w-lg text-neutral">
+                The stream token expired. Getting a fresh one&mdash;hang tight.
+              </div>
             </div>
           ) : playbackError ? (
             <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/70 px-4 text-center text-sm text-primary-foreground">
