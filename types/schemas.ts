@@ -475,6 +475,11 @@ export const VideoUrlRefreshResponseSchema = z.object({
   videoMeta: RoomSchema.shape.videoMeta.optional(),
 });
 
+// Lens: client signals that a Lens UUID URL returned 4xx (stale CDN token)
+export const VideoStaleDataSchema = z.object({
+  roomId: RoomIdSchema,
+});
+
 // Lens: loading status relayed from Lens SSE during capture
 export const VideoLoadingStatusResponseSchema = z.object({
   status: z.string(),
@@ -595,6 +600,7 @@ export type ErrorResponse = z.infer<typeof ErrorResponseSchema>;
 export type VideoErrorReport = z.infer<typeof VideoErrorReportSchema>;
 export type VideoUrlRefreshResponse = z.infer<typeof VideoUrlRefreshResponseSchema>;
 export type VideoLoadingStatusResponse = z.infer<typeof VideoLoadingStatusResponseSchema>;
+export type VideoStaleData = z.infer<typeof VideoStaleDataSchema>;
 
 // Voice chat types
 export type VoiceJoinData = z.infer<typeof VoiceJoinDataSchema>;
