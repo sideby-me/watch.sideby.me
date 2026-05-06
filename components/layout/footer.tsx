@@ -5,9 +5,11 @@ import { Separator } from '../ui/separator';
 import { Github, Instagram, Twitter } from 'lucide-react';
 import Image from 'next/image';
 
+const EXTENSION_URL = 'https://pass.sideby.me';
+
 const productLinks = [
   { href: '/create', label: 'Create Room' },
-  { href: '/join', label: 'Join Room' },
+  { href: EXTENSION_URL, label: 'Get the Extension', external: true },
 ];
 
 const socialLinks = [
@@ -43,11 +45,17 @@ export function Footer() {
           <div className="flex min-w-36 flex-1 flex-col gap-6">
             <span className="text-sm font-bold">Jump In</span>
             <div className="flex flex-col items-start gap-4">
-              {productLinks.map(l => (
-                <Link key={l.href} href={l.href} className={footerLink}>
-                  {l.label}
-                </Link>
-              ))}
+              {productLinks.map(l =>
+                l.external ? (
+                  <a key={l.href} href={l.href} className={footerLink} target="_blank" rel="noopener noreferrer">
+                    {l.label}
+                  </a>
+                ) : (
+                  <Link key={l.href} href={l.href} className={footerLink}>
+                    {l.label}
+                  </Link>
+                )
+              )}
             </div>
           </div>
           <div className="flex min-w-36 flex-1 flex-col gap-6">
