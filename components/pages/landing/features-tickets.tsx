@@ -37,7 +37,7 @@ const features: Feature[] = [
   {
     icon: <ChromeIcon className="h-5 w-5" />,
     title: 'ONE-CLICK CAPTURE',
-    description: 'Detect videos on any site. Click to start. That\'s it.',
+    description: "Detect videos on any site. Click to start. That's it.",
     serial: '#00286',
     highlight: 'EXTENSION',
   },

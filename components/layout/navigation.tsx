@@ -84,7 +84,12 @@ export function Navigation() {
                   </DropdownMenuItem>
                 ))}
                 <DropdownMenuItem asChild>
-                  <a href={EXTENSION_URL} target="_blank" rel="noopener noreferrer" className="flex items-center space-x-2 text-primary">
+                  <a
+                    href={EXTENSION_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center space-x-2 text-primary"
+                  >
                     <ChromeIcon className="h-4 w-4" />
                     <span>Get Extension</span>
                   </a>
