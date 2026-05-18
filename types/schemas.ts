@@ -134,6 +134,9 @@ export const RoomSchema = z.object({
   videoMeta: VideoMetaSchema.optional(),
   // Room settings for host controls (lock, passcode, chat lock)
   settings: RoomSettingsSchema.optional(),
+  // OTT room support (v1.3)
+  roomType: z.enum(['standard', 'ott']).default('standard'),
+  ottUrl: z.string().url().optional(),
 });
 
 // Socket event schemas
