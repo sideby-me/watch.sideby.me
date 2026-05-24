@@ -15,6 +15,7 @@ export default function OttRoomPage({ params }: { params: Promise<{ roomId: stri
   const router = useRouter();
   const [roomData, setRoomData] = useState<{ ottUrl: string; roomType: string } | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [fetchError, setFetchError] = useState(false);
   const [extensionDetected, setExtensionDetected] = useState<boolean | null>(null);
   const [manualJoinFeedback, setManualJoinFeedback] = useState<string | null>(null);
 
@@ -25,6 +26,7 @@ export default function OttRoomPage({ params }: { params: Promise<{ roomId: stri
       .then((data: { ottUrl: string; roomType: string }) => setRoomData(data))
       .catch((err: unknown) => {
         if (err === 404) setNotFound(true);
+        else setFetchError(true);
       });
   }, [roomId]);
 
@@ -61,6 +63,28 @@ export default function OttRoomPage({ params }: { params: Promise<{ roomId: stri
       return () => clearInterval(poll);
     }
   }, [extensionDetected, roomData]);
+
+  // Fetch error state: non-404 failure (network, CORS, 5xx)
+  if (fetchError) {
+    return (
+      <div className="px-4 py-6 sm:px-8 sm:py-8 lg:px-14 lg:py-14">
+        <Card className="mx-auto flex max-w-screen-2xl flex-col items-center justify-center gap-6 rounded-lg border border-border bg-background p-6 sm:gap-8 sm:p-12 lg:gap-12 lg:p-24">
+          <Icon size="xl" variant="secondary">
+            <CircleX />
+          </Icon>
+          <h1 className="whitespace-pre-wrap text-4xl font-bold tracking-tighter sm:text-6xl lg:text-8xl">
+            Something Went Wrong
+          </h1>
+          <p className="text-sm font-bold tracking-tight text-neutral-400 sm:text-base" role="alert">
+            Couldn&apos;t load the room. Check your connection and try again.
+          </p>
+          <Button size="lg" onClick={() => window.location.reload()}>
+            Retry
+          </Button>
+        </Card>
+      </div>
+    );
+  }
 
   // Loading state: awaiting room fetch or extension detection
   if (!notFound && (!roomData || extensionDetected === null)) {
