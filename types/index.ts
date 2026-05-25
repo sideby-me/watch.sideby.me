@@ -83,6 +83,9 @@ export interface SocketEvents {
   // Room settings events
   'update-room-settings': (data: UpdateRoomSettingsData) => void;
   'room-settings-updated': (data: RoomSettingsUpdatedResponse) => void;
+  // User rename events
+  'update-user-name': (data: { roomId: string; newName: string }) => void;
+  'user-renamed': (data: { userId: string; userName: string }) => void;
   'passcode-required': (data: PasscodeRequiredResponse) => void;
   'verify-passcode': (data: VerifyPasscodeData) => void;
 
