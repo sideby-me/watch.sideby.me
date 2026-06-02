@@ -22,7 +22,7 @@ export default function OttRoomPage({ params }: { params: Promise<{ roomId: stri
   // Effect 1: Fetch room data from sync.sideby.me
   useEffect(() => {
     fetch(`${process.env.NEXT_PUBLIC_SYNC_URL}/api/rooms/${roomId}`)
-      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(r => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((data: { ottUrl: string; roomType: string }) => setRoomData(data))
       .catch((err: unknown) => {
         if (err === 404) setNotFound(true);
@@ -144,9 +144,7 @@ export default function OttRoomPage({ params }: { params: Promise<{ roomId: stri
           Get the Extension First
         </h1>
         <div className="flex w-full flex-col items-start justify-center gap-2 sm:gap-4">
-          <h2 className="text-2xl font-extrabold tracking-tighter text-primary sm:text-3xl">
-            Almost there
-          </h2>
+          <h2 className="text-2xl font-extrabold tracking-tighter text-primary sm:text-3xl">Almost there</h2>
           <p className="text-sm font-bold tracking-tight text-neutral-400 sm:text-base">
             Install the sideby extension to join the Netflix watch party.
           </p>
