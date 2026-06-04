@@ -23,7 +23,8 @@ This guide lists what reviewers look for in changes to watch.sideby.me.
 
 ## Logging
 
-- Client-side logging uses helpers from `src/core/logger/`.
+- Client-side code uses helpers from `src/core/logger/` (`logRoom`, `logVideo`, etc.).
+- Server-side API route code uses `logEvent` from `src/lib/logger.ts`.
 - No ad-hoc `console.log` in shipped code.
 
 ## Performance and reliability

@@ -26,8 +26,9 @@ Shared client infrastructure (socket provider, logger, notifications, video prim
 
 ## Client logging
 
-- Use domain helpers from `src/core/logger/` for structured logging.
-- Prefer structured logs over ad-hoc `console.log`.
+- In client-side code, use domain helpers from `src/core/logger/` (`logRoom`, `logVideo`, etc.). These write to the browser console.
+- In server-side API routes, use `logEvent` from `src/lib/logger.ts`. This writes structured JSON with OTEL-ready fields.
+- Never use raw `console.log` in shipped code.
 
 ## Error handling
 

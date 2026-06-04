@@ -17,9 +17,10 @@ watch.sideby.me does not require Redis or Docker directly; those are dependencie
    ```
 2. Copy `.env.example` to `.env.local` and configure:
    ```bash
-   NEXT_PUBLIC_SYNC_URL=http://localhost:3001    # sync.sideby.me
+   NEXT_PUBLIC_SYNC_URL=http://localhost:3001         # sync.sideby.me
    NEXT_PUBLIC_VIDEO_PROXY_URL=http://localhost:8787  # pipe.sideby.me (optional)
-   OPENSUBTITLES_API_KEY=your_key               # optional, for subtitle search
+   NEXT_PUBLIC_METERED_API_KEY=                       # optional, TURN server for WebRTC
+   OPENSUBTITLES_API_KEY=your_key                     # optional, for subtitle search
    ```
 
 ## Running the app

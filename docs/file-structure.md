@@ -5,9 +5,14 @@ This is a high-level overview of the watch.sideby.me file structure as implement
 - `app/`
   - Next.js App Router routes. Kept thin; delegate to `src/features/` (e.g. `app/room/[roomId]/page.tsx` renders `RoomShell` from `src/features/room`).
   - `app/api/subtitles/` — OpenSubtitles proxy (search + download).
+  - `app/ott/[roomId]/` — OTT join page: fetches room data from sync REST API, detects Chrome extension, then redirects to the streaming service URL with the room ID appended. Does not use Socket.IO.
   - Legal pages: `privacy`, `terms`, `cookie-policy`, `legal`.
 - `components/`
-  - Generic layout and UI components shared across the app (`components/layout/*`, `components/ui/*`). Domain-specific UI lives under `src/features/` instead.
+  - Generic layout and UI components shared across the app:
+    - `components/layout/` — navigation, footer, legal layout wrapper.
+    - `components/ui/` — shadcn/ui primitives (button, dialog, card, etc.).
+    - `components/pages/` — marketing/landing page sections (hero, features, how-it-works, CTA).
+  - Domain-specific UI lives under `src/features/` instead.
 - `src/core/`
   - Cross-cutting client infrastructure:
     - `socket/` — `SocketProvider`, `useSocket()` hook, Socket.IO connection management.
@@ -30,8 +35,12 @@ This is a high-level overview of the watch.sideby.me file structure as implement
     - `subtitles/` — Subtitle upload and OpenSubtitles search.
 - `src/lib/`
   - Domain-agnostic utility functions:
-    - `telemetry/` — OTEL client setup.
-    - `video/` — Video URL utilities and helpers.
+    - `logger.ts` — Structured JSON logger used by server-side API routes. Emits OTEL telemetry via `src/lib/telemetry/logs.ts` and redacts sensitive fields before output. Exports `logEvent` and `logVideoEvent`. (Different from the client-side helpers in `src/core/logger/`.)
+    - `telemetry/logs.ts` — OTEL log emitter (`emitWatchTelemetryLog`). Wraps `@opentelemetry/api-logs`.
+    - `video-proxy-client.ts` — Builds pipe.sideby.me proxy URLs (`buildProxyUrl`, `buildLensPlaybackUrl`); gated on `NEXT_PUBLIC_VIDEO_PROXY_URL`.
+    - `feature-flags.ts` — Feature flag system; currently exposes `SUBTITLES_SUPPORT` (overridable via `NEXT_PUBLIC_FF_*` env vars).
+    - `session-storage.ts` — `roomSessionStorage` helper: persists and retrieves host token and join data across short navigations (5-minute TTL).
+    - `video/` — `blocklist.ts` and `blocklist.json`: URL blocklist with domain/prefix matching and disk persistence. Uses `src/lib/logger.ts` internally. Not currently imported by any other module in this service.
 - `types/`
   - Zod schemas and TypeScript types for socket event contracts and shared data structures.
 - `public/`

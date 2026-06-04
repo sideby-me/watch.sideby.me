@@ -17,9 +17,24 @@ At a high level:
 Video source resolution happens in `sync.sideby.me`. When a video URL is set in a room:
 
 1. The client emits a `set-video` event over Socket.IO.
-2. `sync.sideby.me` runs the 7-tier dispatch pipeline and emits back a `video-change` event with a resolved `playbackUrl` and `videoType`.
+2. `sync.sideby.me` runs the 7-tier dispatch pipeline and emits back a `video-set` event with a resolved `videoUrl`, `videoType`, and optional `videoMeta`.
 3. The client's video primitives (`src/core/video/`) select the appropriate player: HLS via hls.js, YouTube iframe, or direct MP4.
 4. Subsequent play/pause/seek events are coordinated via `src/features/video-sync/`.
+
+When the dispatch results in a Lens capture with low confidence, sync emits `picker-required` to the host socket only. The host sees a `PickerOverlay` (`src/features/picker/`) that lets them select the correct stream; their choice is sent back via `picker-select`.
+
+If a Lens-captured URL later goes stale (4xx on a `uuid=` pipe URL), the client emits `video-stale` to trigger reactive re-extraction. The daemon-triggered refresh path emits `video-url-refresh` from the server.
+
+## OTT rooms
+
+Rooms with `roomType: 'ott'` are for streaming-service watch parties (Netflix, etc.) that require the Chrome extension. The flow lives entirely in `app/ott/[roomId]/page.tsx`:
+
+1. The page fetches room data from `sync.sideby.me`'s REST API (`/api/rooms/:roomId`) — no socket connection.
+2. It detects the Chrome extension by checking `document.documentElement.dataset.sidebyExt === '1'`.
+3. When both are ready, it fires a `sideby:ott-join` CustomEvent (so the extension arms its pending-join state) and immediately does a `router.replace` to the OTT URL with the room ID appended as `?sideby_room=`.
+4. If the extension is missing, it shows an install CTA.
+
+OTT rooms never go through the normal `room/[roomId]` route or the Socket.IO video pipeline.
 
 ## WebRTC
 

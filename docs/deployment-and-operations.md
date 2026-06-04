@@ -31,6 +31,7 @@ OPENSUBTITLES_API_KEY=your_key               # optional
 
 ## Monitoring
 
-- Client-side logs are emitted via `src/core/logger/` and forwarded to OTEL if configured.
+- Client-side logs are written to the browser console via `src/core/logger/`.
+- Server-side API route logs use `src/lib/logger.ts` and write structured JSON to stdout. OTEL export via `src/lib/telemetry/logs.ts` is implemented but requires an OTEL SDK provider to be initialized (see `logging-and-observability.md`).
 - Monitor `sync.sideby.me` for room/chat/video errors — that's where the action is.
 - Watch for Next.js build errors and failed subtitle API calls (`app/api/subtitles/`).

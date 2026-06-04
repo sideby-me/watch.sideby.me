@@ -28,8 +28,9 @@ This guide explains how to work on the watch.sideby.me frontend.
 
 ## Working with client logging
 
-- Use helpers from `src/core/logger/` (`logRoom`, `logVideo`, `logChat`, `logVoice`, `logVideoChat`, `logSubtitles`, `logCast`, `logDebug`).
-- `logDebug` is suppressed in production automatically.
+- Use helpers from `src/core/logger/` (`logRoom`, `logVideo`, `logChat`, `logVoice`, `logVideoChat`, `logSubtitles`, `logCast`, `logDebug`) in React components and client-side hooks.
+- `logDebug` is suppressed in production automatically (requires `NODE_ENV=development`).
+- For server-side code (Next.js API routes), use `logEvent` / `logVideoEvent` from `src/lib/logger.ts` instead. These write structured JSON and support OTEL forwarding.
 
 ## Submitting changes
 
