@@ -95,8 +95,11 @@ export default function OttRoomPage({ params }: { params: Promise<{ roomId: stri
     );
   }
 
-  // Loading state: awaiting room fetch or extension detection
-  if (!notFound && (!roomData || extensionDetected === null)) {
+  // Loading state: awaiting room fetch, extension detection, OR the redirect to
+  // Netflix (extensionDetected === true). Including the `=== true` case keeps the
+  // loading screen on-screen while Effect 3's router.replace runs post-paint —
+  // otherwise the install CTA would flash for one frame before the redirect.
+  if (!notFound && (!roomData || extensionDetected !== false)) {
     return (
       <div className="px-4 py-6 sm:px-8 sm:py-8 lg:px-14 lg:py-14">
         <Card className="mx-auto flex max-w-screen-2xl flex-col items-center justify-center gap-6 rounded-lg border border-border bg-background p-6 sm:gap-8 sm:p-12 lg:gap-12 lg:p-24">
@@ -143,7 +146,7 @@ export default function OttRoomPage({ params }: { params: Promise<{ roomId: stri
         <h1 className="whitespace-pre-wrap text-4xl font-bold tracking-tighter sm:text-6xl lg:text-8xl">
           Get the Extension First
         </h1>
-        <div className="flex w-full flex-col items-start justify-center gap-2 sm:gap-4">
+        <div className="flex w-full flex-col items-center justify-center gap-2 text-center sm:gap-4">
           <h2 className="text-2xl font-extrabold tracking-tighter text-primary sm:text-3xl">Almost there</h2>
           <p className="text-sm font-bold tracking-tight text-neutral-400 sm:text-base">
             Install the sideby extension to join the Netflix watch party.
