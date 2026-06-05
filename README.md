@@ -19,6 +19,8 @@ https://sideby.me/
 
 This is a **frontend-only** Next.js 15 app (App Router). All real-time state lives in [`sync.sideby.me`](https://github.com/sideby-me/sync.sideby.me), a separate Socket.IO server this app connects to via `NEXT_PUBLIC_SYNC_URL`. Video proxying is handled by [`pipe.sideby.me`](https://github.com/sideby-me/pipe.sideby.me).
 
+**OTT rooms** (`app/ott/[roomId]/`) are a separate flow for streaming-service watch parties (Netflix, etc.) that require the Chrome extension. The OTT page fetches room data from `sync.sideby.me`'s REST API, detects the extension, then redirects to the streaming service URL. It does not use Socket.IO.
+
 ## Getting Started
 
 ### Prerequisites
@@ -75,7 +77,11 @@ npm run format:check  # Check formatting
 │   ├── create/             # Room creation page
 │   ├── join/               # Join by room ID
 │   ├── room/[roomId]/      # Watch room
-│   └── (legal)/            # Privacy, terms, cookie policy
+│   ├── ott/[roomId]/       # OTT join page (Netflix etc. — extension required)
+│   ├── privacy/            # Privacy policy
+│   ├── terms/              # Terms of service
+│   ├── cookie-policy/      # Cookie policy
+│   └── legal/              # Legal overview
 ├── src/
 │   ├── core/               # Foundation layer
 │   │   ├── config/         # Theme provider, app config
@@ -96,9 +102,16 @@ npm run format:check  # Check formatting
 │   │   ├── subtitles/      # Subtitle upload + search UI
 │   │   └── video-sync/     # Playback sync controls
 │   └── lib/
-│       ├── telemetry/      # OTEL setup
-│       └── video/          # Video URL utilities
-├── components/             # Shared UI components (shadcn/ui)
+│       ├── logger.ts           # Structured JSON logger (server-side API routes)
+│       ├── feature-flags.ts    # Feature flag system (NEXT_PUBLIC_FF_* env vars)
+│       ├── session-storage.ts  # roomSessionStorage: host token + join data (5 min TTL)
+│       ├── video-proxy-client.ts # Builds pipe.sideby.me proxy URLs
+│       ├── telemetry/          # OTEL log emitter (emitWatchTelemetryLog)
+│       └── video/              # URL blocklist (blocklist.ts + blocklist.json)
+├── components/
+│   ├── layout/             # Navigation, footer, legal layout wrapper
+│   ├── pages/              # Landing page sections (hero, features, CTA)
+│   └── ui/                 # shadcn/ui primitives
 ├── types/                  # Zod schemas for shared types
 └── public/                 # Static assets
 ```
