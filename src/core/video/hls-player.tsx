@@ -355,7 +355,7 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
         playsInline
         preload="metadata"
         controlsList="nodownload noremoteplayback"
-        disablePictureInPicture={!isHost}
+        disablePictureInPicture={false}
         crossOrigin="anonymous"
       />
     );
