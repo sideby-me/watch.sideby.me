@@ -1,6 +1,7 @@
 // List of feature flags
 export const FEATURE_FLAGS = {
   SUBTITLES_SUPPORT: true,
+  SFU_MEDIA: false, // default OFF; flip via NEXT_PUBLIC_FF_SFU_MEDIA=true (requires Vercel redeploy)
 } as const;
 
 export type FeatureFlag = keyof typeof FEATURE_FLAGS;
