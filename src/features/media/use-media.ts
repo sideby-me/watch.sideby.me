@@ -17,6 +17,8 @@ export interface UseMediaReturn {
   error: Error | null;
   /** True when the SFU room is at capacity and rejected the join (D-04). */
   isCallFull: boolean;
+  /** Own opaque participantId from the media token (undefined until the first token fetch). */
+  localParticipantId: string | undefined;
   // Mic
   isMicActive: boolean;
   isMuted: boolean;
@@ -389,6 +391,7 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
   const isConnected = sdkState === 'connected';
   const isConnecting = sdkState === 'connecting' || sdkState === 'reconnecting';
   const participantCount = isConnected ? remoteParticipants.length + 1 : 0;
+  const localParticipantId = mediaTokenResponse?.participantId;
 
   return {
     state: sdkState,
@@ -396,6 +399,7 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
     isConnecting,
     error,
     isCallFull,
+    localParticipantId,
     isMicActive,
     isMuted,
     enableMic,

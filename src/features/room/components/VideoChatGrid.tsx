@@ -1,67 +1,122 @@
 'use client';
 import React, { useEffect, useRef, useMemo } from 'react';
 import { cn } from '@/src/lib/utils';
-import { RemoteVideoStream } from '@/src/features/media/videochat';
 import { User } from '@/types';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Video, VideoOff } from 'lucide-react';
 
+// ── New participantId-keyed prop shape (CUT-02, D-05/D-06) ────────────────────
+
 interface VideoChatGridProps {
   localStream: MediaStream | null;
-  remoteStreams: RemoteVideoStream[];
-  currentUserId: string;
+  /** Own participantId from the media token (undefined until first token fetch). */
+  localParticipantId: string | undefined;
   isCameraOff: boolean;
-  users?: User[];
+  remoteParticipants: Array<{
+    participantId: string;
+    audioTrack: MediaStreamTrack | null;
+    videoTrack: MediaStreamTrack | null;
+  }>;
+  /** Built from the sync roster — maps opaque participantId to the User record. */
+  participantIdToUser: Map<string, User>;
+  /** Set of participantIds currently speaking (from SDK audioLevel — D-03). */
+  speakingParticipantIds: Set<string>;
+  /** Name to display for the local user tile. */
+  localUserName?: string;
   className?: string;
 }
 
 export const VideoChatGrid: React.FC<VideoChatGridProps> = ({
   localStream,
-  remoteStreams,
-  currentUserId,
+  localParticipantId,
   isCameraOff,
+  remoteParticipants,
+  participantIdToUser,
+  speakingParticipantIds,
+  localUserName,
   className,
-  users = [],
 }) => {
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
-  const userMap = useMemo(() => new Map(users.map(u => [u.id, u])), [users]);
+
+  // Wrap localStream video track in a MediaStream for the local tile srcObject
+  const localVideoStream = useMemo(() => {
+    if (!localStream) return null;
+    const videoTracks = localStream.getVideoTracks();
+    return videoTracks.length > 0 ? new MediaStream(videoTracks) : null;
+  }, [localStream]);
 
   useEffect(() => {
-    if (!isCameraOff && localVideoRef.current && localStream) {
-      if (localVideoRef.current.srcObject !== localStream) {
-        localVideoRef.current.srcObject = localStream;
+    if (!isCameraOff && localVideoRef.current && localVideoStream) {
+      if (localVideoRef.current.srcObject !== localVideoStream) {
+        localVideoRef.current.srcObject = localVideoStream;
       }
     }
-  }, [localStream, isCameraOff]);
+  }, [localVideoStream, isCameraOff]);
+
+  const localCameraOff =
+    isCameraOff ||
+    !localStream ||
+    !localStream.getVideoTracks().some(t => t.enabled && t.readyState === 'live');
+
+  const localIsSpeaking =
+    localParticipantId !== undefined && speakingParticipantIds.has(localParticipantId);
+
+  // Local tile label: prefer provided name, fall back to "You"
+  const localLabel = localUserName || 'You';
 
   return (
     <div className={cn('flex flex-wrap justify-center gap-2 rounded-md border border-border p-4', className)}>
+      {/* Local tile */}
       <VideoTile
         local
-        stream={localStream || undefined}
-        userId={currentUserId}
-        isOff={
-          isCameraOff || !localStream || !localStream.getVideoTracks().some(t => t.enabled && t.readyState === 'live')
-        }
-        name={userMap.get(currentUserId)?.name || 'You'}
+        videoTrack={localVideoStream?.getVideoTracks()[0] ?? null}
+        videoStream={localVideoStream}
+        isOff={localCameraOff}
+        name={localLabel}
+        isSpeaking={localIsSpeaking}
         videoRef={localVideoRef}
       />
-      {remoteStreams.map(r => {
-        const track = r.stream.getVideoTracks()[0];
-        const off = !track || track.muted || track.readyState !== 'live' || !track.enabled;
-        const u = userMap.get(r.userId);
-        return <VideoTile key={r.userId} stream={r.stream} userId={r.userId} name={u?.name} isOff={off} />;
+
+      {/* Remote tiles — one per SFU media participant (SFU-decides-tiles, D-06) */}
+      {remoteParticipants.map(p => {
+        const user = participantIdToUser.get(p.participantId);
+        // D-06 graceful fallback: show first 6 chars of opaque id until roster catches up.
+        // The full participantId is never surfaced as a label (T-04-11).
+        const label = user?.name ?? p.participantId.slice(0, 6);
+        const isSpeaking = speakingParticipantIds.has(p.participantId);
+        const videoTrackOff =
+          !p.videoTrack ||
+          p.videoTrack.readyState !== 'live' ||
+          !p.videoTrack.enabled;
+
+        return (
+          <VideoTile
+            key={p.participantId}
+            videoTrack={p.videoTrack}
+            audioTrack={p.audioTrack}
+            isOff={videoTrackOff}
+            name={label}
+            isSpeaking={isSpeaking}
+          />
+        );
       })}
     </div>
   );
 };
 
+// ── VideoTile ──────────────────────────────────────────────────────────────────
+
 interface VideoTileProps {
-  stream?: MediaStream;
-  userId: string;
+  /** For remote tiles: the video MediaStreamTrack from the SDK. */
+  videoTrack?: MediaStreamTrack | null;
+  /** For remote tiles: the audio MediaStreamTrack (unused for srcObject but available). */
+  audioTrack?: MediaStreamTrack | null;
+  /** Pre-built MediaStream for the local tile (avoids redundant new MediaStream calls). */
+  videoStream?: MediaStream | null;
   name?: string;
   isOff: boolean;
   local?: boolean;
+  isSpeaking?: boolean;
   videoRef?: React.RefObject<HTMLVideoElement | null>;
 }
 
@@ -74,20 +129,42 @@ const initialsFromName = (name?: string) =>
     .join('')
     .toUpperCase();
 
-const VideoTile: React.FC<VideoTileProps> = ({ stream, userId, name, isOff, local, videoRef }) => {
+const VideoTile: React.FC<VideoTileProps> = ({
+  videoTrack,
+  videoStream,
+  name,
+  isOff,
+  local,
+  isSpeaking,
+  videoRef,
+}) => {
   const internalRef = useRef<HTMLVideoElement | null>(null);
   const ref = videoRef || internalRef;
+
+  // srcObject wiring: wrap videoTrack in a MediaStream for remote tiles (04-PATTERNS.md srcObject pattern)
   useEffect(() => {
-    if (!isOff && ref.current && stream && ref.current.srcObject !== stream) ref.current.srcObject = stream;
-  }, [stream, isOff, ref]);
+    if (isOff || !ref.current) return;
+    if (videoStream) {
+      // Local tile: use the pre-built stream
+      if (ref.current.srcObject !== videoStream) ref.current.srcObject = videoStream;
+    } else if (videoTrack) {
+      // Remote tile: wrap the single video track in a new MediaStream
+      const stream = new MediaStream([videoTrack]);
+      if (ref.current.srcObject !== stream) ref.current.srcObject = stream;
+    }
+  }, [videoTrack, videoStream, isOff, ref]);
+
   const initials = initialsFromName(name) || '??';
+
   return (
     <div
       className={cn(
-        'group relative aspect-video w-full overflow-hidden rounded-md border border-border bg-primary-50 sm:w-1/3 md:w-1/2 lg:w-1/4'
+        'group relative aspect-video w-full overflow-hidden rounded-md border bg-primary-50 sm:w-1/3 md:w-1/2 lg:w-1/4',
+        // Speaking ring (D-03): SDK audioLevel drives the highlight
+        isSpeaking ? 'border-primary ring-2 ring-primary/60' : 'border-border'
       )}
     >
-      {!isOff && stream ? (
+      {!isOff && (videoStream || videoTrack) ? (
         <video
           ref={ref}
           autoPlay
@@ -104,7 +181,7 @@ const VideoTile: React.FC<VideoTileProps> = ({ stream, userId, name, isOff, loca
       )}
       <div className="absolute bottom-2 left-2 flex items-center gap-1 rounded bg-black/60 px-2 py-1 text-[10px] text-white">
         {isOff ? <VideoOff className="h-3 w-3" /> : <Video className="h-3 w-3" />}
-        <span className="max-w-[70px] truncate">{local ? 'You' : name || userId.slice(0, 6)}</span>
+        <span className="max-w-[70px] truncate">{local ? 'You' : name}</span>
       </div>
     </div>
   );
