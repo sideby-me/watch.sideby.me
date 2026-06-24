@@ -174,4 +174,15 @@ export interface SocketEvents {
   'videochat-peer-left': (data: VideoChatPeerLeaveResponse) => void;
   'videochat-error': (data: VideoChatErrorResponse) => void;
   'videochat-participant-count': (data: VideoChatParticipantCountResponse) => void;
+
+  // SFU media token events (Plan 04-02)
+  'request-media-token': (data: { roomId: string }) => void;
+  'media-token': (data: {
+    sfuUrl: string;
+    mediaRoomId: string;
+    participantId: string;
+    token: string;
+    canPublish: boolean;
+  }) => void;
+  'media-token-error': (data: { error: string }) => void;
 }
