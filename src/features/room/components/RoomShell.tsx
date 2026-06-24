@@ -16,12 +16,14 @@ import { useFullscreenChatOverlay } from '@/src/features/chat/hooks';
 import { useFullscreenPortalContainer, useRoomInitialization } from '@/src/features/room/hooks';
 import { useVoiceChat } from '@/src/features/media/voice';
 import { useVideoChat } from '@/src/features/media/videochat';
+import { useMedia } from '@/src/features/media';
 import { useGoogleCast } from '@/src/features/media/cast';
 import { YouTubePlayerRef } from '@/src/core/video/youtube-player';
 import { VideoPlayerRef } from '@/src/features/video-sync/components/VideoPlayer';
 import { HLSPlayerRef } from '@/src/core/video/hls-player';
 import { formatTimestamp } from '@/src/lib/chat-timestamps';
 import { VOICE_MAX_PARTICIPANTS } from '@/src/lib/constants';
+import { isEnabled } from '@/src/lib/feature-flags';
 
 import { RoomHeader } from './RoomHeader';
 import { RoomVideoSection } from './RoomVideoSection';
@@ -227,30 +229,70 @@ export function RoomShell({ roomId }: RoomShellProps) {
     remoteActionHandlersRef.current.onSeek = handleVideoSeek;
   }, [handleVideoPlay, handleVideoPause, handleVideoSeek]);
 
-  // Voice chat hook
+  // ── Feature flag (compile-time, D-07) ─────────────────────────────────────
+  // Evaluated once at render; compile-time env var, no dynamic switching.
+  const sfuMediaEnabled = isEnabled('SFU_MEDIA');
+
+  // ── Legacy P2P hooks — ALWAYS called (React rules); results used when flag OFF ──
   const voice = useVoiceChat({ roomId, currentUser: core.currentUser });
   const videochat = useVideoChat({ roomId, currentUser: core.currentUser });
 
-  // Voice capacity logic
-  const voiceParticipantCount = voice.isEnabled ? voice.activePeerIds.length + 1 : voice.publicParticipantCount;
-  const overCap = voiceParticipantCount >= VOICE_MAX_PARTICIPANTS;
-  const videoParticipantCount = videochat.isEnabled
-    ? videochat.remoteStreams.length + 1
-    : videochat.publicParticipantCount;
+  // ── SFU media hook — ALWAYS called (React rules); results used when flag ON ──
+  // Pitfall 5 guard: RoomShell is already 'use client', so useMedia import is safe.
+  const media = useMedia({ roomId });
 
-  // Voice/video chat props - memoized for referential stability
+  // ── Voice capacity logic ───────────────────────────────────────────────────
+  // Under SFU path: participant count comes from useMedia; over-cap is surfaced as
+  // media.isCallFull rather than a VOICE_MAX_PARTICIPANTS constant (D-04).
+  const voiceParticipantCount = sfuMediaEnabled
+    ? media.participantCount
+    : voice.isEnabled
+      ? voice.activePeerIds.length + 1
+      : voice.publicParticipantCount;
+  const overCap = sfuMediaEnabled ? media.isCallFull : voiceParticipantCount >= VOICE_MAX_PARTICIPANTS;
+  const videoParticipantCount = sfuMediaEnabled
+    ? media.participantCount
+    : videochat.isEnabled
+      ? videochat.remoteStreams.length + 1
+      : videochat.publicParticipantCount;
+
+  // ── voiceProps: read from useMedia (SFU) or useVoiceChat (legacy) ────────
   const voiceProps = useMemo(
-    () => ({
-      isEnabled: voice.isEnabled,
-      isMuted: voice.isMuted,
-      isConnecting: voice.isConnecting,
-      participantCount: voiceParticipantCount,
-      overCap,
-      onEnable: voice.enable,
-      onDisable: voice.disable,
-      onToggleMute: voice.toggleMute,
-    }),
+    () =>
+      sfuMediaEnabled
+        ? {
+            isEnabled: media.isMicActive,
+            isMuted: media.isMuted,
+            isConnecting: media.isConnecting,
+            participantCount: media.participantCount,
+            overCap: media.isCallFull,
+            onEnable: media.enableMic,
+            onDisable: media.disableMic,
+            onToggleMute: media.toggleMute,
+          }
+        : {
+            isEnabled: voice.isEnabled,
+            isMuted: voice.isMuted,
+            isConnecting: voice.isConnecting,
+            participantCount: voiceParticipantCount,
+            overCap,
+            onEnable: voice.enable,
+            onDisable: voice.disable,
+            onToggleMute: voice.toggleMute,
+          },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
+      sfuMediaEnabled,
+      // SFU fields
+      media.isMicActive,
+      media.isMuted,
+      media.isConnecting,
+      media.participantCount,
+      media.isCallFull,
+      media.enableMic,
+      media.disableMic,
+      media.toggleMute,
+      // Legacy fields
       voice.isEnabled,
       voice.isMuted,
       voice.isConnecting,
@@ -262,17 +304,40 @@ export function RoomShell({ roomId }: RoomShellProps) {
     ]
   );
 
+  // ── videoProps: read from useMedia (SFU) or useVideoChat (legacy) ────────
   const videoProps = useMemo(
-    () => ({
-      isEnabled: videochat.isEnabled,
-      isCameraOff: videochat.isCameraOff,
-      isConnecting: videochat.isConnecting,
-      enable: videochat.enable,
-      disable: videochat.disable,
-      toggleCamera: videochat.toggleCamera,
-      participantCount: videoParticipantCount,
-    }),
+    () =>
+      sfuMediaEnabled
+        ? {
+            isEnabled: media.isCameraActive,
+            isCameraOff: media.isCameraOff,
+            isConnecting: media.isConnecting,
+            enable: media.enableCamera,
+            disable: media.disableCamera,
+            toggleCamera: media.toggleCamera,
+            participantCount: media.participantCount,
+          }
+        : {
+            isEnabled: videochat.isEnabled,
+            isCameraOff: videochat.isCameraOff,
+            isConnecting: videochat.isConnecting,
+            enable: videochat.enable,
+            disable: videochat.disable,
+            toggleCamera: videochat.toggleCamera,
+            participantCount: videoParticipantCount,
+          },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
+      sfuMediaEnabled,
+      // SFU fields
+      media.isCameraActive,
+      media.isCameraOff,
+      media.isConnecting,
+      media.enableCamera,
+      media.disableCamera,
+      media.toggleCamera,
+      media.participantCount,
+      // Legacy fields
       videochat.isEnabled,
       videochat.isCameraOff,
       videochat.isConnecting,
@@ -580,15 +645,56 @@ export function RoomShell({ roomId }: RoomShellProps) {
           />
         </div>
 
-        {/* Video Chat Grid */}
-        {videochat.isEnabled && (
+        {/* Video Chat Grid — SFU path (flag ON) */}
+        {sfuMediaEnabled && (media.isCameraActive || media.remoteParticipants.length > 0) && (
+          <div className="col-span-full mx-6 mt-4">
+            {/* Call full message (D-04): SFU cap rejection */}
+            {media.isCallFull && (
+              <div className="mb-2 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+                The call is full — you&apos;ve been placed in listen-only mode. Try again when a spot opens up.
+              </div>
+            )}
+            {/* Reconnecting indicator (discretion — minimal, RESEARCH Pitfall 5) */}
+            {media.state === 'reconnecting' && (
+              <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+                <Spinner variant="ellipsis" />
+                <span>Reconnecting to media…</span>
+              </div>
+            )}
+            <VideoChatGrid
+              localStream={media.localStream}
+              localParticipantId={media.localParticipantId}
+              isCameraOff={media.isCameraOff}
+              remoteParticipants={media.remoteParticipants}
+              participantIdToUser={core.participantIdToUser}
+              speakingParticipantIds={media.speakingParticipantIds}
+              localUserName={core.currentUser.name}
+              className="w-full"
+            />
+            <div className="mt-1 flex gap-2 text-xs text-muted-foreground">
+              {media.isConnecting && !media.isCallFull && <Spinner variant="ellipsis" />}
+              {media.error && <span className="text-destructive">{media.error.message}</span>}
+            </div>
+          </div>
+        )}
+
+        {/* Video Chat Grid — legacy P2P path (flag OFF) */}
+        {!sfuMediaEnabled && videochat.isEnabled && (
           <div className="col-span-full mx-6 mt-4">
             <VideoChatGrid
               localStream={videochat.localStream}
-              remoteStreams={videochat.remoteStreams}
-              currentUserId={core.currentUser.id}
+              localParticipantId={undefined}
               isCameraOff={videochat.isCameraOff}
-              users={core.room.users}
+              remoteParticipants={videochat.remoteStreams.map(r => ({
+                participantId: r.userId,
+                audioTrack: null,
+                videoTrack: r.stream.getVideoTracks()[0] ?? null,
+              }))}
+              participantIdToUser={
+                new Map(core.room.users.map(u => [u.id, u]))
+              }
+              speakingParticipantIds={new Set<string>()}
+              localUserName={core.currentUser.name}
               className="w-full"
             />
             <div className="mt-1 flex gap-2 text-xs text-muted-foreground">
@@ -604,7 +710,19 @@ export function RoomShell({ roomId }: RoomShellProps) {
           currentUserIsHost={core.currentUser.isHost}
           onPromoteUser={core.handlePromoteUser}
           onKickUser={core.handleKickUser}
-          speakingUserIds={voice.speakingUserIds}
+          speakingUserIds={
+            sfuMediaEnabled
+              ? // Convert participantId-keyed speaking set to userId-keyed for UserList (D-03 / SFU path)
+                (() => {
+                  const speaking = new Set<string>();
+                  media.speakingParticipantIds.forEach(pid => {
+                    const u = core.participantIdToUser.get(pid);
+                    if (u) speaking.add(u.id);
+                  });
+                  return speaking;
+                })()
+              : voice.speakingUserIds
+          }
           className="col-span-full mt-4 rounded-md"
         />
       </div>
