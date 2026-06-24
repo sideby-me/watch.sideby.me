@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Socket } from 'socket.io-client';
 import {
   Room,
@@ -26,6 +26,8 @@ interface UseRoomCoreReturn {
   syncError: string;
   isJoining: boolean;
   captureStatus: string | null;
+  /** Reactive Map<participantId, User> built from roster users that carry a participantId (CUT-02). */
+  participantIdToUser: Map<string, User>;
 
   // Refs
   hasAttemptedJoinRef: React.MutableRefObject<boolean>;
@@ -346,6 +348,19 @@ export function useRoomCore({ roomId, socket, isConnected }: UseRoomCoreOptions)
     };
   }, [socket, isConnected, roomId, room, currentUser]);
 
+  // Build reactive participantId -> User map from the roster (CUT-02, D-05).
+  // Only entries with a defined participantId are included; undefined = pre-SFU / flag-off client.
+  const participantIdToUser = useMemo(
+    () =>
+      new Map(
+        (room?.users ?? []).flatMap(u =>
+          u.participantId ? ([[u.participantId, u]] as [string, User][]) : []
+        )
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [room?.users]
+  );
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -453,6 +468,7 @@ export function useRoomCore({ roomId, socket, isConnected }: UseRoomCoreOptions)
     syncError,
     isJoining,
     captureStatus,
+    participantIdToUser,
 
     // Refs
     hasAttemptedJoinRef,

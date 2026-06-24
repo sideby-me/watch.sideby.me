@@ -46,6 +46,8 @@ export const UserSchema = z.object({
   name: UserNameSchema,
   isHost: z.boolean(),
   joinedAt: z.date(),
+  /** Opaque 22-char HMAC owned by sync; undefined for pre-SFU / flag-off clients (CUT-02). */
+  participantId: z.string().optional(),
 });
 
 export const ChatMessageSchema = z.object({
