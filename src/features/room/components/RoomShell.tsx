@@ -33,6 +33,7 @@ import { RoomDialogs } from './RoomDialogs';
 import { ErrorDisplay, LoadingDisplay, SyncError, GuestInfoBanner } from './RoomStatus';
 import { UserList } from './UserList';
 import { VideoChatGrid } from './VideoChatGrid';
+import { RemoteAudio } from './RemoteAudio';
 import { VideoChatOverlay } from './VideoChatOverlay';
 import { LeaveRoomGuard } from './LeaveRoomGuard';
 import { JoinRoomDialog } from './JoinRoomDialog';
@@ -645,9 +646,17 @@ export function RoomShell({ roomId }: RoomShellProps) {
           />
         </div>
 
-        {/* Video Chat Grid — SFU path (flag ON) */}
-        {sfuMediaEnabled && (media.isCameraActive || media.remoteParticipants.length > 0) && (
+        {/* SFU path (flag ON) — session-active region: renders whenever mic OR camera is on.
+            RemoteAudio is decoupled from the camera gate so voice-only/camera-off users
+            still hear remote audio. Call-full + reconnecting indicators live here too
+            (relevant to voice participants, not just camera). (GAP A1 wire-up, GAP C1) */}
+        {sfuMediaEnabled && (media.isMicActive || media.isCameraActive) && (
           <div className="col-span-full mx-6 mt-4">
+            {/* Remote audio — hidden elements, one per remote participant with an audio track.
+                Mounted here (not inside VideoChatGrid) so audio plays regardless of the
+                local camera state. NOT muted. */}
+            <RemoteAudio remoteParticipants={media.remoteParticipants} />
+
             {/* Call full message (D-04): SFU cap rejection */}
             {media.isCallFull && (
               <div className="mb-2 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-2 text-sm text-destructive">
@@ -661,20 +670,30 @@ export function RoomShell({ roomId }: RoomShellProps) {
                 <span>Reconnecting to media…</span>
               </div>
             )}
-            <VideoChatGrid
-              localStream={media.localStream}
-              localParticipantId={media.localParticipantId}
-              isCameraOff={media.isCameraOff}
-              remoteParticipants={media.remoteParticipants}
-              participantIdToUser={core.participantIdToUser}
-              speakingParticipantIds={media.speakingParticipantIds}
-              localUserName={core.currentUser.name}
-              className="w-full"
-            />
-            <div className="mt-1 flex gap-2 text-xs text-muted-foreground">
-              {media.isConnecting && !media.isCallFull && <Spinner variant="ellipsis" />}
-              {media.error && <span className="text-destructive">{media.error.message}</span>}
-            </div>
+
+            {/* Video grid — gated on LOCAL camera participation ONLY (GAP C1, D-06).
+                Drop the previous remote-presence clause
+                clause: a voice-only user hears audio (RemoteAudio above) but sees no
+                premature remote camera tile until they enable their own camera.
+                Mirrors the proven legacy local-only gate (`videochat.isEnabled`). */}
+            {media.isCameraActive && (
+              <>
+                <VideoChatGrid
+                  localStream={media.localStream}
+                  localParticipantId={media.localParticipantId}
+                  isCameraOff={media.isCameraOff}
+                  remoteParticipants={media.remoteParticipants}
+                  participantIdToUser={core.participantIdToUser}
+                  speakingParticipantIds={media.speakingParticipantIds}
+                  localUserName={core.currentUser.name}
+                  className="w-full"
+                />
+                <div className="mt-1 flex gap-2 text-xs text-muted-foreground">
+                  {media.isConnecting && !media.isCallFull && <Spinner variant="ellipsis" />}
+                  {media.error && <span className="text-destructive">{media.error.message}</span>}
+                </div>
+              </>
+            )}
           </div>
         )}
 
