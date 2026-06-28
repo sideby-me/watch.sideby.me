@@ -148,9 +148,14 @@ const VideoTile: React.FC<VideoTileProps> = ({
       // Local tile: use the pre-built stream
       if (ref.current.srcObject !== videoStream) ref.current.srcObject = videoStream;
     } else if (videoTrack) {
-      // Remote tile: wrap the single video track in a new MediaStream
-      const stream = new MediaStream([videoTrack]);
-      if (ref.current.srcObject !== stream) ref.current.srcObject = stream;
+      // Remote tile: re-attach ONLY when the video-track identity actually changes.
+      // The previous guard `ref.current.srcObject !== stream` was always true (stream
+      // was freshly allocated on every effect run), so srcObject was unconditionally
+      // reassigned, dropping the decode pipeline and causing black-frame/stutter. (GAP B1)
+      const attachedTrack = (ref.current.srcObject as MediaStream | null)?.getVideoTracks()[0];
+      if (attachedTrack?.id !== videoTrack.id) {
+        ref.current.srcObject = new MediaStream([videoTrack]);
+      }
     }
   }, [videoTrack, videoStream, isOff, ref]);
 
