@@ -108,7 +108,13 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
 
-  // Lazy lifecycle: SDK session connects only when mic OR camera is active (D-02)
+  // Lazy lifecycle: SDK session connects only when mic OR camera is active (D-02).
+  // Decision: sdkEnabled = mic OR camera so that a mic-only participant STILL connects a
+  // session (voice needs the SFU transport). The VIDEO grid is gated separately on LOCAL
+  // camera participation (in RoomShell) per D-06: "a remote camera tile renders only after
+  // the LOCAL user has joined the video call." A voice-only participant consumes remote
+  // producers pushed by the SFU on join (SDK/SFU behavior, intentional) but does NOT render
+  // the camera grid — that bandwidth optimization is deferred, not part of this fix. (GAP C2)
   const sdkEnabled = isMicActive || isCameraActive;
 
   // ── Fetch initial token once when sdkEnabled flips true ───────────────────
@@ -212,8 +218,13 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
       const participantId = args[0] as string;
       const volume = args[1] as number;
       setSpeakingParticipantIds(prev => {
+        const isSpeaking = volume > 0.05;
+        const wasSpeaking = prev.has(participantId);
+        // Only allocate a new Set when membership actually changes (avoid re-rendering
+        // the whole grid on every audio-level notification tick)
+        if (isSpeaking === wasSpeaking) return prev;
         const next = new Set(prev);
-        if (volume > 0.05) next.add(participantId);
+        if (isSpeaking) next.add(participantId);
         else next.delete(participantId);
         return next;
       });
@@ -234,6 +245,70 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
       session.off('trackMuted', handleTrackMuted);
       session.off('audioLevel', handleAudioLevel);
     };
+  }, [session]);
+
+  // ── publish-on-session-connect refs (GAP A2) ──────────────────────────────
+  // publishedRef tracks which track kinds are currently published to the LIVE session.
+  // Flags reset on session teardown and set after each successful publish — deduping the
+  // enable-handler path and the effect below so no track is double-published. (T-04-22)
+  const publishedRef = useRef<{ audio: boolean; video: boolean }>({ audio: false, video: false });
+
+  // Mirror active-state booleans into refs so the publish effect can read the latest values
+  // without stale closures (the effect is keyed only on [session]).
+  const isMicActiveRef = useRef(false);
+  const isCameraActiveRef = useRef(false);
+  useEffect(() => { isMicActiveRef.current = isMicActive; }, [isMicActive]);
+  useEffect(() => { isCameraActiveRef.current = isCameraActive; }, [isCameraActive]);
+
+  // ── publish-on-session-connect effect (GAP A2) ────────────────────────────
+  // When session becomes non-null (initial connect OR fresh session after reconnect),
+  // (re)publish any local tracks that were enabled before the session existed.
+  // When session becomes null (disconnect), reset the published flags so the next
+  // session object triggers a full re-publish.
+  useEffect(() => {
+    if (!session) {
+      publishedRef.current = { audio: false, video: false };
+      return;
+    }
+    // Fresh session — reset flags for this session object, then publish active tracks.
+    publishedRef.current = { audio: false, video: false };
+
+    const doPublish = async () => {
+      // Publish mic if active and not yet published to this session
+      if (isMicActiveRef.current && !publishedRef.current.audio) {
+        const audioTrack = localStreamRef.current?.getAudioTracks()[0] ?? null;
+        if (audioTrack) {
+          try {
+            await session.publishMic(audioTrack);
+            publishedRef.current.audio = true;
+            logDebug('other', 'publish_on_connect_audio', '[useMedia] published mic on session connect');
+          } catch (err) {
+            const e = err instanceof Error ? err : new Error(String(err));
+            logDebug('other', 'publish_on_connect_audio_error', '[useMedia] publishMic on connect failed', { error: e.message });
+            toast.error('Microphone error', { description: e.message });
+          }
+        }
+      }
+      // Publish camera if active and not yet published to this session
+      if (isCameraActiveRef.current && !publishedRef.current.video) {
+        const videoTrack = localStreamRef.current?.getVideoTracks()[0] ?? null;
+        if (videoTrack) {
+          try {
+            await session.publishCamera(videoTrack);
+            publishedRef.current.video = true;
+            logDebug('other', 'publish_on_connect_video', '[useMedia] published camera on session connect');
+          } catch (err) {
+            const e = err instanceof Error ? err : new Error(String(err));
+            logDebug('other', 'publish_on_connect_video_error', '[useMedia] publishCamera on connect failed', { error: e.message });
+            toast.error('Camera error', { description: e.message });
+          }
+        }
+      }
+    };
+
+    doPublish();
+  // session is the sole dep: fires on initial connect and on each fresh session after reconnect.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
   // ── Local stream ref (for camera light off on unmount) ─────────────────────
@@ -259,6 +334,8 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
 
       if (session) {
         await session.publishMic(track);
+        // Mark published so the session-connect effect doesn't double-publish (T-04-22)
+        publishedRef.current.audio = true;
       }
     } catch (err) {
       const e = err instanceof Error ? err : new Error(String(err));
@@ -274,6 +351,8 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
     if (session) {
       try { await session.unpublishMic(); } catch { /* ignore */ }
     }
+    // Clear the published flag so a future session reconnect re-publishes correctly
+    publishedRef.current.audio = false;
 
     if (localStreamRef.current) {
       localStreamRef.current.getAudioTracks().forEach(t => {
@@ -317,6 +396,8 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
 
       if (session) {
         await session.publishCamera(track);
+        // Mark published so the session-connect effect doesn't double-publish (T-04-22)
+        publishedRef.current.video = true;
       }
     } catch (err) {
       const e = err instanceof Error ? err : new Error(String(err));
@@ -332,6 +413,8 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
     if (session) {
       try { await session.unpublishCamera(); } catch { /* ignore */ }
     }
+    // Clear the published flag so a future session reconnect re-publishes correctly
+    publishedRef.current.video = false;
 
     if (localStreamRef.current) {
       localStreamRef.current.getVideoTracks().forEach(t => {
