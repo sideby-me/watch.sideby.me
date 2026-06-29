@@ -5,7 +5,19 @@ import { useSocket } from '@/src/core/socket';
 import { logDebug } from '@/src/core/logger';
 import { toast } from 'sonner';
 import { useMediaRoom } from '@sideby-me/media-sdk/react';
-import type { MediaTokenResponse } from '@sideby-me/media-sdk';
+import type { MediaTokenResponse, SfuSession } from '@sideby-me/media-sdk';
+
+// ── SDK version shim ───────────────────────────────────────────────────────────
+// getSnapshot() is available in media-sdk ≥0.2.0. This local type allows the
+// duck-type guard in the session effect to compile without requiring the new
+// package version to be installed. Remove once watch requires ≥0.2.0.
+type SfuSessionWithSnapshot = SfuSession & {
+  getSnapshot(): Array<{
+    participantId: string;
+    audioTrack: MediaStreamTrack | null;
+    videoTrack: MediaStreamTrack | null;
+  }>;
+};
 
 // ── Return surface ─────────────────────────────────────────────────────────────
 
@@ -37,6 +49,10 @@ export interface UseMediaReturn {
     participantId: string;
     audioTrack: MediaStreamTrack | null;
     videoTrack: MediaStreamTrack | null;
+    /** True when the remote peer has paused their audio producer (wire-level mute). */
+    isAudioMuted: boolean;
+    /** True when the remote peer has paused their video producer (shows avatar, not black). */
+    isVideoMuted: boolean;
   }>;
   // Speaking (keyed by opaque participantId from SDK audioLevel event — D-03)
   speakingParticipantIds: Set<string>;
@@ -146,6 +162,8 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
   const [remoteParticipantIds, setRemoteParticipantIds] = useState<string[]>([]);
   const [trackMap, setTrackMap] = useState<Map<string, TrackEntry>>(new Map());
   const [speakingParticipantIds, setSpeakingParticipantIds] = useState<Set<string>>(new Set());
+  // W3: per-participant mute state driven by SDK trackMuted events (producer-paused/resumed).
+  const [mutedTrackKinds, setMutedTrackKinds] = useState<Map<string, Set<'audio' | 'video'>>>(new Map());
 
   useEffect(() => {
     if (!session) return;
@@ -171,6 +189,11 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
       });
       setSpeakingParticipantIds(prev => {
         const next = new Set(prev);
+        next.delete(participantId);
+        return next;
+      });
+      setMutedTrackKinds(prev => {
+        const next = new Map(prev);
         next.delete(participantId);
         return next;
       });
@@ -203,6 +226,17 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
             : { ...existing, video: null };
         return new Map(prev).set(participantId, updated);
       });
+      // Clear mute state for the unsubscribed kind (track no longer exists).
+      setMutedTrackKinds(prev => {
+        const kinds = prev.get(participantId);
+        if (!kinds?.has(kind as 'audio' | 'video')) return prev;
+        const next = new Map(prev);
+        const newKinds = new Set(kinds);
+        newKinds.delete(kind as 'audio' | 'video');
+        if (newKinds.size === 0) next.delete(participantId);
+        else next.set(participantId, newKinds);
+        return next;
+      });
     };
 
     const handleTrackMuted = (...args: unknown[]) => {
@@ -210,7 +244,17 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
       const kind = args[1] as string;
       const muted = args[2] as boolean;
       logDebug('other', 'track_muted', '[useMedia] trackMuted', { participantId, kind, muted });
-      // Track mute state is reflected in the track's enabled flag by mediasoup-client
+      // W3: track mute state per-participant so the UI can show avatar instead of
+      // a black tile when a remote peer pauses their video producer.
+      setMutedTrackKinds(prev => {
+        const next = new Map(prev);
+        const kinds = new Set(next.get(participantId));
+        if (muted) kinds.add(kind as 'audio' | 'video');
+        else kinds.delete(kind as 'audio' | 'video');
+        if (kinds.size === 0) next.delete(participantId);
+        else next.set(participantId, kinds);
+        return next;
+      });
     };
 
     // D-03: speaking driven ONLY by SDK audioLevel event — no Web Audio analyser, no rAF loop
@@ -236,6 +280,22 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
     session.on('trackUnsubscribed', handleTrackUnsubscribed);
     session.on('trackMuted', handleTrackMuted);
     session.on('audioLevel', handleAudioLevel);
+
+    // Initial-connect timing fix: events fired during connect()'s existingProducers loop
+    // are emitted before this useEffect runs (handlers not yet registered). Hydrate state
+    // from the session snapshot immediately after registration so existing participants
+    // are visible on B's first render, not just after the next reconnect.
+    // Runtime guard: getSnapshot() is available in media-sdk ≥0.2.0. The duck-type
+    // check allows the same watch build to work against both old and new SDK versions
+    // while the republish + reinstall is in flight.
+    if (typeof (session as { getSnapshot?: unknown }).getSnapshot === 'function') {
+      const snap = (session as SfuSessionWithSnapshot).getSnapshot();
+      for (const { participantId, audioTrack, videoTrack } of snap) {
+        handleParticipantJoined(participantId);
+        if (audioTrack) handleTrackSubscribed(participantId, audioTrack);
+        if (videoTrack) handleTrackSubscribed(participantId, videoTrack);
+      }
+    }
 
     return () => {
       session.off('participantJoined', handleParticipantJoined);
@@ -446,6 +506,7 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
       setRemoteParticipantIds([]);
       setTrackMap(new Map());
       setSpeakingParticipantIds(new Set());
+      setMutedTrackKinds(new Map());
     }
   }, [sdkEnabled]);
 
@@ -464,10 +525,13 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
 
   const remoteParticipants = remoteParticipantIds.map(participantId => {
     const entry = trackMap.get(participantId) ?? { audio: null, video: null };
+    const mutedKinds = mutedTrackKinds.get(participantId) ?? new Set<'audio' | 'video'>();
     return {
       participantId,
       audioTrack: entry.audio,
       videoTrack: entry.video,
+      isAudioMuted: mutedKinds.has('audio'),
+      isVideoMuted: mutedKinds.has('video'),
     };
   });
 

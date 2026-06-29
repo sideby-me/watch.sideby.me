@@ -16,6 +16,8 @@ interface VideoChatGridProps {
     participantId: string;
     audioTrack: MediaStreamTrack | null;
     videoTrack: MediaStreamTrack | null;
+    /** W3: true when the remote peer's video producer is paused (show avatar, not black). */
+    isVideoMuted?: boolean;
   }>;
   /** Built from the sync roster — maps opaque participantId to the User record. */
   participantIdToUser: Map<string, User>;
@@ -77,17 +79,22 @@ export const VideoChatGrid: React.FC<VideoChatGridProps> = ({
         videoRef={localVideoRef}
       />
 
-      {/* Remote tiles — one per SFU media participant (SFU-decides-tiles, D-06) */}
-      {remoteParticipants.map(p => {
+      {/* Remote tiles — only for participants with a camera track (W2: voice-only peers
+          have no videoTrack and are excluded from the video grid). Within that set,
+          isVideoMuted=true shows the avatar tile rather than a black frame (W3). */}
+      {remoteParticipants.filter(p => p.videoTrack !== null).map(p => {
         const user = participantIdToUser.get(p.participantId);
         // D-06 graceful fallback: show first 6 chars of opaque id until roster catches up.
         // The full participantId is never surfaced as a label (T-04-11).
         const label = user?.name ?? p.participantId.slice(0, 6);
         const isSpeaking = speakingParticipantIds.has(p.participantId);
+        // W3: isVideoMuted reflects server-side producer-paused state. When true, show
+        // avatar instead of a black frame (the track exists but RTP is paused on the SFU).
         const videoTrackOff =
           !p.videoTrack ||
           p.videoTrack.readyState !== 'live' ||
-          !p.videoTrack.enabled;
+          !p.videoTrack.enabled ||
+          !!p.isVideoMuted;
 
         return (
           <VideoTile

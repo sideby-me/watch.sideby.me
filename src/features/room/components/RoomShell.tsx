@@ -245,14 +245,25 @@ export function RoomShell({ roomId }: RoomShellProps) {
   // ── Voice capacity logic ───────────────────────────────────────────────────
   // Under SFU path: participant count comes from useMedia; over-cap is surfaced as
   // media.isCallFull rather than a VOICE_MAX_PARTICIPANTS constant (D-04).
+  //
+  // W1: audio and video counts are split so the header indicators show the correct
+  // per-kind numbers. Audio = peers with a live audio track + self if mic on.
+  // Video = peers with a live video track (muted still counts) + self if camera on.
+  const sfuAudioParticipantCount = media.isConnected
+    ? media.remoteParticipants.filter(p => p.audioTrack !== null).length + (media.isMicActive ? 1 : 0)
+    : 0;
+  const sfuVideoParticipantCount = media.isConnected
+    ? media.remoteParticipants.filter(p => p.videoTrack !== null).length + (media.isCameraActive ? 1 : 0)
+    : 0;
+
   const voiceParticipantCount = sfuMediaEnabled
-    ? media.participantCount
+    ? sfuAudioParticipantCount
     : voice.isEnabled
       ? voice.activePeerIds.length + 1
       : voice.publicParticipantCount;
   const overCap = sfuMediaEnabled ? media.isCallFull : voiceParticipantCount >= VOICE_MAX_PARTICIPANTS;
   const videoParticipantCount = sfuMediaEnabled
-    ? media.participantCount
+    ? sfuVideoParticipantCount
     : videochat.isEnabled
       ? videochat.remoteStreams.length + 1
       : videochat.publicParticipantCount;
@@ -265,7 +276,8 @@ export function RoomShell({ roomId }: RoomShellProps) {
             isEnabled: media.isMicActive,
             isMuted: media.isMuted,
             isConnecting: media.isConnecting,
-            participantCount: media.participantCount,
+            // W1: audio-specific count (peers with live audio track + self if mic on)
+            participantCount: sfuAudioParticipantCount,
             overCap: media.isCallFull,
             onEnable: media.enableMic,
             onDisable: media.disableMic,
@@ -288,7 +300,7 @@ export function RoomShell({ roomId }: RoomShellProps) {
       media.isMicActive,
       media.isMuted,
       media.isConnecting,
-      media.participantCount,
+      sfuAudioParticipantCount,
       media.isCallFull,
       media.enableMic,
       media.disableMic,
@@ -316,7 +328,8 @@ export function RoomShell({ roomId }: RoomShellProps) {
             enable: media.enableCamera,
             disable: media.disableCamera,
             toggleCamera: media.toggleCamera,
-            participantCount: media.participantCount,
+            // W1: video-specific count (peers with live video track + self if camera on)
+            participantCount: sfuVideoParticipantCount,
           }
         : {
             isEnabled: videochat.isEnabled,
@@ -337,7 +350,7 @@ export function RoomShell({ roomId }: RoomShellProps) {
       media.enableCamera,
       media.disableCamera,
       media.toggleCamera,
-      media.participantCount,
+      sfuVideoParticipantCount,
       // Legacy fields
       videochat.isEnabled,
       videochat.isCameraOff,
