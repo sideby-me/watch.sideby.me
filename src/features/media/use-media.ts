@@ -257,12 +257,17 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
       });
     };
 
-    // D-03: speaking driven ONLY by SDK audioLevel event — no Web Audio analyser, no rAF loop
+    // D-03: speaking driven ONLY by SDK audioLevel event — no Web Audio analyser, no rAF loop.
+    // mediasoup AudioLevelObserver reports volume in dBov (negative; ~−127…0; closer to 0 =
+    // louder). The SFU and SDK forward the raw dBov value without normalisation. −60 dBov is
+    // comfortably above the observer's −70 threshold (which filters background noise/silence)
+    // and below the 0 floor — active speech is typically −50…−20 dBov.
+    const SPEAKING_DBOV_THRESHOLD = -60;
     const handleAudioLevel = (...args: unknown[]) => {
       const participantId = args[0] as string;
       const volume = args[1] as number;
       setSpeakingParticipantIds(prev => {
-        const isSpeaking = volume > 0.05;
+        const isSpeaking = volume > SPEAKING_DBOV_THRESHOLD;
         const wasSpeaking = prev.has(participantId);
         // Only allocate a new Set when membership actually changes (avoid re-rendering
         // the whole grid on every audio-level notification tick)
