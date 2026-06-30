@@ -288,11 +288,15 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
     // louder). The SFU and SDK forward the raw dBov value without normalisation. −60 dBov is
     // comfortably above the observer's −70 threshold (which filters background noise/silence)
     // and below the 0 floor — active speech is typically −50…−20 dBov.
-    const SPEAKING_DBOV_THRESHOLD = -60;
-    // Decay window > the SFU's 800ms 'volumes' interval so an actively-speaking peer
-    // stays marked between ticks, but a peer who falls silent is cleared shortly after
-    // their last above-threshold tick (B-04b: the SFU never emits a silence signal).
-    const SPEAKING_DECAY_MS = 1200;
+    // Discord-like responsiveness (B-04b tuning). The SFU AudioLevelObserver now samples
+    // every ~200ms (was 800ms). The observer floor is -70 dBov; -65 here lets moderate
+    // speech light the ring (was -60, which filtered out speech the SFU already reported)
+    // while still ignoring background noise.
+    const SPEAKING_DBOV_THRESHOLD = -65;
+    // Decay window must exceed the SFU sample interval (~200ms) so an actively-speaking peer
+    // stays lit between ticks and through brief word gaps, but releases quickly (~500ms) once
+    // they actually stop — the SFU sends no per-speaker silence signal, so the client decays.
+    const SPEAKING_DECAY_MS = 500;
     const clearSpeaking = (participantId: string) => {
       speakingTimersRef.current.delete(participantId);
       setSpeakingParticipantIds(prev => {

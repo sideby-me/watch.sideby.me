@@ -657,23 +657,23 @@ export function RoomShell({ roomId }: RoomShellProps) {
           />
         </div>
 
-        {/* SFU path (flag ON) — session-active region: renders whenever mic OR camera is on.
-            RemoteAudio is decoupled from the camera gate so voice-only/camera-off users
-            still hear remote audio. Call-full + reconnecting indicators live here too
-            (relevant to voice participants, not just camera). (GAP A1 wire-up, GAP C1) */}
-        {sfuMediaEnabled && (media.isMicActive || media.isCameraActive) && (
-          <div className="col-span-full mx-6 mt-4">
-            {/* Remote audio — hidden elements, one per remote participant with an audio track.
-                Mounted here (not inside VideoChatGrid) so audio plays regardless of the
-                local camera state. NOT muted.
-                B-02: gated on isMicActive ONLY (not the mic-OR-camera session gate). Leaving
-                voice closes the local mic PRODUCER but the SFU keeps pushing remote audio
-                consumers while a surviving camera track keeps the session alive — without this
-                gate a camera-only / left-voice peer would keep hearing everyone. Membership in
-                the voice call (isMicActive) is what should gate remote-audio playback. (Muting
-                keeps isMicActive=true, so a muted-in-voice peer still hears — correct.) */}
-            {media.isMicActive && <RemoteAudio remoteParticipants={media.remoteParticipants} />}
+        {/* Remote audio — hidden <audio> elements, one per remote participant with an audio track.
+            Rendered OUTSIDE the visible wrapper below so an AUDIO-ONLY session does not create an
+            empty margin block under the chat (the wrapper's mt-4 was the stray gap). NOT muted.
+            B-02: gated on isMicActive ONLY (not the mic-OR-camera session gate). Leaving voice
+            closes the local mic PRODUCER but the SFU keeps pushing remote audio consumers while a
+            surviving camera track keeps the session alive — without this gate a camera-only /
+            left-voice peer would keep hearing everyone. (Muting keeps isMicActive=true, so a
+            muted-in-voice peer still hears — correct.) */}
+        {sfuMediaEnabled && media.isMicActive && (
+          <RemoteAudio remoteParticipants={media.remoteParticipants} />
+        )}
 
+        {/* SFU path (flag ON) — VISIBLE region. Only rendered when there is something to show
+            (call-full notice, reconnecting indicator, or the camera grid). An audio-only session
+            renders nothing here, so no empty spacer appears under the chat. (GAP A1/C1) */}
+        {sfuMediaEnabled && (media.isCallFull || media.state === 'reconnecting' || media.isCameraActive) && (
+          <div className="col-span-full mx-6 mt-4">
             {/* Call full message (D-04): SFU cap rejection */}
             {media.isCallFull && (
               <div className="mb-2 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-2 text-sm text-destructive">
