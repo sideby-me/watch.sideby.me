@@ -1,9 +1,5 @@
 // Media Caps & Timeouts
 
-/** Maximum participants allowed in voice chat */
-export const VOICE_MAX_PARTICIPANTS = 5;
-/** Maximum participants allowed in video chat */
-export const VIDEO_CHAT_MAX_PARTICIPANTS = 5;
 /** Auto-disconnect timeout when alone in media chat (2 minutes) */
 export const SOLO_USER_TIMEOUT_MS = 120_000;
 
@@ -13,8 +9,6 @@ export const SOLO_USER_TIMEOUT_MS = 120_000;
 export const WEBRTC_CONNECTION_TIMEOUT_MS = 15_000;
 /** Maximum fallback attempts before giving up on a peer connection */
 export const WEBRTC_MAX_FALLBACK_ATTEMPTS = 3;
-/** How long to cache TURN credentials (5 minutes) */
-export const TURN_CREDENTIAL_CACHE_MS = 5 * 60 * 1000;
 
 // Video Sync
 
@@ -26,10 +20,3 @@ export const VIDEO_ERROR_REPORT_DEBOUNCE_MS = 8_000;
 export const SYNC_TOLERANCE_S = 0.4;
 /** Minimum interval (ms) between forced seek corrections to prevent thrashing */
 export const SYNC_COOLDOWN_MS = 3_000;
-
-// Audio Analysis
-
-/** Average frequency threshold for speaking detection */
-export const SPEAKING_DETECTION_THRESHOLD = 20;
-/** FFT size for audio analyser nodes */
-export const ANALYSER_FFT_SIZE = 512;
