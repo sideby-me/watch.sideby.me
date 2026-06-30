@@ -39,8 +39,7 @@ const RemoteAudioElement: React.FC<RemoteAudioElementProps> = ({ participantId, 
       const toastId = 'remote-audio-autoplay';
       toast.message('Enable audio', {
         id: toastId,
-        description:
-          'Your browser is blocking audio. Click anywhere on the page to unmute participants.',
+        description: 'Your browser is blocking audio. Click anywhere on the page to unmute participants.',
         duration: Infinity,
       });
 
@@ -103,11 +102,7 @@ export const RemoteAudio: React.FC<RemoteAudioProps> = ({ remoteParticipants }) 
   return (
     <>
       {withAudio.map(p => (
-        <RemoteAudioElement
-          key={p.participantId}
-          participantId={p.participantId}
-          audioTrack={p.audioTrack!}
-        />
+        <RemoteAudioElement key={p.participantId} participantId={p.participantId} audioTrack={p.audioTrack!} />
       ))}
     </>
   );

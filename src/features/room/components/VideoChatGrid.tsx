@@ -50,9 +50,7 @@ export const VideoChatGrid: React.FC<VideoChatGridProps> = ({
   }, [localVideoStream, isCameraOff]);
 
   const localCameraOff =
-    isCameraOff ||
-    !localStream ||
-    !localStream.getVideoTracks().some(t => t.enabled && t.readyState === 'live');
+    isCameraOff || !localStream || !localStream.getVideoTracks().some(t => t.enabled && t.readyState === 'live');
 
   // Local tile label: prefer provided name, fall back to "You"
   const localLabel = localUserName || 'You';
@@ -72,29 +70,28 @@ export const VideoChatGrid: React.FC<VideoChatGridProps> = ({
       {/* Remote tiles — only for participants with a camera track (W2: voice-only peers
           have no videoTrack and are excluded from the video grid). Within that set,
           isVideoMuted=true shows the avatar tile rather than a black frame (W3). */}
-      {remoteParticipants.filter(p => p.videoTrack !== null).map(p => {
-        const user = participantIdToUser.get(p.participantId);
-        // D-06 graceful fallback: show first 6 chars of opaque id until roster catches up.
-        // The full participantId is never surfaced as a label (T-04-11).
-        const label = user?.name ?? p.participantId.slice(0, 6);
-        // W3: isVideoMuted reflects server-side producer-paused state. When true, show
-        // avatar instead of a black frame (the track exists but RTP is paused on the SFU).
-        const videoTrackOff =
-          !p.videoTrack ||
-          p.videoTrack.readyState !== 'live' ||
-          !p.videoTrack.enabled ||
-          !!p.isVideoMuted;
+      {remoteParticipants
+        .filter(p => p.videoTrack !== null)
+        .map(p => {
+          const user = participantIdToUser.get(p.participantId);
+          // D-06 graceful fallback: show first 6 chars of opaque id until roster catches up.
+          // The full participantId is never surfaced as a label (T-04-11).
+          const label = user?.name ?? p.participantId.slice(0, 6);
+          // W3: isVideoMuted reflects server-side producer-paused state. When true, show
+          // avatar instead of a black frame (the track exists but RTP is paused on the SFU).
+          const videoTrackOff =
+            !p.videoTrack || p.videoTrack.readyState !== 'live' || !p.videoTrack.enabled || !!p.isVideoMuted;
 
-        return (
-          <VideoTile
-            key={p.participantId}
-            videoTrack={p.videoTrack}
-            audioTrack={p.audioTrack}
-            isOff={videoTrackOff}
-            name={label}
-          />
-        );
-      })}
+          return (
+            <VideoTile
+              key={p.participantId}
+              videoTrack={p.videoTrack}
+              audioTrack={p.audioTrack}
+              isOff={videoTrackOff}
+              name={label}
+            />
+          );
+        })}
     </div>
   );
 };
@@ -123,14 +120,7 @@ const initialsFromName = (name?: string) =>
     .join('')
     .toUpperCase();
 
-const VideoTile: React.FC<VideoTileProps> = ({
-  videoTrack,
-  videoStream,
-  name,
-  isOff,
-  local,
-  videoRef,
-}) => {
+const VideoTile: React.FC<VideoTileProps> = ({ videoTrack, videoStream, name, isOff, local, videoRef }) => {
   const internalRef = useRef<HTMLVideoElement | null>(null);
   const ref = videoRef || internalRef;
 

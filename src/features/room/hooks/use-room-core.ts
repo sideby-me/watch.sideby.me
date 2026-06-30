@@ -352,11 +352,7 @@ export function useRoomCore({ roomId, socket, isConnected }: UseRoomCoreOptions)
   // Only entries with a defined participantId are included; undefined = pre-SFU / flag-off client.
   const participantIdToUser = useMemo(
     () =>
-      new Map(
-        (room?.users ?? []).flatMap(u =>
-          u.participantId ? ([[u.participantId, u]] as [string, User][]) : []
-        )
-      ),
+      new Map((room?.users ?? []).flatMap(u => (u.participantId ? ([[u.participantId, u]] as [string, User][]) : []))),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [room?.users]
   );

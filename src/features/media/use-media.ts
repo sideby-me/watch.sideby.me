@@ -80,13 +80,7 @@ interface TrackEntry {
 
 // ── SFU cap error detection (D-04) ────────────────────────────────────────────
 
-const CALL_FULL_PATTERNS = [
-  /room.+full/i,
-  /capacity/i,
-  /max.+participant/i,
-  /participant.+limit/i,
-  /cap.+reach/i,
-];
+const CALL_FULL_PATTERNS = [/room.+full/i, /capacity/i, /max.+participant/i, /participant.+limit/i, /cap.+reach/i];
 
 function isCallFullError(err: Error): boolean {
   return CALL_FULL_PATTERNS.some(p => p.test(err.message));
@@ -114,7 +108,7 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
         return;
       }
       // SocketEvents now includes media-token / media-token-error / request-media-token
-      s.once('media-token', (data) => resolve(data as MediaTokenResponse));
+      s.once('media-token', data => resolve(data as MediaTokenResponse));
       s.once('media-token-error', ({ error }: { error: string }) => reject(new Error(error)));
       s.emit('request-media-token', { roomId });
     });
@@ -147,12 +141,16 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
         logDebug('other', 'initial_token_error', '[useMedia] initial getToken failed', { error: err.message });
         toast.error('Media error', { description: err.message });
       });
-  // getToken is intentionally excluded from deps (stable ref, T-04-06)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // getToken is intentionally excluded from deps (stable ref, T-04-06)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sdkEnabled, mediaTokenResponse]);
 
   // ── Connect via SDK ────────────────────────────────────────────────────────
-  const { session, state: sdkState, error: sdkError } = useMediaRoom({
+  const {
+    session,
+    state: sdkState,
+    error: sdkError,
+  } = useMediaRoom({
     url: mediaTokenResponse?.sfuUrl ?? '',
     token: mediaTokenResponse?.token ?? '',
     getToken,
@@ -193,9 +191,7 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
     const handleParticipantJoined = (...args: unknown[]) => {
       const participantId = args[0] as string;
       logDebug('other', 'participant_joined', '[useMedia] participantJoined', { participantId });
-      setRemoteParticipantIds(prev =>
-        prev.includes(participantId) ? prev : [...prev, participantId]
-      );
+      setRemoteParticipantIds(prev => (prev.includes(participantId) ? prev : [...prev, participantId]));
     };
 
     const handleParticipantLeft = (...args: unknown[]) => {
@@ -232,9 +228,7 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
       setTrackMap(prev => {
         const existing = prev.get(participantId) ?? { audio: null, video: null };
         const updated: TrackEntry =
-          track.kind === 'audio'
-            ? { ...existing, audio: track }
-            : { ...existing, video: track };
+          track.kind === 'audio' ? { ...existing, audio: track } : { ...existing, video: track };
         return new Map(prev).set(participantId, updated);
       });
     };
@@ -246,10 +240,7 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
       setTrackMap(prev => {
         const existing = prev.get(participantId);
         if (!existing) return prev;
-        const updated: TrackEntry =
-          kind === 'audio'
-            ? { ...existing, audio: null }
-            : { ...existing, video: null };
+        const updated: TrackEntry = kind === 'audio' ? { ...existing, audio: null } : { ...existing, video: null };
         return new Map(prev).set(participantId, updated);
       });
       // Clear mute state for the unsubscribed kind (track no longer exists).
@@ -317,7 +308,7 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
       if (existing) clearTimeout(existing);
       speakingTimersRef.current.set(
         participantId,
-        setTimeout(() => clearSpeaking(participantId), SPEAKING_DECAY_MS),
+        setTimeout(() => clearSpeaking(participantId), SPEAKING_DECAY_MS)
       );
 
       setSpeakingParticipantIds(prev => {
@@ -376,8 +367,12 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
   // without stale closures (the effect is keyed only on [session]).
   const isMicActiveRef = useRef(false);
   const isCameraActiveRef = useRef(false);
-  useEffect(() => { isMicActiveRef.current = isMicActive; }, [isMicActive]);
-  useEffect(() => { isCameraActiveRef.current = isCameraActive; }, [isCameraActive]);
+  useEffect(() => {
+    isMicActiveRef.current = isMicActive;
+  }, [isMicActive]);
+  useEffect(() => {
+    isCameraActiveRef.current = isCameraActive;
+  }, [isCameraActive]);
 
   // ── publish-on-session-connect effect (GAP A2) ────────────────────────────
   // When session becomes non-null (initial connect OR fresh session after reconnect),
@@ -403,7 +398,9 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
             logDebug('other', 'publish_on_connect_audio', '[useMedia] published mic on session connect');
           } catch (err) {
             const e = err instanceof Error ? err : new Error(String(err));
-            logDebug('other', 'publish_on_connect_audio_error', '[useMedia] publishMic on connect failed', { error: e.message });
+            logDebug('other', 'publish_on_connect_audio_error', '[useMedia] publishMic on connect failed', {
+              error: e.message,
+            });
             toast.error('Microphone error', { description: e.message });
           }
         }
@@ -418,7 +415,9 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
             logDebug('other', 'publish_on_connect_video', '[useMedia] published camera on session connect');
           } catch (err) {
             const e = err instanceof Error ? err : new Error(String(err));
-            logDebug('other', 'publish_on_connect_video_error', '[useMedia] publishCamera on connect failed', { error: e.message });
+            logDebug('other', 'publish_on_connect_video_error', '[useMedia] publishCamera on connect failed', {
+              error: e.message,
+            });
             toast.error('Camera error', { description: e.message });
           }
         }
@@ -426,8 +425,8 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
     };
 
     doPublish();
-  // session is the sole dep: fires on initial connect and on each fresh session after reconnect.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // session is the sole dep: fires on initial connect and on each fresh session after reconnect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
   // ── Local stream ref (for camera light off on unmount) ─────────────────────
@@ -468,7 +467,11 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
     setIsMuted(false);
 
     if (session) {
-      try { await session.unpublishMic(); } catch { /* ignore */ }
+      try {
+        await session.unpublishMic();
+      } catch {
+        /* ignore */
+      }
     }
     // Clear the published flag so a future session reconnect re-publishes correctly
     publishedRef.current.audio = false;
@@ -492,7 +495,9 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
       });
     }
     if (localStreamRef.current) {
-      localStreamRef.current.getAudioTracks().forEach(t => { t.enabled = !next; });
+      localStreamRef.current.getAudioTracks().forEach(t => {
+        t.enabled = !next;
+      });
     }
   }, [isMuted, session]);
 
@@ -530,7 +535,11 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
     setIsCameraOff(true);
 
     if (session) {
-      try { await session.unpublishCamera(); } catch { /* ignore */ }
+      try {
+        await session.unpublishCamera();
+      } catch {
+        /* ignore */
+      }
     }
     // Clear the published flag so a future session reconnect re-publishes correctly
     publishedRef.current.video = false;
@@ -554,7 +563,9 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
       });
     }
     if (localStreamRef.current) {
-      localStreamRef.current.getVideoTracks().forEach(t => { t.enabled = !next; });
+      localStreamRef.current.getVideoTracks().forEach(t => {
+        t.enabled = !next;
+      });
     }
   }, [isCameraOff, session]);
 
@@ -580,7 +591,7 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
       localStreamRef.current?.getTracks().forEach(t => t.stop());
       localStreamRef.current = null;
     },
-    [],
+    []
   );
 
   // ── SFU media-presence: room-wide per-kind counts (B-01 / B-03) ────────────
@@ -617,8 +628,7 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
     const s = socket;
     if (!s) return;
 
-    const emitPresence = () =>
-      s.emit('sfu-media-presence', { roomId, audio: isMicActive, video: isCameraActive });
+    const emitPresence = () => s.emit('sfu-media-presence', { roomId, audio: isMicActive, video: isCameraActive });
 
     s.on('connect', emitPresence);
     if (s.connected) emitPresence();

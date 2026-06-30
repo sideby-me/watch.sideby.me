@@ -17,6 +17,12 @@ jobs:
     name: Build & Lint
     runs-on: ubuntu-latest
 
+    # Needed so the GITHUB_TOKEN can read the private @sideby-me/* packages
+    # (media-sdk + media-sdk-types) from GitHub Packages during `npm ci`.
+    permissions:
+      contents: read
+      packages: read
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -24,11 +30,17 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          # Several deps (mediasoup-client, vite 8, vitest 4) require Node >=20/22.
+          node-version: '22'
           cache: 'npm'
 
       - name: Install Dependencies
         run: npm ci
+        env:
+          # .npmrc reads ${NODE_AUTH_TOKEN} for npm.pkg.github.com. Prefer a PAT
+          # secret (PACKAGES_READ_TOKEN) if present; otherwise fall back to the
+          # workflow GITHUB_TOKEN (works once the package grants this repo read access).
+          NODE_AUTH_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Check Code Formatting
         run: npm run format:check

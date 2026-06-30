@@ -665,9 +665,7 @@ export function RoomShell({ roomId }: RoomShellProps) {
             surviving camera track keeps the session alive — without this gate a camera-only /
             left-voice peer would keep hearing everyone. (Muting keeps isMicActive=true, so a
             muted-in-voice peer still hears — correct.) */}
-        {sfuMediaEnabled && media.isMicActive && (
-          <RemoteAudio remoteParticipants={media.remoteParticipants} />
-        )}
+        {sfuMediaEnabled && media.isMicActive && <RemoteAudio remoteParticipants={media.remoteParticipants} />}
 
         {/* SFU path (flag ON) — VISIBLE region. Only rendered when there is something to show
             (call-full notice, reconnecting indicator, or the camera grid). An audio-only session
@@ -723,9 +721,7 @@ export function RoomShell({ roomId }: RoomShellProps) {
                 audioTrack: null,
                 videoTrack: r.stream.getVideoTracks()[0] ?? null,
               }))}
-              participantIdToUser={
-                new Map(core.room.users.map(u => [u.id, u]))
-              }
+              participantIdToUser={new Map(core.room.users.map(u => [u.id, u]))}
               localUserName={core.currentUser.name}
               className="w-full"
             />
