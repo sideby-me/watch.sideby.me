@@ -246,15 +246,13 @@ export function RoomShell({ roomId }: RoomShellProps) {
   // Under SFU path: participant count comes from useMedia; over-cap is surfaced as
   // media.isCallFull rather than a VOICE_MAX_PARTICIPANTS constant (D-04).
   //
-  // W1: audio and video counts are split so the header indicators show the correct
-  // per-kind numbers. Audio = peers with a live audio track + self if mic on.
-  // Video = peers with a live video track (muted still counts) + self if camera on.
-  const sfuAudioParticipantCount = media.isConnected
-    ? media.remoteParticipants.filter(p => p.audioTrack !== null).length + (media.isMicActive ? 1 : 0)
-    : 0;
-  const sfuVideoParticipantCount = media.isConnected
-    ? media.remoteParticipants.filter(p => p.videoTrack !== null).length + (media.isCameraActive ? 1 : 0)
-    : 0;
+  // W1 + B-01/B-03: audio and video counts are split per-kind AND sourced from the
+  // room-wide sync presence channel (sfu-media-count) rather than the LOCAL SfuSession.
+  // This makes the indicators presence-driven: a non-participant sees who is on each
+  // call (B-01) and the counts survive the local session tearing down on leave (B-03),
+  // instead of collapsing to 0 whenever this client isn't consuming that kind.
+  const sfuAudioParticipantCount = media.audioParticipantCount;
+  const sfuVideoParticipantCount = media.videoParticipantCount;
 
   const voiceParticipantCount = sfuMediaEnabled
     ? sfuAudioParticipantCount
@@ -667,8 +665,14 @@ export function RoomShell({ roomId }: RoomShellProps) {
           <div className="col-span-full mx-6 mt-4">
             {/* Remote audio — hidden elements, one per remote participant with an audio track.
                 Mounted here (not inside VideoChatGrid) so audio plays regardless of the
-                local camera state. NOT muted. */}
-            <RemoteAudio remoteParticipants={media.remoteParticipants} />
+                local camera state. NOT muted.
+                B-02: gated on isMicActive ONLY (not the mic-OR-camera session gate). Leaving
+                voice closes the local mic PRODUCER but the SFU keeps pushing remote audio
+                consumers while a surviving camera track keeps the session alive — without this
+                gate a camera-only / left-voice peer would keep hearing everyone. Membership in
+                the voice call (isMicActive) is what should gate remote-audio playback. (Muting
+                keeps isMicActive=true, so a muted-in-voice peer still hears — correct.) */}
+            {media.isMicActive && <RemoteAudio remoteParticipants={media.remoteParticipants} />}
 
             {/* Call full message (D-04): SFU cap rejection */}
             {media.isCallFull && (
@@ -693,11 +697,9 @@ export function RoomShell({ roomId }: RoomShellProps) {
               <>
                 <VideoChatGrid
                   localStream={media.localStream}
-                  localParticipantId={media.localParticipantId}
                   isCameraOff={media.isCameraOff}
                   remoteParticipants={media.remoteParticipants}
                   participantIdToUser={core.participantIdToUser}
-                  speakingParticipantIds={media.speakingParticipantIds}
                   localUserName={core.currentUser.name}
                   className="w-full"
                 />
@@ -715,7 +717,6 @@ export function RoomShell({ roomId }: RoomShellProps) {
           <div className="col-span-full mx-6 mt-4">
             <VideoChatGrid
               localStream={videochat.localStream}
-              localParticipantId={undefined}
               isCameraOff={videochat.isCameraOff}
               remoteParticipants={videochat.remoteStreams.map(r => ({
                 participantId: r.userId,
@@ -725,7 +726,6 @@ export function RoomShell({ roomId }: RoomShellProps) {
               participantIdToUser={
                 new Map(core.room.users.map(u => [u.id, u]))
               }
-              speakingParticipantIds={new Set<string>()}
               localUserName={core.currentUser.name}
               className="w-full"
             />

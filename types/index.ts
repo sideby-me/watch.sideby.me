@@ -185,4 +185,11 @@ export interface SocketEvents {
     canPublish: boolean;
   }) => void;
   'media-token-error': (data: { error: string }) => void;
+
+  // SFU media-presence events (B-01 / B-03) — room-wide per-kind counts
+  // Client -> Server
+  'sfu-media-presence': (data: { roomId: string; audio: boolean; video: boolean }) => void;
+  'request-sfu-media-count': (data: { roomId: string }) => void;
+  // Server -> Client
+  'sfu-media-count': (data: { roomId: string; audioCount: number; videoCount: number }) => void;
 }

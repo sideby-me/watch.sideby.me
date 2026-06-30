@@ -58,6 +58,11 @@ export interface UseMediaReturn {
   speakingParticipantIds: Set<string>;
   // Participant count (remoteParticipants.length + 1 when connected)
   participantCount: number;
+  // Room-wide, presence-driven per-kind counts (B-01 / B-03). Sourced from the sync
+  // `sfu-media-count` broadcast — independent of whether the LOCAL user is on that call,
+  // so a non-participant sees who is on each call and counts survive local teardown.
+  audioParticipantCount: number;
+  videoParticipantCount: number;
 }
 
 // ── Props ──────────────────────────────────────────────────────────────────────
@@ -165,8 +170,23 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
   // W3: per-participant mute state driven by SDK trackMuted events (producer-paused/resumed).
   const [mutedTrackKinds, setMutedTrackKinds] = useState<Map<string, Set<'audio' | 'video'>>>(new Map());
 
+  // B-04(b): per-participant decay timers for the speaking ring. The SFU's
+  // AudioLevelObserver only emits 'volumes' for the loudest few speakers and sends
+  // NO silence signal, so a participant who stops talking never gets a "not speaking"
+  // event — the ring would stick on until they leave. Each audioLevel event (re)arms a
+  // timer that clears the participant after SPEAKING_DECAY_MS of no further events.
+  const speakingTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  // B-01 / B-03: room-wide presence-driven per-kind counts from sync's broadcast.
+  const [audioParticipantCount, setAudioParticipantCount] = useState(0);
+  const [videoParticipantCount, setVideoParticipantCount] = useState(0);
+
   useEffect(() => {
     if (!session) return;
+
+    // Capture the stable timers map for the cleanup closure (B-04b) so the cleanup
+    // doesn't read speakingTimersRef.current at teardown time (react-hooks lint).
+    const speakingTimers = speakingTimersRef.current;
 
     // Named handlers registered with typed wrappers; cast to the generic overload
     // that session.on/off accepts ((...args: unknown[]) => void).
@@ -192,6 +212,12 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
         next.delete(participantId);
         return next;
       });
+      // B-04(b): drop any pending decay timer for the departed participant.
+      const timer = speakingTimersRef.current.get(participantId);
+      if (timer) {
+        clearTimeout(timer);
+        speakingTimersRef.current.delete(participantId);
+      }
       setMutedTrackKinds(prev => {
         const next = new Map(prev);
         next.delete(participantId);
@@ -263,18 +289,39 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
     // comfortably above the observer's −70 threshold (which filters background noise/silence)
     // and below the 0 floor — active speech is typically −50…−20 dBov.
     const SPEAKING_DBOV_THRESHOLD = -60;
+    // Decay window > the SFU's 800ms 'volumes' interval so an actively-speaking peer
+    // stays marked between ticks, but a peer who falls silent is cleared shortly after
+    // their last above-threshold tick (B-04b: the SFU never emits a silence signal).
+    const SPEAKING_DECAY_MS = 1200;
+    const clearSpeaking = (participantId: string) => {
+      speakingTimersRef.current.delete(participantId);
+      setSpeakingParticipantIds(prev => {
+        if (!prev.has(participantId)) return prev;
+        const next = new Set(prev);
+        next.delete(participantId);
+        return next;
+      });
+    };
     const handleAudioLevel = (...args: unknown[]) => {
       const participantId = args[0] as string;
       const volume = args[1] as number;
+      if (volume <= SPEAKING_DBOV_THRESHOLD) return; // below threshold — let the decay timer expire
+
+      // (Re)arm the decay timer so the ring releases ~SPEAKING_DECAY_MS after the
+      // last above-threshold tick (i.e. when the peer goes quiet).
+      const existing = speakingTimersRef.current.get(participantId);
+      if (existing) clearTimeout(existing);
+      speakingTimersRef.current.set(
+        participantId,
+        setTimeout(() => clearSpeaking(participantId), SPEAKING_DECAY_MS),
+      );
+
       setSpeakingParticipantIds(prev => {
-        const isSpeaking = volume > SPEAKING_DBOV_THRESHOLD;
-        const wasSpeaking = prev.has(participantId);
         // Only allocate a new Set when membership actually changes (avoid re-rendering
-        // the whole grid on every audio-level notification tick)
-        if (isSpeaking === wasSpeaking) return prev;
+        // the whole grid on every audio-level notification tick).
+        if (prev.has(participantId)) return prev;
         const next = new Set(prev);
-        if (isSpeaking) next.add(participantId);
-        else next.delete(participantId);
+        next.add(participantId);
         return next;
       });
     };
@@ -309,6 +356,9 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
       session.off('trackUnsubscribed', handleTrackUnsubscribed);
       session.off('trackMuted', handleTrackMuted);
       session.off('audioLevel', handleAudioLevel);
+      // B-04(b): cancel all pending speaking-decay timers for this session.
+      speakingTimers.forEach(clearTimeout);
+      speakingTimers.clear();
     };
   }, [session]);
 
@@ -512,6 +562,9 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
       setTrackMap(new Map());
       setSpeakingParticipantIds(new Set());
       setMutedTrackKinds(new Map());
+      // B-04(b): cancel pending decay timers so a stale timer can't re-clear later.
+      speakingTimersRef.current.forEach(clearTimeout);
+      speakingTimersRef.current.clear();
     }
   }, [sdkEnabled]);
 
@@ -525,6 +578,51 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
     },
     [],
   );
+
+  // ── SFU media-presence: room-wide per-kind counts (B-01 / B-03) ────────────
+  // Listen for the sync `sfu-media-count` broadcast and request the current counts
+  // on mount and on every (re)connect. This is independent of the SDK session, so a
+  // user not on a call (pre-join) and a user whose session has torn down (post-leave)
+  // still get correct counts — fixing the "0 even though a peer is on voice" bugs.
+  useEffect(() => {
+    const s = socket;
+    if (!s) return;
+
+    const handleCount = (data: { roomId: string; audioCount: number; videoCount: number }) => {
+      if (data.roomId !== roomId) return;
+      setAudioParticipantCount(data.audioCount);
+      setVideoParticipantCount(data.videoCount);
+    };
+    const requestCount = () => s.emit('request-sfu-media-count', { roomId });
+
+    s.on('sfu-media-count', handleCount);
+    s.on('connect', requestCount);
+    if (s.connected) requestCount();
+
+    return () => {
+      s.off('sfu-media-count', handleCount);
+      s.off('connect', requestCount);
+    };
+  }, [socket, roomId]);
+
+  // Announce this socket's own per-kind membership whenever mic/camera state changes,
+  // and re-announce on (re)connect so socket.io room membership is restored after a
+  // dropped connection (the new socket starts in no rooms). Best-effort: the server
+  // only honours presence once the join flow has populated socket.data.roomId.
+  useEffect(() => {
+    const s = socket;
+    if (!s) return;
+
+    const emitPresence = () =>
+      s.emit('sfu-media-presence', { roomId, audio: isMicActive, video: isCameraActive });
+
+    s.on('connect', emitPresence);
+    if (s.connected) emitPresence();
+
+    return () => {
+      s.off('connect', emitPresence);
+    };
+  }, [socket, roomId, isMicActive, isCameraActive]);
 
   // ── Derived state ─────────────────────────────────────────────────────────
 
@@ -566,5 +664,7 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
     remoteParticipants,
     speakingParticipantIds,
     participantCount,
+    audioParticipantCount,
+    videoParticipantCount,
   };
 }

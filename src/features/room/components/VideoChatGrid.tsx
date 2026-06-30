@@ -9,8 +9,6 @@ import { Video, VideoOff } from 'lucide-react';
 
 interface VideoChatGridProps {
   localStream: MediaStream | null;
-  /** Own participantId from the media token (undefined until first token fetch). */
-  localParticipantId: string | undefined;
   isCameraOff: boolean;
   remoteParticipants: Array<{
     participantId: string;
@@ -21,8 +19,6 @@ interface VideoChatGridProps {
   }>;
   /** Built from the sync roster — maps opaque participantId to the User record. */
   participantIdToUser: Map<string, User>;
-  /** Set of participantIds currently speaking (from SDK audioLevel — D-03). */
-  speakingParticipantIds: Set<string>;
   /** Name to display for the local user tile. */
   localUserName?: string;
   className?: string;
@@ -30,11 +26,9 @@ interface VideoChatGridProps {
 
 export const VideoChatGrid: React.FC<VideoChatGridProps> = ({
   localStream,
-  localParticipantId,
   isCameraOff,
   remoteParticipants,
   participantIdToUser,
-  speakingParticipantIds,
   localUserName,
   className,
 }) => {
@@ -60,9 +54,6 @@ export const VideoChatGrid: React.FC<VideoChatGridProps> = ({
     !localStream ||
     !localStream.getVideoTracks().some(t => t.enabled && t.readyState === 'live');
 
-  const localIsSpeaking =
-    localParticipantId !== undefined && speakingParticipantIds.has(localParticipantId);
-
   // Local tile label: prefer provided name, fall back to "You"
   const localLabel = localUserName || 'You';
 
@@ -75,7 +66,6 @@ export const VideoChatGrid: React.FC<VideoChatGridProps> = ({
         videoStream={localVideoStream}
         isOff={localCameraOff}
         name={localLabel}
-        isSpeaking={localIsSpeaking}
         videoRef={localVideoRef}
       />
 
@@ -87,7 +77,6 @@ export const VideoChatGrid: React.FC<VideoChatGridProps> = ({
         // D-06 graceful fallback: show first 6 chars of opaque id until roster catches up.
         // The full participantId is never surfaced as a label (T-04-11).
         const label = user?.name ?? p.participantId.slice(0, 6);
-        const isSpeaking = speakingParticipantIds.has(p.participantId);
         // W3: isVideoMuted reflects server-side producer-paused state. When true, show
         // avatar instead of a black frame (the track exists but RTP is paused on the SFU).
         const videoTrackOff =
@@ -103,7 +92,6 @@ export const VideoChatGrid: React.FC<VideoChatGridProps> = ({
             audioTrack={p.audioTrack}
             isOff={videoTrackOff}
             name={label}
-            isSpeaking={isSpeaking}
           />
         );
       })}
@@ -123,7 +111,6 @@ interface VideoTileProps {
   name?: string;
   isOff: boolean;
   local?: boolean;
-  isSpeaking?: boolean;
   videoRef?: React.RefObject<HTMLVideoElement | null>;
 }
 
@@ -142,7 +129,6 @@ const VideoTile: React.FC<VideoTileProps> = ({
   name,
   isOff,
   local,
-  isSpeaking,
   videoRef,
 }) => {
   const internalRef = useRef<HTMLVideoElement | null>(null);
@@ -171,9 +157,10 @@ const VideoTile: React.FC<VideoTileProps> = ({
   return (
     <div
       className={cn(
-        'group relative aspect-video w-full overflow-hidden rounded-md border bg-primary-50 sm:w-1/3 md:w-1/2 lg:w-1/4',
-        // Speaking ring (D-03): SDK audioLevel drives the highlight
-        isSpeaking ? 'border-primary ring-2 ring-primary/60' : 'border-border'
+        'group relative aspect-video w-full overflow-hidden rounded-md border border-border bg-primary-50 sm:w-1/3 md:w-1/2 lg:w-1/4'
+        // B-04(a): the speaking ring is rendered ONLY on the participant-list avatars
+        // (UserList), never on a peer's camera tile — so the speaking indicator no longer
+        // appears over a video feed. VideoChatGrid no longer receives speaking state at all.
       )}
     >
       {!isOff && (videoStream || videoTrack) ? (
