@@ -13,17 +13,13 @@ import { useSubtitles } from '@/src/features/subtitles/hooks';
 import { getVideoIdForStorage } from '@/src/features/subtitles/lib';
 import { useKeyboardShortcuts } from '@/src/core/input';
 import { useFullscreenChatOverlay } from '@/src/features/chat/hooks';
-import { useFullscreenPortalContainer, useRoomInitialization } from '@/src/features/room/hooks';
-import { useVoiceChat } from '@/src/features/media/voice';
-import { useVideoChat } from '@/src/features/media/videochat';
+import { useRoomInitialization } from '@/src/features/room/hooks';
 import { useMedia } from '@/src/features/media';
 import { useGoogleCast } from '@/src/features/media/cast';
 import { YouTubePlayerRef } from '@/src/core/video/youtube-player';
 import { VideoPlayerRef } from '@/src/features/video-sync/components/VideoPlayer';
 import { HLSPlayerRef } from '@/src/core/video/hls-player';
 import { formatTimestamp } from '@/src/lib/chat-timestamps';
-import { VOICE_MAX_PARTICIPANTS } from '@/src/lib/constants';
-import { isEnabled } from '@/src/lib/feature-flags';
 
 import { RoomHeader } from './RoomHeader';
 import { RoomVideoSection } from './RoomVideoSection';
@@ -34,7 +30,6 @@ import { ErrorDisplay, LoadingDisplay, SyncError, GuestInfoBanner } from './Room
 import { UserList } from './UserList';
 import { VideoChatGrid } from './VideoChatGrid';
 import { RemoteAudio } from './RemoteAudio';
-import { VideoChatOverlay } from './VideoChatOverlay';
 import { LeaveRoomGuard } from './LeaveRoomGuard';
 import { JoinRoomDialog } from './JoinRoomDialog';
 import { PasscodeDialog } from './PasscodeDialog';
@@ -230,21 +225,13 @@ export function RoomShell({ roomId }: RoomShellProps) {
     remoteActionHandlersRef.current.onSeek = handleVideoSeek;
   }, [handleVideoPlay, handleVideoPause, handleVideoSeek]);
 
-  // ── Feature flag (compile-time, D-07) ─────────────────────────────────────
-  // Evaluated once at render; compile-time env var, no dynamic switching.
-  const sfuMediaEnabled = isEnabled('SFU_MEDIA');
-
-  // ── Legacy P2P hooks — ALWAYS called (React rules); results used when flag OFF ──
-  const voice = useVoiceChat({ roomId, currentUser: core.currentUser });
-  const videochat = useVideoChat({ roomId, currentUser: core.currentUser });
-
-  // ── SFU media hook — ALWAYS called (React rules); results used when flag ON ──
+  // ── SFU media hook — the sole media path (CUT-03/CUT-05 finalization) ─────
   // Pitfall 5 guard: RoomShell is already 'use client', so useMedia import is safe.
   const media = useMedia({ roomId });
 
   // ── Voice capacity logic ───────────────────────────────────────────────────
-  // Under SFU path: participant count comes from useMedia; over-cap is surfaced as
-  // media.isCallFull rather than a VOICE_MAX_PARTICIPANTS constant (D-04).
+  // Participant count comes from useMedia (SFU); over-cap is surfaced as
+  // media.isCallFull (D-04 — SFU cap is authoritative, legacy client caps removed).
   //
   // W1 + B-01/B-03: audio and video counts are split per-kind AND sourced from the
   // room-wide sync presence channel (sfu-media-count) rather than the LOCAL SfuSession.
@@ -254,47 +241,20 @@ export function RoomShell({ roomId }: RoomShellProps) {
   const sfuAudioParticipantCount = media.audioParticipantCount;
   const sfuVideoParticipantCount = media.videoParticipantCount;
 
-  const voiceParticipantCount = sfuMediaEnabled
-    ? sfuAudioParticipantCount
-    : voice.isEnabled
-      ? voice.activePeerIds.length + 1
-      : voice.publicParticipantCount;
-  const overCap = sfuMediaEnabled ? media.isCallFull : voiceParticipantCount >= VOICE_MAX_PARTICIPANTS;
-  const videoParticipantCount = sfuMediaEnabled
-    ? sfuVideoParticipantCount
-    : videochat.isEnabled
-      ? videochat.remoteStreams.length + 1
-      : videochat.publicParticipantCount;
-
-  // ── voiceProps: read from useMedia (SFU) or useVoiceChat (legacy) ────────
+  // ── voiceProps: read exclusively from useMedia (SFU) ──────────────────────
   const voiceProps = useMemo(
-    () =>
-      sfuMediaEnabled
-        ? {
-            isEnabled: media.isMicActive,
-            isMuted: media.isMuted,
-            isConnecting: media.isConnecting,
-            // W1: audio-specific count (peers with live audio track + self if mic on)
-            participantCount: sfuAudioParticipantCount,
-            overCap: media.isCallFull,
-            onEnable: media.enableMic,
-            onDisable: media.disableMic,
-            onToggleMute: media.toggleMute,
-          }
-        : {
-            isEnabled: voice.isEnabled,
-            isMuted: voice.isMuted,
-            isConnecting: voice.isConnecting,
-            participantCount: voiceParticipantCount,
-            overCap,
-            onEnable: voice.enable,
-            onDisable: voice.disable,
-            onToggleMute: voice.toggleMute,
-          },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    () => ({
+      isEnabled: media.isMicActive,
+      isMuted: media.isMuted,
+      isConnecting: media.isConnecting,
+      // W1: audio-specific count (peers with live audio track + self if mic on)
+      participantCount: sfuAudioParticipantCount,
+      overCap: media.isCallFull,
+      onEnable: media.enableMic,
+      onDisable: media.disableMic,
+      onToggleMute: media.toggleMute,
+    }),
     [
-      sfuMediaEnabled,
-      // SFU fields
       media.isMicActive,
       media.isMuted,
       media.isConnecting,
@@ -303,45 +263,22 @@ export function RoomShell({ roomId }: RoomShellProps) {
       media.enableMic,
       media.disableMic,
       media.toggleMute,
-      // Legacy fields
-      voice.isEnabled,
-      voice.isMuted,
-      voice.isConnecting,
-      voiceParticipantCount,
-      overCap,
-      voice.enable,
-      voice.disable,
-      voice.toggleMute,
     ]
   );
 
-  // ── videoProps: read from useMedia (SFU) or useVideoChat (legacy) ────────
+  // ── videoProps: read exclusively from useMedia (SFU) ──────────────────────
   const videoProps = useMemo(
-    () =>
-      sfuMediaEnabled
-        ? {
-            isEnabled: media.isCameraActive,
-            isCameraOff: media.isCameraOff,
-            isConnecting: media.isConnecting,
-            enable: media.enableCamera,
-            disable: media.disableCamera,
-            toggleCamera: media.toggleCamera,
-            // W1: video-specific count (peers with live video track + self if camera on)
-            participantCount: sfuVideoParticipantCount,
-          }
-        : {
-            isEnabled: videochat.isEnabled,
-            isCameraOff: videochat.isCameraOff,
-            isConnecting: videochat.isConnecting,
-            enable: videochat.enable,
-            disable: videochat.disable,
-            toggleCamera: videochat.toggleCamera,
-            participantCount: videoParticipantCount,
-          },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    () => ({
+      isEnabled: media.isCameraActive,
+      isCameraOff: media.isCameraOff,
+      isConnecting: media.isConnecting,
+      enable: media.enableCamera,
+      disable: media.disableCamera,
+      toggleCamera: media.toggleCamera,
+      // W1: video-specific count (peers with live video track + self if camera on)
+      participantCount: sfuVideoParticipantCount,
+    }),
     [
-      sfuMediaEnabled,
-      // SFU fields
       media.isCameraActive,
       media.isCameraOff,
       media.isConnecting,
@@ -349,14 +286,6 @@ export function RoomShell({ roomId }: RoomShellProps) {
       media.disableCamera,
       media.toggleCamera,
       sfuVideoParticipantCount,
-      // Legacy fields
-      videochat.isEnabled,
-      videochat.isCameraOff,
-      videochat.isConnecting,
-      videochat.enable,
-      videochat.disable,
-      videochat.toggleCamera,
-      videoParticipantCount,
     ]
   );
 
@@ -413,15 +342,12 @@ export function RoomShell({ roomId }: RoomShellProps) {
 
   // Use fullscreen chat overlay hook
   const {
-    isFullscreen,
     showChatOverlay,
     isChatMinimized,
     toggleChatMinimize,
     closeChatOverlay,
     showChatOverlayManually,
   } = useFullscreenChatOverlay();
-  const fullscreenPortalContainer = useFullscreenPortalContainer();
-
   // Use keyboard shortcuts hook
   useKeyboardShortcuts({
     hasVideo: !!core.room?.videoUrl,
@@ -665,12 +591,12 @@ export function RoomShell({ roomId }: RoomShellProps) {
             surviving camera track keeps the session alive — without this gate a camera-only /
             left-voice peer would keep hearing everyone. (Muting keeps isMicActive=true, so a
             muted-in-voice peer still hears — correct.) */}
-        {sfuMediaEnabled && media.isMicActive && <RemoteAudio remoteParticipants={media.remoteParticipants} />}
+        {media.isMicActive && <RemoteAudio remoteParticipants={media.remoteParticipants} />}
 
-        {/* SFU path (flag ON) — VISIBLE region. Only rendered when there is something to show
+        {/* SFU media region — VISIBLE region. Only rendered when there is something to show
             (call-full notice, reconnecting indicator, or the camera grid). An audio-only session
             renders nothing here, so no empty spacer appears under the chat. (GAP A1/C1) */}
-        {sfuMediaEnabled && (media.isCallFull || media.state === 'reconnecting' || media.isCameraActive) && (
+        {(media.isCallFull || media.state === 'reconnecting' || media.isCameraActive) && (
           <div className="col-span-full mx-6 mt-4">
             {/* Call full message (D-04): SFU cap rejection */}
             {media.isCallFull && (
@@ -687,10 +613,8 @@ export function RoomShell({ roomId }: RoomShellProps) {
             )}
 
             {/* Video grid — gated on LOCAL camera participation ONLY (GAP C1, D-06).
-                Drop the previous remote-presence clause
-                clause: a voice-only user hears audio (RemoteAudio above) but sees no
-                premature remote camera tile until they enable their own camera.
-                Mirrors the proven legacy local-only gate (`videochat.isEnabled`). */}
+                A voice-only user hears audio (RemoteAudio above) but sees no premature
+                remote camera tile until they enable their own camera. */}
             {media.isCameraActive && (
               <>
                 <VideoChatGrid
@@ -710,28 +634,6 @@ export function RoomShell({ roomId }: RoomShellProps) {
           </div>
         )}
 
-        {/* Video Chat Grid — legacy P2P path (flag OFF) */}
-        {!sfuMediaEnabled && videochat.isEnabled && (
-          <div className="col-span-full mx-6 mt-4">
-            <VideoChatGrid
-              localStream={videochat.localStream}
-              isCameraOff={videochat.isCameraOff}
-              remoteParticipants={videochat.remoteStreams.map(r => ({
-                participantId: r.userId,
-                audioTrack: null,
-                videoTrack: r.stream.getVideoTracks()[0] ?? null,
-              }))}
-              participantIdToUser={new Map(core.room.users.map(u => [u.id, u]))}
-              localUserName={core.currentUser.name}
-              className="w-full"
-            />
-            <div className="mt-1 flex gap-2 text-xs text-muted-foreground">
-              {videochat.isConnecting && <Spinner variant="ellipsis" />}
-              {videochat.error && <span className="text-destructive">{videochat.error}</span>}
-            </div>
-          </div>
-        )}
-
         <UserList
           users={core.room.users}
           currentUserId={core.currentUser.id}
@@ -739,17 +641,15 @@ export function RoomShell({ roomId }: RoomShellProps) {
           onPromoteUser={core.handlePromoteUser}
           onKickUser={core.handleKickUser}
           speakingUserIds={
-            sfuMediaEnabled
-              ? // Convert participantId-keyed speaking set to userId-keyed for UserList (D-03 / SFU path)
-                (() => {
-                  const speaking = new Set<string>();
-                  media.speakingParticipantIds.forEach(pid => {
-                    const u = core.participantIdToUser.get(pid);
-                    if (u) speaking.add(u.id);
-                  });
-                  return speaking;
-                })()
-              : voice.speakingUserIds
+            // Convert participantId-keyed speaking set to userId-keyed for UserList (D-03 / SFU path)
+            (() => {
+              const speaking = new Set<string>();
+              media.speakingParticipantIds.forEach(pid => {
+                const u = core.participantIdToUser.get(pid);
+                if (u) speaking.add(u.id);
+              });
+              return speaking;
+            })()
           }
           className="col-span-full mt-4 rounded-md"
         />
@@ -794,18 +694,6 @@ export function RoomShell({ roomId }: RoomShellProps) {
         onClose={closeChatOverlay}
         onMarkMessagesAsRead={chat.markMessagesAsRead}
       />
-
-      {videochat.isEnabled && isFullscreen && (
-        <VideoChatOverlay
-          isVisible={true}
-          localStream={videochat.localStream}
-          remoteStreams={videochat.remoteStreams}
-          currentUserId={core.currentUser.id}
-          isCameraOff={videochat.isCameraOff}
-          users={core.room.users}
-          portalContainer={fullscreenPortalContainer}
-        />
-      )}
 
       <LeaveRoomGuard roomId={roomId} room={core.room} socket={socket} />
     </div>
