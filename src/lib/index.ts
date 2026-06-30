@@ -2,7 +2,6 @@ export * from './chat-markdown';
 export * from './chat-timestamps';
 export * from './constants';
 export * from './feature-flags';
-export * from './ice-server';
 export * from './name-generator';
 export * from './session-storage';
 export * from './utils';
