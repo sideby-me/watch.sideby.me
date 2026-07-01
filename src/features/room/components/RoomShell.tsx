@@ -393,16 +393,18 @@ export function RoomShell({ roomId }: RoomShellProps) {
       currentTime,
       isPlaying,
       timestamp,
+      rate,
     }: {
       currentTime: number;
       isPlaying: boolean;
       timestamp: number;
+      rate?: number;
     }) => {
-      if (core.currentUser?.isHost) {
-        return;
-      }
-      logDebug('video', 'sync_update', 'Received sync update from host');
-      syncVideo(currentTime, isPlaying, timestamp);
+      // Per D-04: all clients reconcile to the server-authoritative clock, including the host.
+      // The host is protected from self-yank by the timestamp-monotonicity guard inside syncVideo
+      // (shouldApplySyncUpdate), not by an isHost early-return here.
+      logDebug('video', 'sync_update', 'Received sync update from server');
+      syncVideo(currentTime, isPlaying, timestamp, rate ?? 1);
     };
 
     socket.on('video-played', handleVideoPlayed);
@@ -416,7 +418,7 @@ export function RoomShell({ roomId }: RoomShellProps) {
       socket.off('video-seeked', handleVideoSeeked);
       socket.off('sync-update', handleSyncUpdate);
     };
-  }, [socket, syncVideo, core.currentUser?.isHost]);
+  }, [socket, syncVideo]);
 
   // Start/stop sync check based on host status
   useEffect(() => {

@@ -1,12 +1,13 @@
 'use client';
 
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useEffect } from 'react';
 import { useSocket } from '@/src/core/socket';
 import { YouTubePlayerRef, YT_STATES } from '@/src/core/video/youtube-player';
 import { HLSPlayerRef } from '@/src/core/video/hls-player';
 import { CastPlayerRef } from '@/src/features/media/cast';
 import { calculateCurrentTime } from '@/src/lib/video-utils';
-import { SYNC_TOLERANCE_S, SYNC_COOLDOWN_MS } from '@/src/lib/constants';
+import { SYNC_COOLDOWN_MS, HOST_REANCHOR_MS, SYNC_CORRECTOR_INTERVAL_MS } from '@/src/lib/constants';
+import { decideCorrection, shouldApplySyncUpdate, type CorrectorMode } from '@/src/features/video-sync/lib/corrector';
 import { Room, User } from '@/types';
 import { logDebug } from '@/src/core/logger';
 
@@ -36,7 +37,7 @@ interface UseVideoSyncOptions {
 }
 
 interface UseVideoSyncReturn {
-  syncVideo: (targetTime: number, isPlaying: boolean | null, timestamp: number) => void;
+  syncVideo: (targetTime: number, isPlaying: boolean | null, timestamp: number, rate?: number) => void;
   startSyncCheck: () => void;
   stopSyncCheck: () => void;
   handleVideoPlay: () => void;
@@ -69,7 +70,17 @@ export function useVideoSync({
   });
   const lastPlayerTimeRef = useRef<number>(0);
   const syncCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const pendingSyncRef = useRef<{ targetTime: number; isPlaying: boolean | null; timestamp: number } | null>(null);
+  const pendingSyncRef = useRef<{ targetTime: number; isPlaying: boolean | null; timestamp: number; rate: number } | null>(
+    null
+  );
+
+  // Whether the current player's playbackRate is currently nudged away from 1.0 (RU1-2)
+  const rateNudgedRef = useRef<boolean>(false);
+  // Latest sync-update anchor, continuously re-projected by the local corrector loop (RU1-2)
+  const syncAnchorRef = useRef<{ currentTime: number; isPlaying: boolean; rate: number; timestamp: number } | null>(
+    null
+  );
+  const correctorIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Keep clockOffset in a ref so all callbacks always read the latest value
   const clockOffsetRef = useRef(clockOffset);
@@ -91,10 +102,73 @@ export function useVideoSync({
         : videoPlayerRef.current;
   }, [room, youtubePlayerRef, videoPlayerRef, hlsPlayerRef, castPlayerRef, isCasting]);
 
+  // Determine corrector mode (RU1-2/RU1-3): YouTube and Cast use the seek path (discrete
+  // playbackRate steps / no rate setter); HTML5 (mp4) and HLS glide via playbackRate nudge.
+  const getCorrectorMode = useCallback((): CorrectorMode => {
+    if (!room) return 'seek';
+    if (room.videoType === 'youtube') return 'seek';
+    if (isCasting) return 'seek';
+    return 'rate';
+  }, [room, isCasting]);
+
+  // Shared dual-band correction application (RU1-2/RU1-3), used by both the discrete syncVideo
+  // hard/soft-band handling and the local ~400ms projection corrector loop.
+  const applyCorrection = useCallback(
+    (
+      player: VideoPlayerRef | HLSPlayerRef | YouTubePlayerRef | CastPlayerRef,
+      mode: CorrectorMode,
+      drift: number,
+      targetTime: number
+    ) => {
+      const serverNow = Date.now() + clockOffsetRef.current;
+      const cooldownElapsed = serverNow - lastSyncTimeRef.current > SYNC_COOLDOWN_MS;
+
+      const correction = decideCorrection({
+        drift,
+        mode,
+        rateNudged: rateNudgedRef.current,
+        cooldownElapsed,
+      });
+
+      const rateCapable = player as { setPlaybackRate?: (rate: number) => void };
+
+      if (correction.action === 'nudge') {
+        rateCapable.setPlaybackRate?.(correction.rate);
+        rateNudgedRef.current = true;
+      } else if (correction.action === 'none') {
+        if (correction.resetRate) {
+          rateCapable.setPlaybackRate?.(1.0);
+        }
+        rateNudgedRef.current = false;
+      } else if (correction.action === 'seek') {
+        rateCapable.setPlaybackRate?.(1.0);
+        rateNudgedRef.current = false;
+        logDebug(
+          'video',
+          'sync_seek',
+          `Corrector seek: ${drift.toFixed(2)}s drift, seeking to ${targetTime.toFixed(2)}s`
+        );
+        player.seekTo(targetTime);
+        lastSyncTimeRef.current = serverNow;
+        lastPlayerTimeRef.current = targetTime;
+      }
+    },
+    []
+  );
+
   // Sync video playback
   const syncVideo = useCallback(
-    (targetTime: number, isPlaying: boolean | null, timestamp: number) => {
+    (targetTime: number, isPlaying: boolean | null, timestamp: number, rate: number = 1) => {
       if (!room || !currentUser) return;
+
+      // Timestamp-monotonicity guard (RU1-4): drop any authoritative update stamped before the
+      // client's own last locally-issued intent. This is what prevents the host from being
+      // yanked immediately after its own seek — a ticker tick racing the server's processing of
+      // the intent carries a stale timestamp and is correctly dropped here.
+      if (!shouldApplySyncUpdate(timestamp, lastControlActionRef.current.timestamp)) {
+        logDebug('video', 'sync_skip_stale', 'Dropping stale sync update (timestamp predates last intent)');
+        return;
+      }
 
       // Don't sync if this user just performed the action (prevent feedback loop)
       const serverNow = Date.now() + clockOffsetRef.current;
@@ -103,6 +177,11 @@ export function useVideoSync({
         logDebug('video', 'sync_skip', 'Skipping sync - user just performed this action');
         return;
       }
+
+      // Update the local projection anchor so the corrector loop can glide continuously between
+      // network updates. Preserve the last known isPlaying when this call is a pure seek (null).
+      const anchorIsPlaying = isPlaying ?? syncAnchorRef.current?.isPlaying ?? false;
+      syncAnchorRef.current = { currentTime: targetTime, isPlaying: anchorIsPlaying, rate, timestamp };
 
       const player = getCurrentPlayer();
       if (!player) return;
@@ -116,7 +195,7 @@ export function useVideoSync({
             targetTime,
             readyState: videoElement.readyState,
           });
-          pendingSyncRef.current = { targetTime, isPlaying, timestamp };
+          pendingSyncRef.current = { targetTime, isPlaying, timestamp, rate };
           return;
         }
       }
@@ -127,15 +206,18 @@ export function useVideoSync({
           currentTime: targetTime,
           isPlaying: isPlaying ?? false,
           lastUpdateTime: timestamp,
+          rate,
         },
         clockOffsetRef.current
       );
 
-      // Check if we need to sync
+      // Check current drift
       const currentTime = player.getCurrentTime();
-      const syncDiff = Math.abs(currentTime - adjustedTime);
+      const drift = adjustedTime - currentTime;
+      const syncDiff = Math.abs(drift);
 
-      // Detect large seek for observability (potential decoder stress)
+      // Detect large seek for observability (potential decoder stress) — preserved from the
+      // legacy hard-seek path.
       const LARGE_SEEK_THRESHOLD_SECONDS = 30;
       if (syncDiff > LARGE_SEEK_THRESHOLD_SECONDS && room.videoType !== 'youtube') {
         logDebug('video', 'sync_large_seek', `Large seek detected: ${syncDiff.toFixed(1)}s`, {
@@ -144,26 +226,10 @@ export function useVideoSync({
         });
       }
 
-      if (syncDiff > SYNC_TOLERANCE_S) {
-        const serverNow = Date.now() + clockOffsetRef.current;
-        const timeSinceLastSeek = serverNow - lastSyncTimeRef.current;
-        if (timeSinceLastSeek > SYNC_COOLDOWN_MS) {
-          logDebug(
-            'video',
-            'sync_seek',
-            `Syncing video: ${syncDiff.toFixed(2)}s difference, seeking to ${adjustedTime.toFixed(2)}s`
-          );
-          player.seekTo(adjustedTime);
-          lastSyncTimeRef.current = serverNow;
-          lastPlayerTimeRef.current = adjustedTime;
-        } else {
-          logDebug(
-            'video',
-            'sync_cooldown',
-            `Drift ${syncDiff.toFixed(2)}s but cooldown active (${timeSinceLastSeek.toFixed(0)}ms since last seek)`
-          );
-        }
-      }
+      // Dual-band drift correction (RU1-2/RU1-3): dead-band -> nothing, soft-band -> playbackRate
+      // glide (HTML5/HLS only), hard-band -> seek (cooldown-gated). Replaces the old bare
+      // SYNC_TOLERANCE_S hard-seek.
+      applyCorrection(player, getCorrectorMode(), drift, adjustedTime);
 
       // Handle play/pause state
       if (isPlaying !== null) {
@@ -191,17 +257,16 @@ export function useVideoSync({
         }
       }
     },
-    [room, currentUser, getCurrentPlayer]
+    [room, currentUser, getCurrentPlayer, applyCorrection, getCorrectorMode]
   );
 
-  // Periodic sync check for hosts
+  // Slow host->server re-anchor (RU1-1). The server ticker (PlaybackSyncTicker) is now the
+  // authoritative broadcast; this periodic emit just keeps the server's authoritative position
+  // honest against host-side buffering. No more fast casting path — the ticker covers cadence.
   const startSyncCheck = useCallback(() => {
     if (syncCheckIntervalRef.current) {
       clearInterval(syncCheckIntervalRef.current);
     }
-
-    // Use shorter interval when casting for faster sync convergence
-    const syncInterval = isCasting ? 2000 : 5000;
 
     syncCheckIntervalRef.current = setInterval(() => {
       if (!room || !currentUser?.isHost || !socket) return;
@@ -220,15 +285,15 @@ export function useVideoSync({
         isPlaying = false;
       }
 
-      logDebug('video', 'sync_check', `Periodic sync check: ${currentTime.toFixed(2)}s, playing: ${isPlaying}`);
+      logDebug('video', 'sync_check', `Host re-anchor: ${currentTime.toFixed(2)}s, playing: ${isPlaying}`);
       socket.emit('sync-check', {
         roomId,
         currentTime,
         isPlaying,
         timestamp: Date.now() + clockOffsetRef.current, // emit in server-time
       });
-    }, syncInterval);
-  }, [room, currentUser, socket, roomId, getCurrentPlayer, isCasting]);
+    }, HOST_REANCHOR_MS);
+  }, [room, currentUser, socket, roomId, getCurrentPlayer]);
 
   const stopSyncCheck = useCallback(() => {
     if (syncCheckIntervalRef.current) {
@@ -236,6 +301,48 @@ export function useVideoSync({
       syncCheckIntervalRef.current = null;
     }
   }, []);
+
+  // Local projection corrector loop (RU1-2, Pattern 2). Projects the expected position from the
+  // latest sync-update anchor every SYNC_CORRECTOR_INTERVAL_MS and runs the same dual-band
+  // correction as syncVideo, giving continuous glide between PLAYBACK_TICK_MS network ticks
+  // instead of only correcting once per server broadcast.
+  useEffect(() => {
+    if (!room?.videoUrl) return;
+
+    if (correctorIntervalRef.current) {
+      clearInterval(correctorIntervalRef.current);
+    }
+
+    correctorIntervalRef.current = setInterval(() => {
+      const anchor = syncAnchorRef.current;
+      if (!anchor) return;
+
+      const player = getCurrentPlayer();
+      if (!player) return;
+
+      const projected = calculateCurrentTime(
+        {
+          currentTime: anchor.currentTime,
+          isPlaying: anchor.isPlaying,
+          lastUpdateTime: anchor.timestamp,
+          rate: anchor.rate,
+        },
+        clockOffsetRef.current
+      );
+
+      const currentTime = player.getCurrentTime();
+      const drift = projected - currentTime;
+
+      applyCorrection(player, getCorrectorMode(), drift, projected);
+    }, SYNC_CORRECTOR_INTERVAL_MS);
+
+    return () => {
+      if (correctorIntervalRef.current) {
+        clearInterval(correctorIntervalRef.current);
+        correctorIntervalRef.current = null;
+      }
+    };
+  }, [room?.videoUrl, getCurrentPlayer, getCorrectorMode, applyCorrection]);
 
   // Video control handlers for hosts
   const handleVideoPlay = useCallback(() => {
@@ -377,11 +484,11 @@ export function useVideoSync({
   // Apply any pending sync that was queued while player was loading
   const applyPendingSync = useCallback(() => {
     if (pendingSyncRef.current) {
-      const { targetTime, isPlaying, timestamp } = pendingSyncRef.current;
+      const { targetTime, isPlaying, timestamp, rate } = pendingSyncRef.current;
       logDebug('video', 'sync_apply_pending', 'Applying queued sync after player became ready', { targetTime });
       pendingSyncRef.current = null;
       // Re-invoke syncVideo now that player should be ready
-      syncVideo(targetTime, isPlaying, timestamp);
+      syncVideo(targetTime, isPlaying, timestamp, rate);
     }
   }, [syncVideo]);
 

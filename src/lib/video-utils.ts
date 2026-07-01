@@ -70,6 +70,7 @@ export function calculateCurrentTime(
     currentTime: number;
     isPlaying: boolean;
     lastUpdateTime: number;
+    rate?: number;
   },
   clockOffset: number = 0
 ): number {
@@ -79,7 +80,7 @@ export function calculateCurrentTime(
 
   const serverNow = Date.now() + clockOffset;
   const timeDiff = (serverNow - videoState.lastUpdateTime) / 1000;
-  return videoState.currentTime + timeDiff;
+  return videoState.currentTime + timeDiff * (videoState.rate ?? 1);
 }
 
 // Gets supported video formats for the current browser

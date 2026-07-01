@@ -210,6 +210,7 @@ export function useRoomCore({ roomId, socket, isConnected }: UseRoomCoreOptions)
                 currentTime: 0,
                 duration: 0,
                 lastUpdateTime: Date.now(),
+                playbackRate: 1,
               },
             }
           : null
