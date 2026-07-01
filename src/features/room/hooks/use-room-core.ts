@@ -348,6 +348,49 @@ export function useRoomCore({ roomId, socket, isConnected }: UseRoomCoreOptions)
     };
   }, [socket, isConnected, roomId, room, currentUser]);
 
+  // Auto-rejoin on socket reconnect. Bound only to [socket] — deliberately
+  // separate from the event-handlers effect above, which early-returns when
+  // !isConnected and would therefore miss reconnects entirely.
+  //
+  // Server-side (sync): a brief disconnect defers room removal for a grace
+  // window; re-emitting join-room here lets the server cancel that pending
+  // removal and re-associate this socket with the still-present member
+  // instead of the user silently falling out of the room until a manual
+  // refresh. This flows entirely through the existing join-room socket
+  // event — no server-side state is added to watch (stays frontend-only).
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleReconnectRejoin = () => {
+      // Read the latest room membership from the ref (kept current by the
+      // effect above), NOT from closure state, to avoid stale values.
+      const { roomId: currentRoomId, room: lastRoom, currentUser: lastUser } = cleanupDataRef.current;
+
+      // No prior join yet — this is the initial connect, owned by
+      // use-room-initialization's auto-join effect. Do nothing.
+      if (!lastUser) return;
+
+      logClient({
+        level: 'info',
+        domain: 'room',
+        event: 'reconnect_rejoin',
+        message: `Socket reconnected, re-emitting join-room for ${lastUser.name}`,
+        meta: { roomId: currentRoomId, userName: lastUser.name, isHost: lastUser.isHost },
+      });
+
+      if (lastUser.isHost && lastRoom?.hostToken) {
+        socket.emit('join-room', { roomId: currentRoomId, userName: lastUser.name, hostToken: lastRoom.hostToken });
+      } else {
+        socket.emit('join-room', { roomId: currentRoomId, userName: lastUser.name });
+      }
+    };
+
+    socket.on('connect', handleReconnectRejoin);
+    return () => {
+      socket.off('connect', handleReconnectRejoin);
+    };
+  }, [socket]);
+
   // Build reactive participantId -> User map from the roster (CUT-02, D-05).
   // Only entries with a defined participantId are included; undefined = pre-SFU / flag-off client.
   const participantIdToUser = useMemo(
