@@ -341,13 +341,8 @@ export function RoomShell({ roomId }: RoomShellProps) {
   );
 
   // Use fullscreen chat overlay hook
-  const {
-    showChatOverlay,
-    isChatMinimized,
-    toggleChatMinimize,
-    closeChatOverlay,
-    showChatOverlayManually,
-  } = useFullscreenChatOverlay();
+  const { showChatOverlay, isChatMinimized, toggleChatMinimize, closeChatOverlay, showChatOverlayManually } =
+    useFullscreenChatOverlay();
   // Use keyboard shortcuts hook
   useKeyboardShortcuts({
     hasVideo: !!core.room?.videoUrl,
