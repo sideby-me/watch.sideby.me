@@ -39,6 +39,7 @@ export const VideoStateSchema = z.object({
   currentTime: z.number().min(0),
   duration: z.number().min(0),
   lastUpdateTime: z.number().positive(),
+  playbackRate: z.number().positive().default(1),
 });
 
 export const UserSchema = z.object({
@@ -526,6 +527,7 @@ export const SyncUpdateResponseSchema = z.object({
   currentTime: z.number().min(0),
   isPlaying: z.boolean(),
   timestamp: z.number().positive(),
+  rate: z.number().positive().default(1),
 });
 
 export const NewMessageResponseSchema = z.object({
