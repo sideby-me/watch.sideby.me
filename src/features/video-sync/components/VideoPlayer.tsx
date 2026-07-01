@@ -28,6 +28,8 @@ export interface VideoPlayerRef {
   isPaused: () => boolean;
   getVideoElement: () => HTMLVideoElement | null;
   debugSubtitles: () => void;
+  /** Sets native playbackRate for smooth sub-second sync glide (plain native-element write). */
+  setPlaybackRate: (rate: number) => void;
 }
 
 export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(
@@ -89,6 +91,12 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(
         return videoRef.current;
       },
       debugSubtitles,
+      setPlaybackRate: (rate: number) => {
+        if (videoRef.current) {
+          videoRef.current.preservesPitch = true;
+          videoRef.current.playbackRate = rate;
+        }
+      },
     }));
 
     useEffect(() => {

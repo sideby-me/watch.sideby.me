@@ -20,6 +20,7 @@ export interface VideoPlayerRef {
   isPaused: () => boolean;
   getVideoElement: () => HTMLVideoElement | null;
   debugSubtitles?: () => void;
+  setPlaybackRate?: (rate: number) => void;
 }
 
 interface UseVideoSyncOptions {

@@ -13,6 +13,9 @@ export interface HLSPlayerRef {
   isPaused: () => boolean;
   getDuration: () => number;
   getVideoElement: () => HTMLVideoElement | null;
+  /** Sets native playbackRate for smooth sub-second sync glide. Plain native-element write —
+   *  no hls.js API call, no buffer flush. */
+  setPlaybackRate: (rate: number) => void;
 }
 
 interface HLSPlayerProps {
@@ -106,6 +109,12 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
       },
       getVideoElement: () => {
         return videoRef.current;
+      },
+      setPlaybackRate: (rate: number) => {
+        if (videoRef.current) {
+          videoRef.current.preservesPitch = true;
+          videoRef.current.playbackRate = rate;
+        }
       },
     }));
 
