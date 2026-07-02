@@ -317,6 +317,12 @@ export function useVideoSync({
       const anchor = syncAnchorRef.current;
       if (!anchor) return;
 
+      // Same timestamp-monotonicity guard syncVideo applies to incoming updates (RU1-4): never let
+      // an anchor that predates the client's own last local intent drive a correction. Without this,
+      // a stale pre-seek anchor keeps pulling the host back to the old position every tick until a
+      // fresh server broadcast overwrites the anchor — the self-yank/flip-flop after a host seek.
+      if (!shouldApplySyncUpdate(anchor.timestamp, lastControlActionRef.current.timestamp)) return;
+
       const player = getCurrentPlayer();
       if (!player) return;
 
