@@ -4,6 +4,13 @@ import React, { useRef, useEffect, useImperativeHandle, forwardRef } from 'react
 import { logVideo } from '@/src/core/logger/client-logger';
 import { useVideoSubtitleTracks } from '@/src/features/subtitles/hooks';
 import type { SubtitleTrack } from '@/types/schemas';
+import {
+  createHlsRecoveryState,
+  decideHlsRecovery,
+  MAX_MEDIA_ERROR_RECOVERIES,
+  MAX_NETWORK_RELOADS,
+  type HlsRecoveryState,
+} from '@/src/core/video/hls-error-policy';
 
 export interface HLSPlayerRef {
   play: () => Promise<void>;
@@ -61,12 +68,9 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
     ref
   ) => {
     const videoRef = useRef<HTMLVideoElement>(null);
-    const hlsRef = useRef<{ destroy: () => void } | null>(null);
+    const hlsRef = useRef<{ destroy: () => void; startLoad: () => void } | null>(null);
     const programmaticActionRef = useRef(false);
-    const mediaErrorRecoveryRef = useRef<number>(0);
-    const reattachAttemptedRef = useRef<boolean>(false);
-    const networkErrorCountRef = useRef<number>(0);
-    const MAX_MEDIA_ERROR_RECOVERIES = 2;
+    const recoveryStateRef = useRef<HlsRecoveryState>(createHlsRecoveryState());
 
     // Inject native <track> elements for iOS Safari native HLS playback
     useVideoSubtitleTracks({
@@ -122,10 +126,8 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
       const video = videoRef.current;
       if (!video || !src) return;
 
-      // Reset error counters when src changes
-      mediaErrorRecoveryRef.current = 0;
-      reattachAttemptedRef.current = false;
-      networkErrorCountRef.current = 0;
+      // Reset recovery state when src changes
+      recoveryStateRef.current = createHlsRecoveryState();
 
       const loadHLS = async () => {
         try {
@@ -141,7 +143,7 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
               maxLoadingDelay: 4,
             });
 
-            hlsRef.current = hls as { destroy: () => void };
+            hlsRef.current = hls as { destroy: () => void; startLoad: () => void };
             hls.loadSource(src);
             hls.attachMedia(video);
 
@@ -188,77 +190,53 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
                 url?: string;
               };
 
-              const isBufferStall = errorData.details === 'bufferStalledError' && errorData.fatal === false;
-              if (isBufferStall) {
-                logVideo('hls_buffer_stall', 'HLS buffer stalled (non-fatal)', {
-                  currentTime: video.currentTime,
-                });
-                return;
-              }
-
-              const networkish =
-                errorData.type === 'networkError' ||
-                errorData.details === 'fragLoadError' ||
-                errorData.details === 'manifestLoadError';
-
-              if (networkish) {
-                networkErrorCountRef.current += 1;
-              }
-
-              const codecUnparsable = Boolean(
-                errorData.details &&
-                  ['fragParsingError', 'manifestParsingError', 'levelParsingError', 'demux', 'parse'].some(token =>
-                    errorData.details!.toLowerCase().includes(token.toLowerCase())
-                  )
-              );
-
               const responseCode = errorData.response?.code;
-              const hardHttpBlock = networkish && responseCode !== undefined && responseCode >= 400;
 
-              const fatalishNetwork =
-                networkish && (errorData.fatal || hardHttpBlock || networkErrorCountRef.current > 1);
-
-              if (fatalishNetwork) {
-                onError?.({
+              const decision = decideHlsRecovery({
+                error: {
                   type: errorData.type,
                   details: errorData.details,
-                  fatal: true,
-                  url: errorData.url,
+                  fatal: errorData.fatal,
                   responseCode,
-                  codecUnparsable,
-                  currentTime: video.currentTime,
-                });
-                hls.destroy();
-                return;
-              }
+                },
+                state: recoveryStateRef.current,
+                now: Date.now(),
+              });
 
               logVideo('hls_error', 'HLS error', {
                 type: errorData.type,
                 details: errorData.details,
                 fatal: errorData.fatal,
                 url: errorData.url,
-                responseCode: errorData.response?.code,
+                responseCode,
                 currentTime: video.currentTime,
-                codecUnparsable,
+                codecUnparsable: decision.codecUnparsable,
+                action: decision.action,
               });
 
-              // Attempt media error recovery before giving up.
-              // bufferAddCodecError = addSourceBuffer() threw (unsupported codec) - unrecoverable, skip straight to fatal.
-              const isCodecError = errorData.details === 'bufferAddCodecError';
-              if (!isCodecError && errorData.type === 'mediaError' && errorData.fatal) {
-                if (mediaErrorRecoveryRef.current < MAX_MEDIA_ERROR_RECOVERIES) {
-                  mediaErrorRecoveryRef.current++;
+              switch (decision.action) {
+                case 'ignore':
+                  return;
+
+                case 'recover-media':
                   logVideo('hls_media_recovery', 'Attempting HLS media error recovery', {
-                    attempt: mediaErrorRecoveryRef.current,
+                    attempt: recoveryStateRef.current.mediaRecoveryCount,
                     maxAttempts: MAX_MEDIA_ERROR_RECOVERIES,
                     details: errorData.details,
                   });
                   hls.recoverMediaError();
                   return;
-                }
-                // Try detach+reattach as last resort before giving up
-                if (!reattachAttemptedRef.current) {
-                  reattachAttemptedRef.current = true;
+
+                case 'reload-network':
+                  logVideo('hls_network_reload', 'Attempting HLS network reload (startLoad)', {
+                    attempt: recoveryStateRef.current.networkReloadCount,
+                    maxAttempts: MAX_NETWORK_RELOADS,
+                    details: errorData.details,
+                  });
+                  hls.startLoad();
+                  return;
+
+                case 'reattach':
                   logVideo('hls_reattach', 'Attempting HLS detach+reattach after media error exhaustion', {
                     src,
                     details: errorData.details,
@@ -268,21 +246,19 @@ const HLSPlayer = forwardRef<HLSPlayerRef, HLSPlayerProps>(
                   // Re-trigger loadHLS after a short delay
                   setTimeout(() => loadHLS(), 500);
                   return;
-                }
-              }
 
-              if (errorData.fatal) {
-                onError?.({
-                  type: errorData.type,
-                  details: errorData.details,
-                  fatal: true,
-                  url: errorData.url,
-                  responseCode: errorData.response?.code,
-                  codecUnparsable,
-                  currentTime: video.currentTime,
-                });
-                // Stop attempting recovery for fatal errors to avoid loops; surface to UI instead.
-                hls.destroy();
+                case 'terminal':
+                  onError?.({
+                    type: errorData.type,
+                    details: errorData.details,
+                    fatal: true,
+                    url: errorData.url,
+                    responseCode,
+                    codecUnparsable: decision.codecUnparsable,
+                    currentTime: video.currentTime,
+                  });
+                  hls.destroy();
+                  return;
               }
             });
           } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
