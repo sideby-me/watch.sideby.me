@@ -70,9 +70,12 @@ export function useVideoSync({
   });
   const lastPlayerTimeRef = useRef<number>(0);
   const syncCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const pendingSyncRef = useRef<{ targetTime: number; isPlaying: boolean | null; timestamp: number; rate: number } | null>(
-    null
-  );
+  const pendingSyncRef = useRef<{
+    targetTime: number;
+    isPlaying: boolean | null;
+    timestamp: number;
+    rate: number;
+  } | null>(null);
 
   // Whether the current player's playbackRate is currently nudged away from 1.0 (RU1-2)
   const rateNudgedRef = useRef<boolean>(false);

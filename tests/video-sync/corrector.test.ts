@@ -1,11 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { decideCorrection, shouldApplySyncUpdate } from '@/src/features/video-sync/lib/corrector';
-import {
-  SYNC_DEAD_BAND_S,
-  SYNC_SOFT_BAND_S,
-  SYNC_MAX_NUDGE,
-  YOUTUBE_SEEK_TOLERANCE_S,
-} from '@/src/lib/constants';
+import { SYNC_DEAD_BAND_S, SYNC_SOFT_BAND_S, SYNC_MAX_NUDGE, YOUTUBE_SEEK_TOLERANCE_S } from '@/src/lib/constants';
 
 describe('decideCorrection — mode: rate (HTML5/HLS)', () => {
   it('returns none within the dead-band', () => {
