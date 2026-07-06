@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
 
     # Needed so the GITHUB_TOKEN can read the private @sideby-me/* packages
-    # (media-sdk + media-sdk-types) from GitHub Packages during `npm ci`.
+    # (@sideby-me/rtc) from GitHub Packages during `npm ci`.
     permissions:
       contents: read
       packages: read
