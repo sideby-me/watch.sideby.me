@@ -4,11 +4,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSocket } from '@/src/core/socket';
 import { logDebug } from '@/src/core/logger';
 import { toast } from 'sonner';
-import { useMediaRoom } from '@sideby-me/media-sdk/react';
-import type { MediaTokenResponse, SfuSession } from '@sideby-me/media-sdk';
+import { useMediaRoom } from '@sideby-me/rtc/react';
+import type { MediaTokenResponse, SfuSession } from '@sideby-me/rtc';
 
 // ── SDK version shim ───────────────────────────────────────────────────────────
-// getSnapshot() is available in media-sdk ≥0.2.0. This local type allows the
+// getSnapshot() is available in @sideby-me/rtc (media-sdk ≥0.2.0-era). This local type allows the
 // duck-type guard in the session effect to compile without requiring the new
 // package version to be installed. Remove once watch requires ≥0.2.0.
 type SfuSessionWithSnapshot = SfuSession & {
@@ -332,7 +332,7 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
     // are emitted before this useEffect runs (handlers not yet registered). Hydrate state
     // from the session snapshot immediately after registration so existing participants
     // are visible on B's first render, not just after the next reconnect.
-    // Runtime guard: getSnapshot() is available in media-sdk ≥0.2.0. The duck-type
+    // Runtime guard: getSnapshot() is available in @sideby-me/rtc (media-sdk ≥0.2.0-era). The duck-type
     // check allows the same watch build to work against both old and new SDK versions
     // while the republish + reinstall is in flight.
     if (typeof (session as { getSnapshot?: unknown }).getSnapshot === 'function') {
