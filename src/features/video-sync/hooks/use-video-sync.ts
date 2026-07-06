@@ -77,9 +77,9 @@ export function useVideoSync({
     rate: number;
   } | null>(null);
 
-  // Whether the current player's playbackRate is currently nudged away from 1.0 (RU1-2)
+  // Whether the current player's playbackRate is currently nudged away from 1.0
   const rateNudgedRef = useRef<boolean>(false);
-  // Latest sync-update anchor, continuously re-projected by the local corrector loop (RU1-2)
+  // Latest sync-update anchor, continuously re-projected by the local corrector loop
   const syncAnchorRef = useRef<{ currentTime: number; isPlaying: boolean; rate: number; timestamp: number } | null>(
     null
   );
@@ -105,7 +105,7 @@ export function useVideoSync({
         : videoPlayerRef.current;
   }, [room, youtubePlayerRef, videoPlayerRef, hlsPlayerRef, castPlayerRef, isCasting]);
 
-  // Determine corrector mode (RU1-2/RU1-3): YouTube and Cast use the seek path (discrete
+  // Determine corrector mode: YouTube and Cast use the seek path (discrete
   // playbackRate steps / no rate setter); HTML5 (mp4) and HLS glide via playbackRate nudge.
   const getCorrectorMode = useCallback((): CorrectorMode => {
     if (!room) return 'seek';
@@ -114,7 +114,7 @@ export function useVideoSync({
     return 'rate';
   }, [room, isCasting]);
 
-  // Shared dual-band correction application (RU1-2/RU1-3), used by both the discrete syncVideo
+  // Shared dual-band correction application, used by both the discrete syncVideo
   // hard/soft-band handling and the local ~400ms projection corrector loop.
   const applyCorrection = useCallback(
     (
@@ -164,7 +164,7 @@ export function useVideoSync({
     (targetTime: number, isPlaying: boolean | null, timestamp: number, rate: number = 1) => {
       if (!room || !currentUser) return;
 
-      // Timestamp-monotonicity guard (RU1-4): drop any authoritative update stamped before the
+      // Timestamp-monotonicity guard: drop any authoritative update stamped before the
       // client's own last locally-issued intent. This is what prevents the host from being
       // yanked immediately after its own seek — a ticker tick racing the server's processing of
       // the intent carries a stale timestamp and is correctly dropped here.
@@ -229,7 +229,7 @@ export function useVideoSync({
         });
       }
 
-      // Dual-band drift correction (RU1-2/RU1-3): dead-band -> nothing, soft-band -> playbackRate
+      // Dual-band drift correction: dead-band -> nothing, soft-band -> playbackRate
       // glide (HTML5/HLS only), hard-band -> seek (cooldown-gated). Replaces the old bare
       // SYNC_TOLERANCE_S hard-seek.
       applyCorrection(player, getCorrectorMode(), drift, adjustedTime);
@@ -263,7 +263,7 @@ export function useVideoSync({
     [room, currentUser, getCurrentPlayer, applyCorrection, getCorrectorMode]
   );
 
-  // Slow host->server re-anchor (RU1-1). The server ticker (PlaybackSyncTicker) is now the
+  // Slow host->server re-anchor. The server ticker (PlaybackSyncTicker) is now the
   // authoritative broadcast; this periodic emit just keeps the server's authoritative position
   // honest against host-side buffering. No more fast casting path — the ticker covers cadence.
   const startSyncCheck = useCallback(() => {
@@ -305,7 +305,7 @@ export function useVideoSync({
     }
   }, []);
 
-  // Local projection corrector loop (RU1-2, Pattern 2). Projects the expected position from the
+  // Local projection corrector loop. Projects the expected position from the
   // latest sync-update anchor every SYNC_CORRECTOR_INTERVAL_MS and runs the same dual-band
   // correction as syncVideo, giving continuous glide between PLAYBACK_TICK_MS network ticks
   // instead of only correcting once per server broadcast.
@@ -320,7 +320,7 @@ export function useVideoSync({
       const anchor = syncAnchorRef.current;
       if (!anchor) return;
 
-      // Same timestamp-monotonicity guard syncVideo applies to incoming updates (RU1-4): never let
+      // Same timestamp-monotonicity guard syncVideo applies to incoming updates: never let
       // an anchor that predates the client's own last local intent drive a correction. Without this,
       // a stale pre-seek anchor keeps pulling the host back to the old position every tick until a
       // fresh server broadcast overwrites the anchor — the self-yank/flip-flop after a host seek.

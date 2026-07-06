@@ -1,4 +1,4 @@
-// Pure dual-band drift corrector (RU1-2 / RU1-3 / RU1-4). No React, no DOM — node-testable.
+// Pure dual-band drift corrector. No React, no DOM — node-testable.
 import {
   SYNC_DEAD_BAND_S,
   SYNC_SOFT_BAND_S,
@@ -62,7 +62,7 @@ export function decideCorrection(params: DecideCorrectionParams): CorrectionResu
 }
 
 /**
- * Timestamp-monotonicity guard (RU1-4): drop any authoritative sync-update whose anchor timestamp
+ * Timestamp-monotonicity guard: drop any authoritative sync-update whose anchor timestamp
  * predates the client's own last locally-issued intent. This is what prevents the host from being
  * yanked immediately after its own seek.
  */
