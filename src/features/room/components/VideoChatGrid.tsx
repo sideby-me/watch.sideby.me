@@ -5,7 +5,7 @@ import { User } from '@/types';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Video, VideoOff } from 'lucide-react';
 
-// ── New participantId-keyed prop shape (CUT-02, D-05/D-06) ────────────────────
+// ── New participantId-keyed prop shape ────────────────────────────────────────
 
 interface VideoChatGridProps {
   localStream: MediaStream | null;
@@ -74,8 +74,8 @@ export const VideoChatGrid: React.FC<VideoChatGridProps> = ({
         .filter(p => p.videoTrack !== null)
         .map(p => {
           const user = participantIdToUser.get(p.participantId);
-          // D-06 graceful fallback: show first 6 chars of opaque id until roster catches up.
-          // The full participantId is never surfaced as a label (T-04-11).
+          // Graceful fallback: show first 6 chars of opaque id until roster catches up.
+          // The full participantId is never surfaced as a label.
           const label = user?.name ?? p.participantId.slice(0, 6);
           // W3: isVideoMuted reflects server-side producer-paused state. When true, show
           // avatar instead of a black frame (the track exists but RTP is paused on the SFU).
@@ -148,7 +148,7 @@ const VideoTile: React.FC<VideoTileProps> = ({ videoTrack, videoStream, name, is
     <div
       className={cn(
         'group relative aspect-video w-full overflow-hidden rounded-md border border-border bg-primary-50 sm:w-1/3 md:w-1/2 lg:w-1/4'
-        // B-04(a): the speaking ring is rendered ONLY on the participant-list avatars
+        // The speaking ring is rendered ONLY on the participant-list avatars
         // (UserList), never on a peer's camera tile — so the speaking indicator no longer
         // appears over a video feed. VideoChatGrid no longer receives speaking state at all.
       )}

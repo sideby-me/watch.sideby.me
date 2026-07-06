@@ -225,18 +225,18 @@ export function RoomShell({ roomId }: RoomShellProps) {
     remoteActionHandlersRef.current.onSeek = handleVideoSeek;
   }, [handleVideoPlay, handleVideoPause, handleVideoSeek]);
 
-  // ── SFU media hook — the sole media path (CUT-03/CUT-05 finalization) ─────
-  // Pitfall 5 guard: RoomShell is already 'use client', so useMedia import is safe.
+  // ── SFU media hook — the sole media path ──────────────────────────────────
+  // RoomShell is already 'use client', so useMedia import is safe.
   const media = useMedia({ roomId });
 
   // ── Voice capacity logic ───────────────────────────────────────────────────
   // Participant count comes from useMedia (SFU); over-cap is surfaced as
-  // media.isCallFull (D-04 — SFU cap is authoritative, legacy client caps removed).
+  // media.isCallFull (SFU cap is authoritative, legacy client caps removed).
   //
-  // W1 + B-01/B-03: audio and video counts are split per-kind AND sourced from the
+  // Audio and video counts are split per-kind AND sourced from the
   // room-wide sync presence channel (sfu-media-count) rather than the LOCAL SfuSession.
   // This makes the indicators presence-driven: a non-participant sees who is on each
-  // call (B-01) and the counts survive the local session tearing down on leave (B-03),
+  // call and the counts survive the local session tearing down on leave,
   // instead of collapsing to 0 whenever this client isn't consuming that kind.
   const sfuAudioParticipantCount = media.audioParticipantCount;
   const sfuVideoParticipantCount = media.videoParticipantCount;
@@ -400,7 +400,7 @@ export function RoomShell({ roomId }: RoomShellProps) {
       timestamp: number;
       rate?: number;
     }) => {
-      // Per D-04: all clients reconcile to the server-authoritative clock, including the host.
+      // All clients reconcile to the server-authoritative clock, including the host.
       // The host is protected from self-yank by the timestamp-monotonicity guard inside syncVideo
       // (shouldApplySyncUpdate), not by an isHost early-return here.
       logDebug('video', 'sync_update', 'Received sync update from server');
@@ -583,7 +583,7 @@ export function RoomShell({ roomId }: RoomShellProps) {
         {/* Remote audio — hidden <audio> elements, one per remote participant with an audio track.
             Rendered OUTSIDE the visible wrapper below so an AUDIO-ONLY session does not create an
             empty margin block under the chat (the wrapper's mt-4 was the stray gap). NOT muted.
-            B-02: gated on isMicActive ONLY (not the mic-OR-camera session gate). Leaving voice
+            Gated on isMicActive ONLY (not the mic-OR-camera session gate). Leaving voice
             closes the local mic PRODUCER but the SFU keeps pushing remote audio consumers while a
             surviving camera track keeps the session alive — without this gate a camera-only /
             left-voice peer would keep hearing everyone. (Muting keeps isMicActive=true, so a
@@ -592,16 +592,16 @@ export function RoomShell({ roomId }: RoomShellProps) {
 
         {/* SFU media region — VISIBLE region. Only rendered when there is something to show
             (call-full notice, reconnecting indicator, or the camera grid). An audio-only session
-            renders nothing here, so no empty spacer appears under the chat. (GAP A1/C1) */}
+            renders nothing here, so no empty spacer appears under the chat. */}
         {(media.isCallFull || media.state === 'reconnecting' || media.isCameraActive) && (
           <div className="col-span-full mx-6 mt-4">
-            {/* Call full message (D-04): SFU cap rejection */}
+            {/* Call full message: SFU cap rejection */}
             {media.isCallFull && (
               <div className="mb-2 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-2 text-sm text-destructive">
                 The call is full — you&apos;ve been placed in listen-only mode. Try again when a spot opens up.
               </div>
             )}
-            {/* Reconnecting indicator (discretion — minimal, RESEARCH Pitfall 5) */}
+            {/* Reconnecting indicator (minimal) */}
             {media.state === 'reconnecting' && (
               <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
                 <Spinner variant="ellipsis" />
@@ -609,7 +609,7 @@ export function RoomShell({ roomId }: RoomShellProps) {
               </div>
             )}
 
-            {/* Video grid — gated on LOCAL camera participation ONLY (GAP C1, D-06).
+            {/* Video grid — gated on LOCAL camera participation ONLY.
                 A voice-only user hears audio (RemoteAudio above) but sees no premature
                 remote camera tile until they enable their own camera. */}
             {media.isCameraActive && (
@@ -638,7 +638,7 @@ export function RoomShell({ roomId }: RoomShellProps) {
           onPromoteUser={core.handlePromoteUser}
           onKickUser={core.handleKickUser}
           speakingUserIds={
-            // Convert participantId-keyed speaking set to userId-keyed for UserList (D-03 / SFU path)
+            // Convert participantId-keyed speaking set to userId-keyed for UserList (SFU path)
             (() => {
               const speaking = new Set<string>();
               media.speakingParticipantIds.forEach(pid => {

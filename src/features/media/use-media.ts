@@ -27,7 +27,7 @@ export interface UseMediaReturn {
   isConnected: boolean;
   isConnecting: boolean;
   error: Error | null;
-  /** True when the SFU room is at capacity and rejected the join (D-04). */
+  /** True when the SFU room is at capacity and rejected the join. */
   isCallFull: boolean;
   /** Own opaque participantId from the media token (undefined until the first token fetch). */
   localParticipantId: string | undefined;
@@ -54,11 +54,11 @@ export interface UseMediaReturn {
     /** True when the remote peer has paused their video producer (shows avatar, not black). */
     isVideoMuted: boolean;
   }>;
-  // Speaking (keyed by opaque participantId from SDK audioLevel event — D-03)
+  // Speaking (keyed by opaque participantId from SDK audioLevel event)
   speakingParticipantIds: Set<string>;
   // Participant count (remoteParticipants.length + 1 when connected)
   participantCount: number;
-  // Room-wide, presence-driven per-kind counts (B-01 / B-03). Sourced from the sync
+  // Room-wide, presence-driven per-kind counts. Sourced from the sync
   // `sfu-media-count` broadcast — independent of whether the LOCAL user is on that call,
   // so a non-participant sees who is on each call and counts survive local teardown.
   audioParticipantCount: number;
@@ -78,7 +78,7 @@ interface TrackEntry {
   video: MediaStreamTrack | null;
 }
 
-// ── SFU cap error detection (D-04) ────────────────────────────────────────────
+// ── SFU cap error detection ─────────────────────────────────────────────────
 
 const CALL_FULL_PATTERNS = [/room.+full/i, /capacity/i, /max.+participant/i, /participant.+limit/i, /cap.+reach/i];
 
@@ -91,15 +91,15 @@ function isCallFullError(err: Error): boolean {
 export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
   const { socket } = useSocket();
 
-  // Keep latest socket in a ref to avoid stale closure in getToken (Pitfall 1 / T-04-06)
+  // Keep latest socket in a ref to avoid stale closure in getToken
   const socketRef = useRef(socket);
   useEffect(() => {
     socketRef.current = socket;
   }, [socket]);
 
   // ── getToken: stable useCallback([roomId]) — reads socket from ref at call time ──
-  // This is both the initial token fetch and the SDK reconnect callback (RESEARCH #2).
-  // MUST NOT be placed in any effect dep array (T-04-06 / D-06 anti-reconnect-storm).
+  // This is both the initial token fetch and the SDK reconnect callback.
+  // MUST NOT be placed in any effect dep array (anti-reconnect-storm).
   const getToken = useCallback((): Promise<MediaTokenResponse> => {
     return new Promise((resolve, reject) => {
       const s = socketRef.current;
@@ -123,13 +123,13 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
 
-  // Lazy lifecycle: SDK session connects only when mic OR camera is active (D-02).
+  // Lazy lifecycle: SDK session connects only when mic OR camera is active.
   // Decision: sdkEnabled = mic OR camera so that a mic-only participant STILL connects a
   // session (voice needs the SFU transport). The VIDEO grid is gated separately on LOCAL
-  // camera participation (in RoomShell) per D-06: "a remote camera tile renders only after
+  // camera participation (in RoomShell): "a remote camera tile renders only after
   // the LOCAL user has joined the video call." A voice-only participant consumes remote
   // producers pushed by the SFU on join (SDK/SFU behavior, intentional) but does NOT render
-  // the camera grid — that bandwidth optimization is deferred, not part of this fix. (GAP C2)
+  // the camera grid — that bandwidth optimization is deferred, not part of this fix.
   const sdkEnabled = isMicActive || isCameraActive;
 
   // ── Fetch initial token once when sdkEnabled flips true ───────────────────
@@ -141,7 +141,7 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
         logDebug('other', 'initial_token_error', '[useMedia] initial getToken failed', { error: err.message });
         toast.error('Media error', { description: err.message });
       });
-    // getToken is intentionally excluded from deps (stable ref, T-04-06)
+    // getToken is intentionally excluded from deps (stable ref)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sdkEnabled, mediaTokenResponse]);
 
@@ -157,7 +157,7 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
     enabled: sdkEnabled && !!mediaTokenResponse,
   });
 
-  // ── Call-full detection (D-04): surface SFU cap rejection as distinct state ─
+  // ── Call-full detection: surface SFU cap rejection as distinct state ────────
   const isCallFull = sdkError ? isCallFullError(sdkError) : false;
   const error = sdkError && !isCallFull ? sdkError : null;
 
@@ -168,14 +168,14 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
   // W3: per-participant mute state driven by SDK trackMuted events (producer-paused/resumed).
   const [mutedTrackKinds, setMutedTrackKinds] = useState<Map<string, Set<'audio' | 'video'>>>(new Map());
 
-  // B-04(b): per-participant decay timers for the speaking ring. The SFU's
+  // Per-participant decay timers for the speaking ring. The SFU's
   // AudioLevelObserver only emits 'volumes' for the loudest few speakers and sends
   // NO silence signal, so a participant who stops talking never gets a "not speaking"
   // event — the ring would stick on until they leave. Each audioLevel event (re)arms a
   // timer that clears the participant after SPEAKING_DECAY_MS of no further events.
   const speakingTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
-  // B-01 / B-03: room-wide presence-driven per-kind counts from sync's broadcast.
+  // Room-wide presence-driven per-kind counts from sync's broadcast.
   const [audioParticipantCount, setAudioParticipantCount] = useState(0);
   const [videoParticipantCount, setVideoParticipantCount] = useState(0);
 
@@ -208,7 +208,7 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
         next.delete(participantId);
         return next;
       });
-      // B-04(b): drop any pending decay timer for the departed participant.
+      // Drop any pending decay timer for the departed participant.
       const timer = speakingTimersRef.current.get(participantId);
       if (timer) {
         clearTimeout(timer);
@@ -274,12 +274,12 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
       });
     };
 
-    // D-03: speaking driven ONLY by SDK audioLevel event — no Web Audio analyser, no rAF loop.
+    // Speaking driven ONLY by SDK audioLevel event — no Web Audio analyser, no rAF loop.
     // mediasoup AudioLevelObserver reports volume in dBov (negative; ~−127…0; closer to 0 =
     // louder). The SFU and SDK forward the raw dBov value without normalisation. −60 dBov is
     // comfortably above the observer's −70 threshold (which filters background noise/silence)
     // and below the 0 floor — active speech is typically −50…−20 dBov.
-    // Discord-like responsiveness (B-04b tuning). The SFU AudioLevelObserver now samples
+    // Discord-like responsiveness tuning. The SFU AudioLevelObserver now samples
     // every ~200ms (was 800ms). The observer floor is -70 dBov; -65 here lets moderate
     // speech light the ring (was -60, which filtered out speech the SFU already reported)
     // while still ignoring background noise.
@@ -351,16 +351,16 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
       session.off('trackUnsubscribed', handleTrackUnsubscribed);
       session.off('trackMuted', handleTrackMuted);
       session.off('audioLevel', handleAudioLevel);
-      // B-04(b): cancel all pending speaking-decay timers for this session.
+      // Cancel all pending speaking-decay timers for this session.
       speakingTimers.forEach(clearTimeout);
       speakingTimers.clear();
     };
   }, [session]);
 
-  // ── publish-on-session-connect refs (GAP A2) ──────────────────────────────
+  // ── publish-on-session-connect refs ───────────────────────────────────────
   // publishedRef tracks which track kinds are currently published to the LIVE session.
   // Flags reset on session teardown and set after each successful publish — deduping the
-  // enable-handler path and the effect below so no track is double-published. (T-04-22)
+  // enable-handler path and the effect below so no track is double-published.
   const publishedRef = useRef<{ audio: boolean; video: boolean }>({ audio: false, video: false });
 
   // Mirror active-state booleans into refs so the publish effect can read the latest values
@@ -452,7 +452,7 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
 
       if (session) {
         await session.publishMic(track);
-        // Mark published so the session-connect effect doesn't double-publish (T-04-22)
+        // Mark published so the session-connect effect doesn't double-publish
         publishedRef.current.audio = true;
       }
     } catch (err) {
@@ -520,7 +520,7 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
 
       if (session) {
         await session.publishCamera(track);
-        // Mark published so the session-connect effect doesn't double-publish (T-04-22)
+        // Mark published so the session-connect effect doesn't double-publish
         publishedRef.current.video = true;
       }
     } catch (err) {
@@ -577,13 +577,13 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
       setTrackMap(new Map());
       setSpeakingParticipantIds(new Set());
       setMutedTrackKinds(new Map());
-      // B-04(b): cancel pending decay timers so a stale timer can't re-clear later.
+      // Cancel pending decay timers so a stale timer can't re-clear later.
       speakingTimersRef.current.forEach(clearTimeout);
       speakingTimersRef.current.clear();
     }
   }, [sdkEnabled]);
 
-  // ── Unmount cleanup: stop any local getUserMedia tracks (D-02, SDK-08) ─────
+  // ── Unmount cleanup: stop any local getUserMedia tracks ────────────────────
   // SDK session.disconnect() is handled by useMediaRoom cleanup; we only stop
   // local MediaStream tracks the hook itself holds.
   useEffect(
@@ -594,7 +594,7 @@ export function useMedia({ roomId }: UseMediaProps): UseMediaReturn {
     []
   );
 
-  // ── SFU media-presence: room-wide per-kind counts (B-01 / B-03) ────────────
+  // ── SFU media-presence: room-wide per-kind counts ───────────────────────────
   // Listen for the sync `sfu-media-count` broadcast and request the current counts
   // on mount and on every (re)connect. This is independent of the SDK session, so a
   // user not on a call (pre-join) and a user whose session has torn down (post-leave)

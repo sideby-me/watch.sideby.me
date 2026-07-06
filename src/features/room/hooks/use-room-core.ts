@@ -26,7 +26,7 @@ interface UseRoomCoreReturn {
   syncError: string;
   isJoining: boolean;
   captureStatus: string | null;
-  /** Reactive Map<participantId, User> built from roster users that carry a participantId (CUT-02). */
+  /** Reactive Map<participantId, User> built from roster users that carry a participantId. */
   participantIdToUser: Map<string, User>;
 
   // Refs
@@ -392,7 +392,7 @@ export function useRoomCore({ roomId, socket, isConnected }: UseRoomCoreOptions)
     };
   }, [socket]);
 
-  // Build reactive participantId -> User map from the roster (CUT-02, D-05).
+  // Build reactive participantId -> User map from the roster.
   // Only entries with a defined participantId are included; undefined = pre-SFU / flag-off client.
   const participantIdToUser = useMemo(
     () =>

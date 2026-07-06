@@ -8,7 +8,7 @@ import { logDebug } from '@/src/core/logger';
 // Renders a single hidden <audio> element for one remote participant's audio track.
 // srcObject is re-attached ONLY when the audio-track identity actually changes
 // (same discipline as the VideoChatGrid video fix — avoids tearing down playback).
-// T-04-21: each element is keyed by opaque participantId and wired from that
+// Each element is keyed by opaque participantId and wired from that
 // participant's own audioTrack only — no cross-participant track sharing.
 
 interface RemoteAudioElementProps {

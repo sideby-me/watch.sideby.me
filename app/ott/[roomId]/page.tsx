@@ -42,7 +42,7 @@ export default function OttRoomPage({ params }: { params: Promise<{ roomId: stri
   // Effect 3: Redirect when both room data and extension are resolved
   useEffect(() => {
     if (roomData && extensionDetected === true && roomData.ottUrl) {
-      // Plan 10-20: arm the joiner's pending_join on THIS tab before the same-tab
+      // Arm the joiner's pending_join on THIS tab before the same-tab
       // redirect to Netflix. watch-marker.ts (ISOLATED content script, listening
       // since document_start) receives this CustomEvent and sends PENDING_OTT_JOIN
       // to the background, which writes pending_join_${tabId}. Because router.replace

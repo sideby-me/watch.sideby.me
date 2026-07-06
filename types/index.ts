@@ -175,7 +175,7 @@ export interface SocketEvents {
   'videochat-error': (data: VideoChatErrorResponse) => void;
   'videochat-participant-count': (data: VideoChatParticipantCountResponse) => void;
 
-  // SFU media token events (Plan 04-02)
+  // SFU media token events
   'request-media-token': (data: { roomId: string }) => void;
   'media-token': (data: {
     sfuUrl: string;
@@ -186,7 +186,7 @@ export interface SocketEvents {
   }) => void;
   'media-token-error': (data: { error: string }) => void;
 
-  // SFU media-presence events (B-01 / B-03) — room-wide per-kind counts
+  // SFU media-presence events — room-wide per-kind counts
   // Client -> Server
   'sfu-media-presence': (data: { roomId: string; audio: boolean; video: boolean }) => void;
   'request-sfu-media-count': (data: { roomId: string }) => void;
