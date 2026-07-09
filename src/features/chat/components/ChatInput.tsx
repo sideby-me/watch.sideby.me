@@ -360,7 +360,8 @@ export function ChatInput({
                     return;
                   }
                   if (e.key === 'Enter' || e.key === 'Tab') {
-                    const entry = filteredEmojis[emojiIndex];
+                    // Clamp: a stale index must never fall through to the form's submit handler
+                    const entry = filteredEmojis[Math.min(emojiIndex, filteredEmojis.length - 1)];
                     if (entry) {
                       e.preventDefault();
                       insertEmoji(entry);
@@ -411,8 +412,10 @@ export function ChatInput({
                     setEmojiActive(false);
                     setEmojiAnchor(null);
                     setEmojiQuery('');
-                  } else {
+                  } else if (query !== emojiQuery) {
                     setEmojiQuery(query);
+                    // Re-filtering invalidates the old highlight position
+                    setEmojiIndex(0);
                   }
                 }
               }

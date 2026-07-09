@@ -29,10 +29,8 @@ export async function loadEmojiIndex(): Promise<EmojiEntry[]> {
 }
 
 /**
- * Pure scoring search: label match scores +10, each matching tag scores +1. Entries with a
- * label match always outrank entries matching only via tags (a single label hit outscores any
- * number of tag-only hits under normal dataset sizes... but to guarantee "label match ranks
- * above tag-only match" per spec, label matches are sorted into a separate higher tier).
+ * Pure scoring search, mirroring frimousse's own ranking: a label match scores +10, each
+ * matching tag +1, ties broken by ascending `order`.
  */
 export function searchEmojis(index: EmojiEntry[], query: string, limit = 30): EmojiEntry[] {
   const q = query.trim().toLowerCase();
