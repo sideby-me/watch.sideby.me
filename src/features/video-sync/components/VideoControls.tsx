@@ -13,6 +13,7 @@ import {
   Loader2,
   MessageCircle,
   Cast,
+  SearchX,
 } from 'lucide-react';
 import { SubtitleManager } from '@/src/features/subtitles/components';
 import type { SubtitleTrack } from '@/types/schemas';
@@ -594,15 +595,17 @@ export function VideoControls({
                   <RotateCw className={isFullscreen ? 'h-5 w-5' : 'h-4 w-4'} />
                 </Button>
 
-                {isHost && (alternativesCount ?? 0) > 0 && onWrongVideo && (
+                {(alternativesCount ?? 0) > 0 && onWrongVideo && (
                   <Button
-                    variant="ghost"
+                    variant="secondary"
                     size={isFullscreen ? 'default' : 'sm'}
                     onClick={onWrongVideo}
-                    className={`${isFullscreen ? 'h-11' : 'h-9'} px-3 text-primary-foreground hover:bg-white/10 hover:text-primary-foreground`}
+                    className={`${isFullscreen ? 'h-11 w-11 sm:px-4' : 'h-9 w-9 sm:px-3'} border border-border bg-black/60 p-0 text-primary-foreground transition-interactive hover:border-primary hover:bg-primary hover:text-primary-foreground sm:w-auto`}
                     title="Wrong video?"
+                    aria-label="Wrong video?"
                   >
-                    Wrong video?
+                    <SearchX className={isFullscreen ? 'h-5 w-5' : 'h-4 w-4'} />
+                    <span className="hidden sm:inline">Wrong video?</span>
                   </Button>
                 )}
               </>
