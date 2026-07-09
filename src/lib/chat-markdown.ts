@@ -41,23 +41,6 @@ function markerToType(run: string): GenericNode['type'] | null {
   }
 }
 
-function serializeChildren(nodes: Node[]): string {
-  return nodes
-    .map(n => {
-      switch (n.type) {
-        case 'text':
-          return n.value;
-        case 'code':
-          return '`' + n.value + '`';
-        case 'link':
-          return '[' + serializeChildren(n.children) + '](' + n.href + ')';
-        default:
-          return serializeChildren((n as GenericNode).children);
-      }
-    })
-    .join('');
-}
-
 function isSafeUrl(href: string): boolean {
   return /^(https?:)\/\//i.test(href);
 }
@@ -159,14 +142,16 @@ export function parseChatMarkdown(input: string): Node[] {
 
   flushText();
 
-  // Flatten any unclosed markers
-  if (stack.length > 1) {
-    for (let s = 1; s < stack.length; s++) {
-      const entry = stack[s];
-      const serialized = serializeChildren(entry.node.children);
-      entry.node.type = 'italic';
-      entry.node.children = [{ type: 'text', value: serialized }];
-    }
+  // Dissolve any unclosed markers: the marker becomes literal text and the node's
+  // children are lifted into its parent, so formatting that *did* close still renders.
+  // Innermost first, since dissolving a node moves its children up one level.
+  // An unclosed node is always its parent's last child — nothing is appended to the
+  // parent between the push and the (never reached) pop.
+  for (let s = stack.length - 1; s >= 1; s--) {
+    const { marker, node } = stack[s];
+    const parent = stack[s - 1].node;
+    parent.children.pop();
+    parent.children.push({ type: 'text', value: marker }, ...node.children);
   }
   return root.children;
 }
