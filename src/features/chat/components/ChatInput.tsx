@@ -8,6 +8,9 @@ import { toast } from 'sonner';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { EmojiPicker, EmojiPickerSearch, EmojiPickerContent, EmojiPickerFooter } from '@/components/ui/emoji-picker';
 import { useFullscreenPortalContainer } from '@/src/features/room/hooks';
+import { loadEmojiIndex, searchEmojis, type EmojiEntry } from '@/src/features/chat/emoji-index';
+
+const MAX_EMOJI_QUERY_LENGTH = 25;
 
 interface VoiceConfig {
   isEnabled: boolean;
@@ -79,6 +82,16 @@ export function ChatInput({
         .filter(u => u.name.toLowerCase().includes(mentionQuery.toLowerCase()))
         .sort((a, b) => a.name.localeCompare(b.name))
     : [];
+
+  // Emoji ':' autocomplete state
+  const [emojiActive, setEmojiActive] = useState(false);
+  const [emojiQuery, setEmojiQuery] = useState('');
+  const [emojiAnchor, setEmojiAnchor] = useState<number | null>(null);
+  const [emojiIndex, setEmojiIndex] = useState(0);
+  const [emojiData, setEmojiData] = useState<EmojiEntry[] | null>(null);
+  const colonKeydownRef = useRef(false);
+
+  const filteredEmojis = emojiActive && emojiData ? searchEmojis(emojiData, emojiQuery) : [];
 
   const portalContainer = useFullscreenPortalContainer();
 
@@ -202,9 +215,40 @@ export function ChatInput({
     setMentionAnchor(null);
   };
 
+  const insertEmoji = (entry: EmojiEntry) => {
+    const el = inputRef.current;
+    if (!el) return;
+    const anchor = emojiAnchor ?? 0;
+    const caret = el.selectionStart ?? inputMessage.length;
+    const nextValue = (inputMessage.slice(0, anchor) + entry.emoji + inputMessage.slice(caret)).slice(0, 500);
+    onValueChange?.(nextValue);
+    // Update caret after React updates value
+    requestAnimationFrame(() => {
+      if (!el) return;
+      try {
+        const pos = anchor + entry.emoji.length;
+        el.focus();
+        el.selectionStart = el.selectionEnd = pos;
+      } catch {}
+    });
+    setEmojiActive(false);
+    setEmojiQuery('');
+    setEmojiAnchor(null);
+  };
+
   const truncateMessage = (text: string, maxLength: number = 80) => {
     if (text.length <= maxLength) return text;
     return text.slice(0, maxLength) + '...';
+  };
+
+  const handleFormSubmit = (e: React.FormEvent) => {
+    // Defensively close the emoji autocomplete if a submit occurs while active
+    if (emojiActive) {
+      setEmojiActive(false);
+      setEmojiQuery('');
+      setEmojiAnchor(null);
+    }
+    onSubmit(e);
   };
 
   const inputSize = mode === 'overlay' ? 'h-8' : '';
@@ -237,7 +281,7 @@ export function ChatInput({
         </div>
       )}
 
-      <form onSubmit={onSubmit} className={`flex ${spacing}`}>
+      <form onSubmit={handleFormSubmit} className={`flex ${spacing}`}>
         <div className="relative flex-1">
           <Input
             placeholder="Don't be shy..."
@@ -293,15 +337,87 @@ export function ChatInput({
                   setMentionActive(false);
                   return;
                 }
+                // Mention branch is active — the emoji branch below stays mutually exclusive
+                return;
+              }
+
+              // Handle emoji navigation (mutually exclusive with mention — only one trigger active at a time)
+              if (emojiActive) {
+                // Escape closes the list even when the "No emoji found" empty state is showing
+                if (e.key === 'Escape') {
+                  setEmojiActive(false);
+                  return;
+                }
+                if (filteredEmojis.length > 0) {
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    setEmojiIndex(i => (i + 1) % filteredEmojis.length);
+                    return;
+                  }
+                  if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setEmojiIndex(i => (i - 1 + filteredEmojis.length) % filteredEmojis.length);
+                    return;
+                  }
+                  if (e.key === 'Enter' || e.key === 'Tab') {
+                    const entry = filteredEmojis[emojiIndex];
+                    if (entry) {
+                      e.preventDefault();
+                      insertEmoji(entry);
+                    }
+                    return;
+                  }
+                }
+              }
+
+              // Track a genuine ':' keystroke for the emoji trigger (anti-paste gating, consumed in onKeyUp)
+              if (e.key === ':') {
+                colonKeydownRef.current = true;
               }
             }}
             onKeyUp={e => {
               if (['ArrowUp', 'ArrowDown', 'Enter', 'Escape', 'Tab'].includes(e.key)) return;
-              // Detect mention trigger pattern
               const el = inputRef.current;
               if (!el) return;
               const caret = el.selectionStart ?? el.value.length;
               const value = el.value;
+
+              // Emoji ':' trigger (keystroke-gated; paste never fires a ':' keydown, so pasted colons never open it)
+              if (colonKeydownRef.current) {
+                colonKeydownRef.current = false;
+                const anchor = caret - 1;
+                if (value[anchor] === ':') {
+                  // Only one trigger active at a time by sigil
+                  setMentionActive(false);
+                  setMentionAnchor(null);
+                  setMentionQuery('');
+                  setEmojiAnchor(anchor);
+                  setEmojiActive(true);
+                  setEmojiQuery('');
+                  setEmojiIndex(0);
+                  if (!emojiData) {
+                    loadEmojiIndex().then(setEmojiData);
+                  }
+                }
+              } else if (emojiActive) {
+                const anchor = emojiAnchor ?? -1;
+                if (caret <= anchor || value[anchor] !== ':') {
+                  setEmojiActive(false);
+                  setEmojiAnchor(null);
+                  setEmojiQuery('');
+                } else {
+                  const query = value.slice(anchor + 1, caret);
+                  if (/\s/.test(query) || query.length > MAX_EMOJI_QUERY_LENGTH) {
+                    setEmojiActive(false);
+                    setEmojiAnchor(null);
+                    setEmojiQuery('');
+                  } else {
+                    setEmojiQuery(query);
+                  }
+                }
+              }
+
+              // Detect mention trigger pattern
               // Find last '@' before caret
               const i = value.lastIndexOf('@', caret - 1);
               let active = false;
@@ -328,6 +444,12 @@ export function ChatInput({
                 setMentionQuery('');
               } else if (!mentionActive) {
                 setMentionActive(true);
+                // Only one trigger active at a time by sigil
+                if (emojiActive) {
+                  setEmojiActive(false);
+                  setEmojiAnchor(null);
+                  setEmojiQuery('');
+                }
               } else {
                 // Preserve index unless the query changed from previous
                 if (prevMentionQueryRef.current !== mentionQuery) {
@@ -374,6 +496,37 @@ export function ChatInput({
               })}
             </div>
           )}
+          {/* Emoji ':' autocomplete suggestions */}
+          {emojiActive && (
+            <div
+              className="absolute bottom-full mb-1 max-h-60 w-56 overflow-y-auto rounded-md border border-border bg-background text-sm shadow-md"
+              style={{ left: 0, zIndex: 40 }}
+            >
+              {filteredEmojis.length > 0 ? (
+                filteredEmojis.map((entry, idx) => {
+                  const active = idx === emojiIndex;
+                  return (
+                    <button
+                      type="button"
+                      key={`${entry.emoji}-${entry.label}`}
+                      onMouseDown={e => {
+                        e.preventDefault();
+                        insertEmoji(entry);
+                      }}
+                      className={`flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted focus:bg-muted focus:outline-none ${
+                        active ? 'bg-muted' : ''
+                      }`}
+                    >
+                      <span className="text-base">{entry.emoji}</span>
+                      <span className="truncate text-muted-foreground">{entry.label}</span>
+                    </button>
+                  );
+                })
+              ) : (
+                <div className="px-3 py-2 text-muted-foreground">No emoji found</div>
+              )}
+            </div>
+          )}
           <Popover
             open={emojiOpen}
             onOpenChange={next => {
@@ -399,12 +552,11 @@ export function ChatInput({
               </button>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-full max-w-[270px] p-0" sideOffset={4} container={portalContainer}>
-              <div
-                className="h-[320px] w-full"
-                onClick={e => {
-                  const target = e.target as HTMLElement;
-                  if (target?.dataset?.slot === 'emoji-picker-emoji') {
-                    const emojiChar = target.textContent?.trim();
+              <div className="h-[320px] w-full">
+                <EmojiPicker
+                  className="h-full"
+                  onEmojiSelect={selected => {
+                    const emojiChar = selected.emoji;
                     if (emojiChar) {
                       onEmojiSelect?.(emojiChar);
                       // Keep popover open, refocus input but ignore the close it might trigger
@@ -420,10 +572,8 @@ export function ChatInput({
                         }
                       });
                     }
-                  }
-                }}
-              >
-                <EmojiPicker className="h-full">
+                  }}
+                >
                   <EmojiPickerSearch placeholder="Search" autoFocus />
                   <EmojiPickerContent />
                   <EmojiPickerFooter />
