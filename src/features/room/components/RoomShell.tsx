@@ -343,11 +343,26 @@ export function RoomShell({ roomId }: RoomShellProps) {
   // Use fullscreen chat overlay hook
   const { showChatOverlay, isChatMinimized, toggleChatMinimize, closeChatOverlay, showChatOverlayManually } =
     useFullscreenChatOverlay();
+
+  // Narrows getActivePlayer's YouTube | HLS | VideoPlayer union down to the two in-scope
+  // shortcut players — YouTube is already excluded by the hook's videoType gate, this just
+  // satisfies the type at the call site without touching getActivePlayer itself.
+  const getActiveShortcutPlayer = useCallback(() => {
+    if (core.room?.videoType === 'youtube') return null;
+    const player = getActivePlayer();
+    return player as VideoPlayerRef | HLSPlayerRef | null;
+  }, [core.room?.videoType, getActivePlayer]);
+
   // Use keyboard shortcuts hook
   useKeyboardShortcuts({
     hasVideo: !!core.room?.videoUrl,
     isHost: core.currentUser?.isHost || false,
+    videoType: core.room?.videoType,
     onControlAttempt: handleVideoControlAttempt,
+    getActivePlayer: getActiveShortcutPlayer,
+    onPlay: handleVideoPlay,
+    onPause: handleVideoPause,
+    onSeek: handleVideoSeek,
   });
 
   // Room initialization: auto-join, initial video from query, autoplay

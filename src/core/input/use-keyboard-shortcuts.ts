@@ -105,7 +105,9 @@ export function createKeyboardShortcutHandler(
   };
 
   const handleKeydown = (event: KeyboardShortcutEvent) => {
-    const { hasVideo, isHost, videoType, onControlAttempt, getActivePlayer, onPlay, onPause, onSeek } = getDeps();
+    // onSeek is intentionally NOT destructured here — the debounce callback below reads it
+    // fresh via getDeps().onSeek() at fire-time, not the value captured at keydown-time.
+    const { hasVideo, isHost, videoType, onControlAttempt, getActivePlayer, onPlay, onPause } = getDeps();
 
     // Gate A: no video, or YouTube — the iframe owns its own keys entirely.
     if (!hasVideo || videoType === 'youtube') return;
