@@ -9,7 +9,10 @@ import {
 
 // ── Test doubles ─────────────────────────────────────────────────────────────
 
-function makeEvent(key: string, target: Partial<Element> | null = null): KeyboardShortcutEvent & {
+function makeEvent(
+  key: string,
+  target: Partial<Element> | null = null
+): KeyboardShortcutEvent & {
   preventDefault: ReturnType<typeof vi.fn>;
 } {
   return {
