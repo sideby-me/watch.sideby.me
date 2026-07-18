@@ -10,10 +10,6 @@ on:
       - main
       - staging
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   build_and_lint:
     name: Build & Lint
@@ -24,6 +20,16 @@ jobs:
     permissions:
       contents: read
       packages: read
+
+    # Job-level (not workflow-level) concurrency: a workflow-level `concurrency:`
+    # block silently breaks any job in this same workflow that calls a reusable
+    # workflow via `uses:` (confirmed empirically — the called job never gets
+    # scheduled and the whole run reports failure, with no useful error). Scoping
+    # it to just this job keeps the "cancel superseded lint/test runs" behavior
+    # without touching the deploy job below.
+    concurrency:
+      group: ${{ github.workflow }}-lint-${{ github.ref }}
+      cancel-in-progress: true
 
     steps:
       - name: Checkout Repository
