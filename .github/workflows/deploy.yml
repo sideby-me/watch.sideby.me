@@ -16,6 +16,10 @@ jobs:
     env:
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      # .npmrc reads ${NODE_AUTH_TOKEN} for npm.pkg.github.com — `vercel build`
+      # runs `npm install` internally, which needs this to resolve the private
+      # @sideby-me/rtc package from GitHub Packages, same as ci.yml's own install step.
+      NODE_AUTH_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN || secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
