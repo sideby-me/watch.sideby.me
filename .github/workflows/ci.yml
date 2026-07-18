@@ -10,10 +10,6 @@ on:
       - main
       - staging
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   build_and_lint:
     name: Build & Lint
@@ -24,6 +20,16 @@ jobs:
     permissions:
       contents: read
       packages: read
+
+    # Job-level (not workflow-level) concurrency: a workflow-level `concurrency:`
+    # block silently breaks any job in this same workflow that calls a reusable
+    # workflow via `uses:` (confirmed empirically — the called job never gets
+    # scheduled and the whole run reports failure, with no useful error). Scoping
+    # it to just this job keeps the "cancel superseded lint/test runs" behavior
+    # without touching the deploy job below.
+    concurrency:
+      group: ${{ github.workflow }}-lint-${{ github.ref }}
+      cancel-in-progress: true
 
     steps:
       - name: Checkout Repository
@@ -50,5 +56,23 @@ jobs:
       - name: Lint Code
         run: npm run lint
 
+      - name: Run Tests
+        run: npm run test
+
       - name: Build Project
         run: npm run build
+
+  # Runs only on a direct push to main/staging, after the checks above pass.
+  # Calling deploy.yml directly (workflow_call) instead of the old
+  # workflow_run trigger avoids a GitHub Actions requirement that the callee's
+  # workflow_run trigger exist on the DEFAULT branch (main) before it will
+  # ever fire — that silently broke this gate on staging entirely.
+  deploy:
+    name: Deploy
+    needs: build_and_lint
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging')
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/deploy.yml
+    secrets: inherit

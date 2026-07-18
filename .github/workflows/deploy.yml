@@ -1,0 +1,51 @@
+name: Deploy
+
+on:
+  workflow_call:
+
+concurrency:
+  group: deploy-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      # .npmrc reads ${NODE_AUTH_TOKEN} for npm.pkg.github.com — `vercel build`
+      # runs `npm install` internally, which needs this to resolve the private
+      # @sideby-me/rtc package from GitHub Packages, same as ci.yml's own install step.
+      NODE_AUTH_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN || secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Pull Vercel env (production)
+        if: ${{ github.ref_name == 'main' }}
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build (production)
+        if: ${{ github.ref_name == 'main' }}
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Deploy (production)
+        if: ${{ github.ref_name == 'main' }}
+        run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Pull Vercel env (preview)
+        if: ${{ github.ref_name != 'main' }}
+        run: vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build (preview)
+        if: ${{ github.ref_name != 'main' }}
+        run: vercel build --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Deploy (preview)
+        if: ${{ github.ref_name != 'main' }}
+        run: vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }}
