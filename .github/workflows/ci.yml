@@ -55,3 +55,18 @@ jobs:
 
       - name: Build Project
         run: npm run build
+
+  # Runs only on a direct push to main/staging, after the checks above pass.
+  # Calling deploy.yml directly (workflow_call) instead of the old
+  # workflow_run trigger avoids a GitHub Actions requirement that the callee's
+  # workflow_run trigger exist on the DEFAULT branch (main) before it will
+  # ever fire — that silently broke this gate on staging entirely.
+  deploy:
+    name: Deploy
+    needs: build_and_lint
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging')
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/deploy.yml
+    secrets: inherit
