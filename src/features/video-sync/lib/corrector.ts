@@ -69,3 +69,43 @@ export function decideCorrection(params: DecideCorrectionParams): CorrectionResu
 export function shouldApplySyncUpdate(anchorTimestamp: number, lastIntentTimestamp: number): boolean {
   return anchorTimestamp >= lastIntentTimestamp;
 }
+
+/** HTMLMediaElement.readyState — below HAVE_FUTURE_DATA the element cannot advance currentTime. */
+export const MEDIA_HAVE_FUTURE_DATA = 3;
+
+export interface ReanchorGateInput {
+  /** Whether the host's player reports it is not paused. */
+  isPlaying: boolean;
+  /** Player explicitly reports a stall (e.g. the YouTube BUFFERING state). */
+  isBuffering?: boolean;
+  /** HTMLMediaElement.readyState, when the active player exposes a video element. */
+  readyState?: number;
+}
+
+/**
+ * Stalled-host guard for the periodic host re-anchor.
+ *
+ * `HTMLMediaElement.paused` stays FALSE while a video rebuffers — it only flips on an explicit
+ * pause() or at end of media. So a rebuffering host reports `isPlaying: true` with a frozen
+ * currentTime, and re-anchoring that to the server overwrites the authoritative timeline with a
+ * stalled one. The server then rebroadcasts it to the room and every healthy viewer, seeing a
+ * large negative drift, hard-seeks BACKWARD to the stalled host's position — turning one
+ * person's rebuffer into a room-wide rewind, repeated every re-anchor until the host recovers.
+ *
+ * A stalled host is therefore not an authoritative position and must not re-anchor. A *paused*
+ * host still is: its currentTime is stable and meaningful.
+ */
+export function shouldEmitReanchor(input: ReanchorGateInput): boolean {
+  const { isPlaying, isBuffering, readyState } = input;
+
+  // A paused host is a stable, legitimate anchor.
+  if (!isPlaying) return true;
+
+  if (isBuffering) return false;
+
+  // Below HAVE_FUTURE_DATA the element has no data to play past the current frame — it is
+  // stalled, so its currentTime is frozen and must not be published as authoritative.
+  if (readyState !== undefined && readyState < MEDIA_HAVE_FUTURE_DATA) return false;
+
+  return true;
+}
