@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { decideCorrection, shouldApplySyncUpdate } from '@/src/features/video-sync/lib/corrector';
+import {
+  decideCorrection,
+  shouldApplySyncUpdate,
+  shouldEmitReanchor,
+  MEDIA_HAVE_FUTURE_DATA,
+} from '@/src/features/video-sync/lib/corrector';
 import { SYNC_DEAD_BAND_S, SYNC_SOFT_BAND_S, SYNC_MAX_NUDGE, YOUTUBE_SEEK_TOLERANCE_S } from '@/src/lib/constants';
 
 describe('decideCorrection — mode: rate (HTML5/HLS)', () => {
@@ -139,5 +144,36 @@ describe('shouldApplySyncUpdate', () => {
 
   it('keeps anchors at equal timestamps', () => {
     expect(shouldApplySyncUpdate(2000, 2000)).toBe(true);
+  });
+});
+
+describe('shouldEmitReanchor — stalled-host guard', () => {
+  it('emits for a healthy playing host', () => {
+    expect(shouldEmitReanchor({ isPlaying: true, readyState: 4 })).toBe(true);
+  });
+
+  it('emits at exactly HAVE_FUTURE_DATA (boundary, not stalled)', () => {
+    expect(shouldEmitReanchor({ isPlaying: true, readyState: MEDIA_HAVE_FUTURE_DATA })).toBe(true);
+  });
+
+  it('suppresses one step below HAVE_FUTURE_DATA (boundary, stalled)', () => {
+    expect(shouldEmitReanchor({ isPlaying: true, readyState: MEDIA_HAVE_FUTURE_DATA - 1 })).toBe(false);
+  });
+
+  it('suppresses at HAVE_NOTHING', () => {
+    expect(shouldEmitReanchor({ isPlaying: true, readyState: 0 })).toBe(false);
+  });
+
+  it('suppresses when the player reports buffering, whatever the readyState', () => {
+    expect(shouldEmitReanchor({ isPlaying: true, isBuffering: true, readyState: 4 })).toBe(false);
+  });
+
+  it('emits for a PAUSED host even when its buffer is empty (a paused position is stable)', () => {
+    expect(shouldEmitReanchor({ isPlaying: false, readyState: 0 })).toBe(true);
+    expect(shouldEmitReanchor({ isPlaying: false, isBuffering: true })).toBe(true);
+  });
+
+  it('emits when readyState is unavailable and nothing reports a stall', () => {
+    expect(shouldEmitReanchor({ isPlaying: true })).toBe(true);
   });
 });

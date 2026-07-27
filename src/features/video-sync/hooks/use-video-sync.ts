@@ -7,7 +7,12 @@ import { HLSPlayerRef } from '@/src/core/video/hls-player';
 import { CastPlayerRef } from '@/src/features/media/cast';
 import { calculateCurrentTime } from '@/src/lib/video-utils';
 import { SYNC_COOLDOWN_MS, HOST_REANCHOR_MS, SYNC_CORRECTOR_INTERVAL_MS } from '@/src/lib/constants';
-import { decideCorrection, shouldApplySyncUpdate, type CorrectorMode } from '@/src/features/video-sync/lib/corrector';
+import {
+  decideCorrection,
+  shouldApplySyncUpdate,
+  shouldEmitReanchor,
+  type CorrectorMode,
+} from '@/src/features/video-sync/lib/corrector';
 import { Room, User } from '@/types';
 import { logDebug } from '@/src/core/logger';
 
@@ -280,12 +285,31 @@ export function useVideoSync({
       const currentTime = player.getCurrentTime();
 
       let isPlaying: boolean;
+      let isBuffering = false;
       if ('getPlayerState' in player) {
-        isPlaying = player.getPlayerState() === YT_STATES.PLAYING;
+        const ytState = player.getPlayerState();
+        isPlaying = ytState === YT_STATES.PLAYING;
+        isBuffering = ytState === YT_STATES.BUFFERING;
       } else if ('isPaused' in player) {
         isPlaying = !player.isPaused();
       } else {
         isPlaying = false;
+      }
+
+      // Never re-anchor off a stalled host. `paused` stays false while a video rebuffers, so a
+      // stalling host would otherwise publish a frozen currentTime as authoritative — which the
+      // server rebroadcasts and every healthy viewer then hard-seeks backward to match.
+      const readyState = (
+        player as { getVideoElement?: () => HTMLVideoElement | null }
+      ).getVideoElement?.()?.readyState;
+
+      if (!shouldEmitReanchor({ isPlaying, isBuffering, readyState })) {
+        logDebug('video', 'sync_check_skip_stalled', 'Skipping host re-anchor - local player is stalled', {
+          currentTime,
+          readyState,
+          isBuffering,
+        });
+        return;
       }
 
       logDebug('video', 'sync_check', `Host re-anchor: ${currentTime.toFixed(2)}s, playing: ${isPlaying}`);
