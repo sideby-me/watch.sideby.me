@@ -299,9 +299,8 @@ export function useVideoSync({
       // Never re-anchor off a stalled host. `paused` stays false while a video rebuffers, so a
       // stalling host would otherwise publish a frozen currentTime as authoritative — which the
       // server rebroadcasts and every healthy viewer then hard-seeks backward to match.
-      const readyState = (
-        player as { getVideoElement?: () => HTMLVideoElement | null }
-      ).getVideoElement?.()?.readyState;
+      const readyState = (player as { getVideoElement?: () => HTMLVideoElement | null }).getVideoElement?.()
+        ?.readyState;
 
       if (!shouldEmitReanchor({ isPlaying, isBuffering, readyState })) {
         logDebug('video', 'sync_check_skip_stalled', 'Skipping host re-anchor - local player is stalled', {
