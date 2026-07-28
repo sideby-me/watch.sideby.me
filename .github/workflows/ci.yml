@@ -62,15 +62,24 @@ jobs:
       - name: Build Project
         run: npm run build
 
-  # Runs only on a direct push to main/staging, after the checks above pass.
+  # Runs only on a direct push to main, after the checks above pass.
   # Calling deploy.yml directly (workflow_call) instead of the old
   # workflow_run trigger avoids a GitHub Actions requirement that the callee's
   # workflow_run trigger exist on the DEFAULT branch (main) before it will
   # ever fire — that silently broke this gate on staging entirely.
+  #
+  # staging is deliberately NOT deployed from here. `vercel build --prebuilt`
+  # runs off `vercel pull`, which cannot decrypt the branch-scoped Preview
+  # NEXT_PUBLIC_* vars — it writes the literal placeholder "[SENSITIVE]", and
+  # Next.js then inlines THAT into the client bundle at build time, so the
+  # staging socket URL became the string "[SENSITIVE]". A prebuilt deploy also
+  # claims the commit SHA first, which suppressed the Vercel Git integration's
+  # own (correct) staging build entirely. Leaving preview/staging to the Git
+  # integration keeps one deploy path per environment and real env values.
   deploy:
     name: Deploy
     needs: build_and_lint
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging')
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: read
       packages: read
